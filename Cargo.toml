@@ -7,3 +7,4 @@ authors = ["Eli Dupree <vcs@elidupree.com>"]
 stdweb = "0.3"
 nalgebra = "0.13"
 rand = "0.3"
+derivative = "1.0"

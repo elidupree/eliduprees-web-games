@@ -4,17 +4,23 @@ extern crate eliduprees_web_games;
 
 #[macro_use]
 extern crate stdweb;
+#[macro_use]
+extern crate derivative;
 extern crate nalgebra;
 extern crate rand;
 
 use rand::Rng;
+use stdweb::web;
+use stdweb::unstable::TryInto;
 
 use std::rc::Rc;
+use std::cell::RefCell;
 
 type Vector3 = nalgebra::Vector3 <f64>;
 type Vector2 = nalgebra::Vector2 <f64>;
 
 
+#[derive (Debug, Default)]
 struct Constants {
   visible_components: i32,
   visible_length: f64,
@@ -31,34 +37,43 @@ struct Constants {
   speech_duration: f64,
 }
 
+#[derive (Debug)]
 struct Mountain {
   fake_peak_location: Vector3,
   base_screen_radius: f64,
   view_distance_range: [f64; 2],
 }
+#[derive (Debug)]
 struct Sky {
   screen_position: Vector2,
   steepness: f64,
 }
+#[derive (Debug, Derivative)]
+#[derivative (Default)]
 struct Object {
+  #[derivative (Default (value = "Vector2::new(0.0,0.0)"))]
   center: Vector2,
   radius: f64,
   statements: Vec<Statement>,
   last_statement_start_time: f64,
   
   automatic_statements: Vec<AutomaticStatement>,
+  #[derivative (Default (value = "Kind::Person"))]
   kind: Kind,
 }
+#[derive (Debug)]
 struct Statement {
   text: String,
   start_time: f64,
   response: Option <String>,
 }
+#[derive (Debug)]
 struct AutomaticStatement {
   text: String,
   distances: [f64; 2],
   last_stated: Option <f64>,
 }
+#[derive (Debug)]
 enum Kind {
   Person,
   Chest,
@@ -66,21 +81,26 @@ enum Kind {
   Monster,
 }
 
+#[derive (Debug, Default)]
 struct Path {
   components: Vec<Component>,
   max_speed: f64,
 }
+#[derive (Debug)]
 struct Component {
   position: f64,
   velocity: f64,
   acceleration: f64,
 }
+#[derive (Debug)]
 struct Click {
   location: Vector2,
   player_location: Vector2,
   time: f64,
 }
 
+#[derive (Derivative)]
+#[derivative (Default)]
 struct State {
   mountains: Vec<Mountain>,
   skies: Vec<Sky>,
@@ -97,11 +117,13 @@ struct State {
   
   stars_collected: i32,
   
+  #[derivative (Default (value = "Box::new(::rand::ChaChaRng::new_unseeded())"))]
   generator: Box <Rng>,
   constants: Rc<Constants>,
   now: f64,
 }
 
+#[derive (Debug)]
 struct CylindricalPerspective {
   width_at_closest: f64,
   camera_distance_along_tangent: f64,
@@ -152,6 +174,7 @@ impl State {
     }
     
     self.player.center [1] += constants.player_max_speed;
+    self.companion.center [1] += constants.player_max_speed;
     
     let player_center = self.player.center;
     
@@ -174,12 +197,16 @@ impl State {
     self.temporary_pain = self.permanent_pain + (self.temporary_pain - self.permanent_pain) * 0.5f64.powf(duration/1.4);
     self.transient_pain = self.temporary_pain + (self.transient_pain - self.temporary_pain) * 0.5f64.powf(duration/0.03);
     
+    let mut companion_say = None;
     for statement in self.companion.automatic_statements.iter_mut() {
       if self.now > self.companion.last_statement_start_time + 5.0
           && statement.last_stated.map_or (true, | when | now > when + 100.0) {
         statement.last_stated = Some(now);
-        self.companion.say (Statement {text: statement.text.clone(), start_time: now, response: None});
+        companion_say = Some(statement.text.clone());
       }
+    }
+    if let Some(companion_say) = companion_say {
+      self.companion.say (Statement {text: companion_say, start_time: now, response: None});
     }
   }
 
@@ -202,11 +229,117 @@ impl State {
     )
   }
   
-  fn draw (&self) {
+  fn draw_object (&self, object: & Object) {
+    let first_corner = self.draw_position (Vector3::new (object.center [0] - object.radius, object.center [1], 0.0));
+    let second_corner = self.draw_position (Vector3::new (object.center [0] + object.radius, object.center [1] + object.radius, 0.0));
+    let size = second_corner - first_corner;
+    println!("{:?}", (object, first_corner));
+    js! {
+      context.fillStyle = "rgb(255,255,255)";
+      context.fillRect (@{first_corner[0]}, @{second_corner[1]}, @{size[0]}, @{size[1]});
+    }
+  }
   
+  fn draw (&self) {
+    self.draw_object (& self.player);
+    self.draw_object (& self.companion);
   }
 }
 
+
+struct Game {
+  state: State,
+  last_ui_time: f64,
+}
+
+
+fn draw_game (game: & Game) {
+  let canvas_width: f64 = js! {return canvas.width;}.try_into().unwrap();
+  let scale = canvas_width;
+  js! {
+    var size = Math.min (window.innerHeight, window.innerWidth);
+    canvas.setAttribute ("width", size);
+    canvas.setAttribute ("height", size);
+    context.clearRect (0, 0, canvas.width, canvas.height);
+    context.save();
+    context.scale (@{scale},@{scale});
+  }
+  game.state.draw();
+  js! {
+    context.restore();
+  }
+}
+
+fn main_loop (time: f64, game: Rc<RefCell<Game>>) {
+  {
+    let mut game = game.borrow_mut();
+    let observed_duration = time - game.last_ui_time;
+    let duration_to_simulate = if observed_duration < 100.0 {observed_duration} else {100.0}/1000.0;
+    game.last_ui_time = time;
+    if duration_to_simulate > 0.0 {
+      game.state.simulate (duration_to_simulate);
+      game.state.draw ();
+    }
+  }
+  web::window().request_animation_frame (move | time | main_loop (time, game));
+}
+
+
+#[cfg (target_os = "emscripten")]
 fn main() {
-  println!("not yet implemented :-P");
+  stdweb::initialize();
+  js! {
+    var game_container = window.game_container = $("<div>");
+    var canvas = window.canvas = document.createElement ("canvas");
+    $(document.querySelector("main") || document.body).append (game_container[0]).css("background-color", "black");
+    game_container.append(canvas);
+    window.context = canvas.getContext ("2d");
+  }
+  
+  let game = Rc::new (RefCell::new (
+    Game {
+      last_ui_time: 0.0,
+      state: State {
+        path: Path {max_speed: 0.1,  .. Default::default()},
+        player: Object {center: Vector2::new (0.0, 0.0),  .. Default::default()},
+        companion: Object {center: Vector2::new (0.0, -0.1),  .. Default::default()},
+  
+        permanent_pain: 0.4,
+        temporary_pain: 0.4,
+        transient_pain: 0.4,
+  
+        generator: Box::new(rand::thread_rng()),
+        
+        .. Default::default()
+      }
+    }
+  ));
+  
+  {
+    let game = game.clone();
+    let click_callback = move |x: f64,y: f64 | {
+      //let mut game = game.borrow_mut();
+    };
+    js! {
+      var callback = @{click_callback};
+      canvas.addEventListener ("click", function (event) {
+        var offset = canvas.getBoundingClientRect();
+        callback (
+          (event.clientX - offset.left)/offset.width,
+          (event.clientY - offset.top)/offset.height
+        );
+        event.preventDefault();
+      });
+    }
+  }
+  
+  web::window().request_animation_frame (move | time | main_loop (time, game));
+
+  stdweb::event_loop();
+}
+
+
+#[cfg (not(target_os = "emscripten"))]
+fn main() {
+  println!("There's not currently a way to compile this game natively");
 }
