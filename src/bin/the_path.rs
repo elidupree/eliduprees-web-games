@@ -102,6 +102,35 @@ struct State {
   now: f64,
 }
 
+struct CylindricalPerspective {
+  width_at_closest: f64,
+  camera_distance_along_tangent: f64,
+  radians_visible: f64,
+  horizon_drop: f64,
+}
+impl CylindricalPerspective {
+  fn coordinates_on_circle_relative_to_camera (&self, fraction_of_visible: f64)->Vector2 {
+    let radians = self.radians_visible*(1.0 - fraction_of_visible);
+    Vector2::new (
+      self.camera_distance_along_tangent - radians.sin(),
+      1.0 - radians.cos()
+    )
+  }
+  
+  
+  fn scale (&self, fraction_of_visible: f64)->f64 {
+    let coordinates = self.coordinates_on_circle_relative_to_camera (fraction_of_visible);
+    let coordinates0 = self.coordinates_on_circle_relative_to_camera (0.0);
+    coordinates0.norm()/coordinates.norm()/self.width_at_closest
+  }
+  fn ground_screen_drop (&self, fraction_of_visible: f64)->f64 {
+    let coordinates = self.coordinates_on_circle_relative_to_camera (fraction_of_visible);
+    let coordinates0 = self.coordinates_on_circle_relative_to_camera (0.0);
+    self.horizon_drop + (1.0 - self.horizon_drop)*coordinates [1].atan2(coordinates [0])/coordinates0 [1].atan2(coordinates0 [0])
+  }
+}
+
+
 
 impl Object {
   fn say (&mut self, statement: Statement) {
@@ -152,6 +181,29 @@ impl State {
         self.companion.say (Statement {text: statement.text.clone(), start_time: now, response: None});
       }
     }
+  }
+
+  fn draw_position (&self, location: Vector3)->Vector2 {
+    let perspective = CylindricalPerspective {
+      width_at_closest: 1.0,
+      camera_distance_along_tangent: 0.11,
+      radians_visible: 0.1,
+      horizon_drop: 0.36,
+    };
+    let fraction_of_visible = (location [1] - self.player.center [1] - self.constants.player_position)/self.constants.visible_length;
+    let horizontal_distance = location [0] - self.player.center [0];
+
+    let scale = perspective.scale (fraction_of_visible);
+    let drop = perspective.ground_screen_drop (fraction_of_visible);
+    
+    Vector2::new (
+      0.5 + horizontal_distance*scale,
+      drop - location [2]*scale,
+    )
+  }
+  
+  fn draw (&self) {
+  
   }
 }
 
