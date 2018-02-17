@@ -179,8 +179,8 @@ impl State {
       sky.screen_position [1] -= (sky.screen_position [1] - 0.5)*0.0006*duration;
     }
     
-    self.player.center [1] += constants.player_max_speed;
-    self.companion.center [1] += constants.player_max_speed;
+    self.player.center [1] += constants.player_max_speed*duration;
+    self.companion.center [1] += constants.player_max_speed*duration;
     
     let player_center = self.player.center;
     let min_visible_position = player_center [1] - constants.player_position;
@@ -198,16 +198,16 @@ impl State {
         acceleration: previous.acceleration,
       };
       
-      let default_acceleration_change_radius = self.path.max_speed*21.6*distance;
-      let mut bias = - previous.velocity*3.6*distance;
+      let default_acceleration_change_radius = self.path.max_speed*216.0*distance;
+      let mut bias = - previous.velocity*36.0*distance;
       // The path secretly follows the player if the player moves too far away,
       // for both gameplay and symbolism reasons.
       let player_offset = player_center [0] - previous.center [0];
       if player_offset > 0.7 {
-        bias += (player_offset - 0.7)*0.4*distance;
+        bias += (player_offset - 0.7)*self.path.max_speed*40.0*distance;
       }
       if player_offset < -0.7 {
-        bias += (player_offset + 0.7)*0.4*distance;
+        bias += (player_offset + 0.7)*self.path.max_speed*40.0*distance;
       }
       
       let limits_1 = [
@@ -218,8 +218,8 @@ impl State {
       // To keep things smooth, we never accelerate more than a fraction of the way to max speed at a time.
       // TODO: make this formula less dependent on the component size
       let limits_2 = [
-        (-self.path.max_speed - previous.velocity)/3.0,
-        (self.path.max_speed - previous.velocity)/3.0,
+        (-self.path.max_speed - previous.velocity)*200.0,
+        (self.path.max_speed - previous.velocity)*200.0,
       ];
       let acceleration_limits = [
         if limits_1 [0] > limits_2 [0] {limits_1 [0]} else {limits_2 [0]},
@@ -227,7 +227,12 @@ impl State {
       ];
       
       //println!("{:?}", (limits_1, limits_2, acceleration_limits));
-      new.acceleration = self.generator.gen_range (acceleration_limits [0], acceleration_limits [1]);
+      if acceleration_limits[0] < acceleration_limits[1] {
+        new.acceleration = self.generator.gen_range (acceleration_limits [0], acceleration_limits [1]);
+      }
+      else {
+        new.acceleration = (acceleration_limits[0] + acceleration_limits[1]) /2.0;
+      }
       
       self.path.components.push (new);
     }
