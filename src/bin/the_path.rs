@@ -5,6 +5,8 @@ extern crate eliduprees_web_games;
 #[macro_use]
 extern crate stdweb;
 #[macro_use]
+extern crate serde_derive;
+#[macro_use]
 extern crate derivative;
 extern crate nalgebra;
 extern crate rand;
@@ -20,7 +22,7 @@ type Vector3 = nalgebra::Vector3 <f64>;
 type Vector2 = nalgebra::Vector2 <f64>;
 
 
-#[derive (Debug, Default)]
+#[derive (Debug, Default, Deserialize)]
 struct Constants {
   visible_components: i32,
   visible_length: f64,
@@ -30,12 +32,13 @@ struct Constants {
   
   monster_density: f64,
   tree_density: f64,
-  test_density: f64,
+  chest_density: f64,
   reward_density: f64,
   
   speech_fade_duration: f64,
   speech_duration: f64,
 }
+js_deserializable! (Constants);
 
 #[derive (Debug)]
 struct Mountain {
@@ -217,7 +220,7 @@ impl State {
       radians_visible: 0.1,
       horizon_drop: 0.36,
     };
-    let fraction_of_visible = (location [1] - self.player.center [1] - self.constants.player_position)/self.constants.visible_length;
+    let fraction_of_visible = (location [1] - self.player.center [1] + self.constants.player_position)/self.constants.visible_length;
     let horizontal_distance = location [0] - self.player.center [0];
 
     let scale = perspective.scale (fraction_of_visible);
@@ -230,13 +233,13 @@ impl State {
   }
   
   fn draw_object (&self, object: & Object) {
-    let first_corner = self.draw_position (Vector3::new (object.center [0] - object.radius, object.center [1], 0.0));
-    let second_corner = self.draw_position (Vector3::new (object.center [0] + object.radius, object.center [1] + object.radius, 0.0));
+    let first_corner = self.draw_position (Vector3::new (object.center [0] - object.radius, object.center [1], object.radius));
+    let second_corner = self.draw_position (Vector3::new (object.center [0] + object.radius, object.center [1], 0.0));
     let size = second_corner - first_corner;
-    println!("{:?}", (object, first_corner));
+    //println!("{:?}", (object, first_corner, second_corner, size));
     js! {
       context.fillStyle = "rgb(255,255,255)";
-      context.fillRect (@{first_corner[0]}, @{second_corner[1]}, @{size[0]}, @{size[1]});
+      context.fillRect (@{first_corner[0]}, @{first_corner[1]}, @{size[0]}, @{size[1]});
     }
   }
   
@@ -272,13 +275,15 @@ fn draw_game (game: & Game) {
 
 fn main_loop (time: f64, game: Rc<RefCell<Game>>) {
   {
+    //js! {console.clear();}
     let mut game = game.borrow_mut();
+    game.state.constants = Rc::new (js! {return window.constants;}.try_into().unwrap());
     let observed_duration = time - game.last_ui_time;
     let duration_to_simulate = if observed_duration < 100.0 {observed_duration} else {100.0}/1000.0;
     game.last_ui_time = time;
     if duration_to_simulate > 0.0 {
       game.state.simulate (duration_to_simulate);
-      game.state.draw ();
+      draw_game (& game);
     }
   }
   web::window().request_animation_frame (move | time | main_loop (time, game));
@@ -294,6 +299,22 @@ fn main() {
     $(document.querySelector("main") || document.body).append (game_container[0]).css("background-color", "black");
     game_container.append(canvas);
     window.context = canvas.getContext ("2d");
+    
+    window.constants = {
+      visible_components: 1200,
+      visible_length: 2.0,
+  
+      player_position: 0.16,
+      player_max_speed: 0.1,
+  
+      monster_density: 0.1,
+      tree_density: 0.1,
+      chest_density: 0.1,
+      reward_density: 0.1,
+  
+      speech_fade_duration: 0.25,
+      speech_duration: 3.5,
+    }
   }
   
   let game = Rc::new (RefCell::new (
@@ -301,8 +322,8 @@ fn main() {
       last_ui_time: 0.0,
       state: State {
         path: Path {max_speed: 0.1,  .. Default::default()},
-        player: Object {center: Vector2::new (0.0, 0.0),  .. Default::default()},
-        companion: Object {center: Vector2::new (0.0, -0.1),  .. Default::default()},
+        player: Object {center: Vector2::new (0.0, 0.0), radius: 0.02, .. Default::default()},
+        companion: Object {center: Vector2::new (0.0, -0.1), radius: 0.025, .. Default::default()},
   
         permanent_pain: 0.4,
         temporary_pain: 0.4,
