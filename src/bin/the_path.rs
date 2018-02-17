@@ -30,6 +30,9 @@ struct Constants {
   player_position: f64,
   player_max_speed: f64,
   
+  spawn_radius: f64,
+  spawn_distance: f64,
+  
   monster_density: f64,
   tree_density: f64,
   chest_density: f64,
@@ -179,8 +182,10 @@ impl State {
       sky.screen_position [1] -= (sky.screen_position [1] - 0.5)*0.0006*duration;
     }
     
-    self.player.center [1] += constants.player_max_speed*duration;
-    self.companion.center [1] += constants.player_max_speed*duration;
+    let advance_distance = constants.player_max_speed*duration;
+    
+    self.player.center [1] += advance_distance;
+    self.companion.center [1] += advance_distance;
     
     let player_center = self.player.center;
     let min_visible_position = player_center [1] - constants.player_position;
@@ -237,6 +242,11 @@ impl State {
       self.path.components.push (new);
     }
     self.path.components.retain (| component | component.center [1] >= min_visible_position - constants.visible_length/constants.visible_components as f64);
+    
+    let spawn_area = advance_distance*constants.spawn_radius*2.0;
+    if self.generator.gen::<f64>() < spawn_area*constants.tree_density {
+      self.objects.push (Object {center: Vector2::new (self.player.center [0] + self.generator.gen_range (- constants.spawn_radius, constants.spawn_radius), self.player.center [1] + constants.spawn_distance), radius: 0.05, .. Default::default()});
+    }
     for object in self.objects.iter_mut() {
       match object.kind {
         Kind::Monster => {
@@ -297,9 +307,6 @@ impl State {
   }
   
   fn draw (&self) {
-    self.draw_object (& self.player);
-    self.draw_object (& self.companion);
-    
     js! {
       context.beginPath();
     }
@@ -323,6 +330,10 @@ impl State {
       context.fillStyle = "rgb(255,255,255)";
       context.fill();
     }
+    
+    for object in self.objects.iter() {self.draw_object (object) ;}
+    self.draw_object (& self.player);
+    self.draw_object (& self.companion);
   }
 }
 
@@ -383,9 +394,12 @@ fn main() {
   
       player_position: 0.16,
       player_max_speed: 0.1,
+      
+      spawn_radius: 20.0,
+      spawn_distance: 1.54,
   
       monster_density: 0.1,
-      tree_density: 0.1,
+      tree_density: 5.0,
       chest_density: 0.1,
       reward_density: 0.1,
   
