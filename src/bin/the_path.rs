@@ -88,10 +88,13 @@ enum Kind {
 struct Path {
   components: Vec<Component>,
   max_speed: f64,
+  radius: f64,
 }
-#[derive (Debug)]
+#[derive (Clone, Debug)]
 struct Component {
-  position: f64,
+  center: Vector2,
+  
+  // per unit distance forward
   velocity: f64,
   acceleration: f64,
 }
@@ -180,10 +183,55 @@ impl State {
     self.companion.center [1] += constants.player_max_speed;
     
     let player_center = self.player.center;
+    let min_visible_position = player_center [1] - constants.player_position;
+    let max_visible_position = min_visible_position + constants.visible_length;
     
     self.mountains.retain (| mountain | {
       (mountain.fake_peak_location [1] - player_center[1]) > mountain.view_distance_range[0]
     });
+    while self.path.components.last().unwrap().center [1] < max_visible_position {
+      let previous = self.path.components.last().unwrap().clone();
+      let distance = constants.visible_length/constants.visible_components as f64;
+      let mut new = Component {
+        center: previous.center + Vector2::new (distance*previous.velocity, distance),
+        velocity: previous.velocity + distance*previous.acceleration,
+        acceleration: previous.acceleration,
+      };
+      
+      let default_acceleration_change_radius = self.path.max_speed*21.6*distance;
+      let mut bias = - previous.velocity*3.6*distance;
+      // The path secretly follows the player if the player moves too far away,
+      // for both gameplay and symbolism reasons.
+      let player_offset = player_center [0] - previous.center [0];
+      if player_offset > 0.7 {
+        bias += (player_offset - 0.7)*0.4*distance;
+      }
+      if player_offset < -0.7 {
+        bias += (player_offset + 0.7)*0.4*distance;
+      }
+      
+      let limits_1 = [
+        previous.acceleration - default_acceleration_change_radius + bias,
+        previous.acceleration + default_acceleration_change_radius + bias,
+      ];
+      // It's forbidden to accelerate to higher than max speed.
+      // To keep things smooth, we never accelerate more than a fraction of the way to max speed at a time.
+      // TODO: make this formula less dependent on the component size
+      let limits_2 = [
+        (-self.path.max_speed - previous.velocity)/3.0,
+        (self.path.max_speed - previous.velocity)/3.0,
+      ];
+      let acceleration_limits = [
+        if limits_1 [0] > limits_2 [0] {limits_1 [0]} else {limits_2 [0]},
+        if limits_1 [1] < limits_2 [1] {limits_1 [1]} else {limits_2 [1]},
+      ];
+      
+      //println!("{:?}", (limits_1, limits_2, acceleration_limits));
+      new.acceleration = self.generator.gen_range (acceleration_limits [0], acceleration_limits [1]);
+      
+      self.path.components.push (new);
+    }
+    self.path.components.retain (| component | component.center [1] >= min_visible_position - constants.visible_length/constants.visible_components as f64);
     for object in self.objects.iter_mut() {
       match object.kind {
         Kind::Monster => {
@@ -246,6 +294,30 @@ impl State {
   fn draw (&self) {
     self.draw_object (& self.player);
     self.draw_object (& self.companion);
+    
+    js! {
+      context.beginPath();
+    }
+    let mut began = false;
+    for component in self.path.components.iter() {
+      //TODO: ideal handling of a component that straddles the horizon
+      let endpoint = self.draw_position (Vector3::new (component.center [0] - self.path.radius, component.center [1], 0.0));
+      if began {
+        js! {context.lineTo(@{endpoint [0]},@{endpoint [1]});}
+      }
+      else {
+        js! {context.moveTo(@{endpoint [0]},@{endpoint [1]});}
+        began = true;
+      }
+    }
+    for component in self.path.components.iter().rev() {
+      let endpoint = self.draw_position (Vector3::new (component.center [0] + self.path.radius, component.center [1], 0.0));
+      js! {context.lineTo(@{endpoint [0]},@{endpoint [1]});}
+    }
+    js! {
+      context.fillStyle = "rgb(255,255,255)";
+      context.fill();
+    }
   }
 }
 
@@ -321,7 +393,7 @@ fn main() {
     Game {
       last_ui_time: 0.0,
       state: State {
-        path: Path {max_speed: 0.1,  .. Default::default()},
+        path: Path {max_speed: 1.0, radius: 0.12, components: vec![Component {center: Vector2::new (0.0, - 0.5), velocity: 0.0, acceleration: 0.0}], .. Default::default()},
         player: Object {center: Vector2::new (0.0, 0.0), radius: 0.02, .. Default::default()},
         companion: Object {center: Vector2::new (0.0, -0.1), radius: 0.025, .. Default::default()},
   
