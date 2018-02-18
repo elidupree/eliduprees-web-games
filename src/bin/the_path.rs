@@ -21,6 +21,29 @@ use std::cell::RefCell;
 type Vector3 = nalgebra::Vector3 <f64>;
 type Vector2 = nalgebra::Vector2 <f64>;
 
+pub fn random_vector_exact_length <G: Rng> (generator: &mut G, length: f64)->Vector2 {
+  loop {
+    let vector = Vector2::new (
+      generator.gen_range (- length, length),
+      generator.gen_range (- length, length),);
+    let test_length = vector.norm();
+    if test_length <= length && test_length*2.0 >= length {
+      return vector*length/vector.norm();
+    }
+  }
+}
+pub fn random_vector_within_length <G: Rng> (generator: &mut G, length: f64)->Vector2 {
+  loop {
+    let vector = Vector2::new (
+      generator.gen_range (- length, length),
+      generator.gen_range (- length, length),);
+    let test_length = vector.norm();
+    if test_length <= length && test_length != 0.0 {
+      return vector;
+    }
+  }
+}
+
 
 #[derive (Debug, Default, Deserialize)]
 struct Constants {
@@ -84,8 +107,12 @@ enum Kind {
   Person,
   Chest,
   Reward,
-  Monster,
+  Monster (Monster),
   Tree,
+}
+#[derive (Debug)]
+struct Monster {
+  velocity: Vector2,
 }
 
 #[derive (Debug, Default)]
@@ -259,14 +286,18 @@ impl State {
     self.path.components.retain (| component | component.center [1] >= min_visible_position - constants.visible_length/constants.visible_components as f64);
     
     self.do_spawns (advance_distance, constants.tree_density, || Object {kind: Kind::Tree, radius: 0.05, .. Default::default()});
-    self.do_spawns (advance_distance, constants.monster_density, || Object {kind: Kind::Monster, radius: 0.05, .. Default::default()});
+    self.do_spawns (advance_distance, constants.monster_density, || Object {kind: Kind::Monster (Monster {velocity: Vector2::new (0.0, 0.0)}), radius: 0.05, .. Default::default()});
     self.do_spawns (advance_distance, constants.chest_density, || Object {kind: Kind::Chest, radius: 0.03, .. Default::default()});
     self.do_spawns (advance_distance, constants.reward_density, || Object {kind: Kind::Reward, radius: 0.03, .. Default::default()});
     
     for object in self.objects.iter_mut() {
       match object.kind {
-        Kind::Monster => {
-        
+        Kind::Monster (ref mut monster) => {
+          object.center += monster.velocity*duration;
+          monster.velocity += random_vector_within_length (&mut self.generator, 0.1*duration);
+          if monster.velocity.norm() > 0.1 {
+            monster.velocity *= 0.5f64.powf (duration/1.0);
+          }
         },
         _=>(),
       };
