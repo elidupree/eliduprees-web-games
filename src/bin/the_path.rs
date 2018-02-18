@@ -85,6 +85,7 @@ enum Kind {
   Chest,
   Reward,
   Monster,
+  Tree,
 }
 
 #[derive (Debug, Default)]
@@ -171,6 +172,20 @@ impl Object {
 }
 
 impl State {
+  fn spawn(&mut self, advance_distance: f64, mut object: Object) {
+    object.center = Vector2::new (self.player.center [0] + self.generator.gen_range (- self.constants.spawn_radius, self.constants.spawn_radius), self.player.center [1] + self.constants.spawn_distance + self.generator.gen_range(0.0, advance_distance));
+    self.objects.push (object);
+  }
+  fn do_spawns <F: FnMut()->Object> (&mut self, advance_distance: f64, density: f64, mut object_generator: F) {
+    let spawn_area = advance_distance*self.constants.spawn_radius*2.0;
+    let average_number = spawn_area*density;
+    let attempts = (average_number*10.0).ceil() as usize;
+    for _ in 0..attempts {
+      if self.generator.gen::<f64>() < average_number/attempts as f64 {
+        self.spawn (advance_distance, (object_generator)());
+      }
+    }
+  }
   fn simulate (&mut self, duration: f64) {
     self.now += duration;
     let now = self.now;
@@ -243,10 +258,11 @@ impl State {
     }
     self.path.components.retain (| component | component.center [1] >= min_visible_position - constants.visible_length/constants.visible_components as f64);
     
-    let spawn_area = advance_distance*constants.spawn_radius*2.0;
-    if self.generator.gen::<f64>() < spawn_area*constants.tree_density {
-      self.objects.push (Object {center: Vector2::new (self.player.center [0] + self.generator.gen_range (- constants.spawn_radius, constants.spawn_radius), self.player.center [1] + constants.spawn_distance), radius: 0.05, .. Default::default()});
-    }
+    self.do_spawns (advance_distance, constants.tree_density, || Object {kind: Kind::Tree, radius: 0.05, .. Default::default()});
+    self.do_spawns (advance_distance, constants.monster_density, || Object {kind: Kind::Monster, radius: 0.05, .. Default::default()});
+    self.do_spawns (advance_distance, constants.chest_density, || Object {kind: Kind::Chest, radius: 0.03, .. Default::default()});
+    self.do_spawns (advance_distance, constants.reward_density, || Object {kind: Kind::Reward, radius: 0.03, .. Default::default()});
+    
     for object in self.objects.iter_mut() {
       match object.kind {
         Kind::Monster => {
@@ -398,10 +414,10 @@ fn main() {
       spawn_radius: 20.0,
       spawn_distance: 1.54,
   
-      monster_density: 0.1,
+      monster_density: 0.7,
       tree_density: 5.0,
-      chest_density: 0.1,
-      reward_density: 0.1,
+      chest_density: 1.0,
+      reward_density: 1.0,
   
       speech_fade_duration: 0.25,
       speech_duration: 3.5,
