@@ -354,12 +354,14 @@ impl State {
   }
   
   fn draw (&self) {
+    let min_visible_position = self.player.center [1] - self.constants.player_position;
+    let max_visible_position = min_visible_position + self.constants.visible_length;
+    
     js! {
       context.beginPath();
     }
     let mut began = false;
-    for component in self.path.components.iter() {
-      //TODO: ideal handling of a component that straddles the horizon
+    for component in self.path.components[0..self.path.components.len()-1].iter() {
       let endpoint = self.draw_position (Vector3::new (component.center [0] - self.path.radius, component.center [1], 0.0));
       if began {
         js! {context.lineTo(@{endpoint [0]},@{endpoint [1]});}
@@ -369,7 +371,17 @@ impl State {
         began = true;
       }
     }
-    for component in self.path.components.iter().rev() {
+    {
+      let last = &self.path.components[self.path.components.len()-2..self.path.components.len()];
+      let distance = last [1].center - last [0].center;
+      let horizon_distance = max_visible_position - last [0].center [1];
+      let horizon_center = last [0].center + distance*horizon_distance/distance [1];
+      let endpoint = self.draw_position (Vector3::new (horizon_center [0] - self.path.radius, max_visible_position, 0.0));
+      js! {context.lineTo(@{endpoint [0]},@{endpoint [1]});}
+      let endpoint = self.draw_position (Vector3::new (horizon_center [0] + self.path.radius, max_visible_position, 0.0));
+      js! {context.lineTo(@{endpoint [0]},@{endpoint [1]});}
+    }
+    for component in self.path.components[0..self.path.components.len()-1].iter().rev() {
       let endpoint = self.draw_position (Vector3::new (component.center [0] + self.path.radius, component.center [1], 0.0));
       js! {context.lineTo(@{endpoint [0]},@{endpoint [1]});}
     }
