@@ -1,4 +1,4 @@
-#![recursion_limit="128"]
+#![recursion_limit="256"]
 
 extern crate eliduprees_web_games;
 
@@ -393,6 +393,11 @@ impl State {
     for object in self.objects.iter() {self.draw_object (object) ;}
     self.draw_object (& self.player);
     self.draw_object (& self.companion);
+    
+    js! {
+      var hack = new paper.Path.Circle ({center: [0.5, 0.5], radius: 0.2,});
+      context.fill(new Path2D(hack.pathData));
+    }
   }
 }
 
@@ -447,6 +452,8 @@ fn main() {
     game_container.append(canvas);
     window.context = canvas.getContext ("2d");
     
+    paper.setup ([640, 480]);
+    
     window.constants = {
       visible_components: 1200,
       visible_length: 2.0,
@@ -464,7 +471,7 @@ fn main() {
   
       speech_fade_duration: 0.25,
       speech_duration: 3.5,
-    }
+    };
   }
   
   let game = Rc::new (RefCell::new (
