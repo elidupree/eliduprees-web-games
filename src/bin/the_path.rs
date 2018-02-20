@@ -57,6 +57,11 @@ struct Constants {
   spawn_radius: f64,
   spawn_distance: f64,
   
+  mountain_spawn_radius: f64,
+  mountain_spawn_distance: f64,
+  mountain_viewable_distances_radius: f64,
+  mountain_density: f64,
+  
   monster_density: f64,
   tree_density: f64,
   chest_density: f64,
@@ -71,7 +76,6 @@ js_deserializable! (Constants);
 struct Mountain {
   fake_peak_location: Vector3,
   base_screen_radius: f64,
-  view_distance_range: [f64; 2],
 }
 #[derive (Debug)]
 struct Sky {
@@ -214,6 +218,38 @@ impl State {
       }
     }
   }
+  fn mountain_screen_peak (&self, mountain: & Mountain)->Vector2 {
+    let distance = mountain.fake_peak_location [1] - self.player.center [1];
+    let highest_distance = self.constants.mountain_spawn_distance - self.constants.mountain_viewable_distances_radius;
+    let distance_from_highest = (distance - highest_distance).abs() / self.constants.mountain_viewable_distances_radius;
+    Vector2::new (
+      0.5 + (mountain.fake_peak_location [0] - self.player.center [0])/distance,
+      self.constants.perspective.horizon_drop - (mountain.fake_peak_location [2])*(distance_from_highest*(::std::f64::consts::PI/2.0)).cos()
+    )
+  }
+  fn spawn_mountains (&mut self, advance_distance: f64) {
+    let spawn_area = advance_distance*self.constants.mountain_spawn_radius*2.0;
+    let average_number = spawn_area*self.constants.mountain_density;
+    let attempts = (average_number*10.0).ceil() as usize;
+    for _ in 0..attempts {
+      if self.generator.gen::<f64>() < average_number/attempts as f64 {
+        let location = Vector3::new (
+          self.player.center [0] + self.generator.gen_range (- self.constants.mountain_spawn_radius, self.constants.mountain_spawn_radius),
+          self.player.center [1] + self.constants.mountain_spawn_distance + self.generator.gen_range(0.0, advance_distance),
+          self.generator.gen_range (0.1, 0.2),
+        );
+        let mountain = Mountain {
+          fake_peak_location: location,
+          base_screen_radius: self.generator.gen_range (0.2, 0.4),
+        };
+        let screen_peak = self.mountain_screen_peak (& mountain)[0];
+        let partial_radius = mountain.base_screen_radius * 0.8;
+        if screen_peak + partial_radius < 0.5 || 0.5 < screen_peak - partial_radius {
+          self.mountains.push (mountain);
+        }
+      }
+    }
+  }
   fn simulate (&mut self, duration: f64) {
     self.now += duration;
     let now = self.now;
@@ -234,8 +270,10 @@ impl State {
     let min_visible_position = player_center [1] - constants.player_position;
     let max_visible_position = min_visible_position + constants.visible_length;
     
+    self.spawn_mountains (advance_distance);
     self.mountains.retain (| mountain | {
-      (mountain.fake_peak_location [1] - player_center[1]) > mountain.view_distance_range[0]
+      let distance = mountain.fake_peak_location [1] - player_center [1];
+      distance > constants.mountain_spawn_distance - constants.mountain_viewable_distances_radius*2.0
     });
     while self.path.components.last().unwrap().center [1] < max_visible_position {
       let previous = self.path.components.last().unwrap().clone();
@@ -356,6 +394,22 @@ impl State {
       //$(document.body).text(@{self.objects.len() as u32});
       window.visible_sky = new paper.Path.Rectangle ({point: [0.0, 0.0], size: [1.0,@{self.constants.perspective.horizon_drop}], insert: false, });
     }
+    for mountain in self.mountains.iter() {
+      let screen_peak = self.mountain_screen_peak (& mountain);
+      js! {
+        var pos = [@{screen_peak[0]}, @{screen_peak[1]}];
+        var height =@{mountain.fake_peak_location [2]};
+        var radius =@{mountain.base_screen_radius};
+        var segments = [];
+        segments.push(pos);
+        segments.push([pos[0] + radius, pos[1] + height]);
+        segments.push([pos[0] - radius, pos[1] + height]);
+        var mountain = new paper.Path({ segments: segments, insert: false });
+        mountain.closed = true;
+
+        window.visible_sky = window.visible_sky.subtract (mountain);
+      }
+    }
     for sky in self.skies.iter() {
       let pos = sky.screen_position;
       js! {
@@ -379,18 +433,6 @@ impl State {
             [0, 0],
             [0.4, 0]
           ]);
-        /*segments.push(new paper.Segment (
-            new paper.Point (pos[0]-1.0, pos[1] + steepness),
-            new paper.Point (pos[0]-1.0, pos[1] + steepness),
-            new paper.Point (pos[0]-0.6, pos[1] + steepness)
-          ));
-        [
-          ,
-          ,
-          ,
-          ,
-          ,
-        ]*/
         var sky = new paper.Path({ segments: segments, insert: false });
         sky.closed = true;
         context.fillStyle = "rgba(255,255,255, 0.05)";
@@ -505,6 +547,11 @@ fn main() {
       
       spawn_radius: 20.0,
       spawn_distance: 1.54,
+      
+      mountain_spawn_radius: 35.0,
+      mountain_spawn_distance: 35.0,
+      mountain_viewable_distances_radius: 5.0,
+      mountain_density: 0.15,
   
       monster_density: 0.7,
       tree_density: 5.0,
