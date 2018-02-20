@@ -362,8 +362,15 @@ impl State {
     }
   }
 
+  fn fraction_of_visible (&self, location: Vector3)->f64 {
+    (location [1] - self.player.center [1] + self.constants.player_position)/self.constants.visible_length
+  }
+  fn draw_scale (&self, location: Vector3)->f64 {
+    let fraction_of_visible = self.fraction_of_visible (location);
+    self.constants.perspective.scale (fraction_of_visible)
+  }
   fn draw_position (&self, location: Vector3)->Vector2 {
-    let fraction_of_visible = (location [1] - self.player.center [1] + self.constants.player_position)/self.constants.visible_length;
+    let fraction_of_visible = self.fraction_of_visible (location);
     let horizontal_distance = location [0] - self.player.center [0];
 
     let scale = self.constants.perspective.scale (fraction_of_visible);
@@ -379,30 +386,18 @@ impl State {
     
     match object.kind {
       Kind::Tree => {
-        let triangles = [
-          [[-0.3, 0.0], [0.3, 0.0], [0.0, 2.0]],
-          [[-1.0, 1.0], [1.0, 1.0], [0.0, 2.8]],
-          [[-0.8, 2.0], [0.8, 2.0], [0.0, 3.5]],
-        ];
-        js! { tree = null; }
-        for triangle in triangles.iter() {
-          js! { segments = []; }
-          for vertex in triangle.iter() {
-            let position = self.draw_position (Vector3::new (
-              object.center [0] + object.radius*vertex [0],
-              object.center [1],
-              object.radius*vertex [1],
-            ));
-            js! { segments.push([@{position [0]},@{position [1]}]); }
-          }
-          js! {
-            var triangle = new paper.Path({ segments: segments, insert: false });
-            triangle.closed = true;
-            if (tree) {tree = tree.unite (triangle);} else {tree = triangle;}
-          }
-        }
-        
+        let raw_position = Vector3::new (
+          object.center [0],
+          object.center [1],
+          0.0,
+        );
+        let scale = self.draw_scale (raw_position);
+        let position = self.draw_position (raw_position);
+
         js! {
+          tree = tree_shape.clone({insert: false});
+          tree.scale (@{scale*object.radius}, [0,0]);
+          tree.translate (@{position [0]}, @{position [1]});
           context.fillStyle = "rgb(70, 70, 70)";
           context.fill(new Path2D(tree.pathData));
         }
@@ -595,6 +590,26 @@ fn main() {
       speech_fade_duration: 0.25,
       speech_duration: 3.5,
     };
+  }
+  
+  {
+        let triangles = [
+          [[-0.3, 0.0], [0.3, 0.0], [0.0, 2.0]],
+          [[-1.0, 1.0], [1.0, 1.0], [0.0, 2.8]],
+          [[-0.8, 2.0], [0.8, 2.0], [0.0, 3.5]],
+        ];
+        js! { tree_shape = null; }
+        for triangle in triangles.iter() {
+          js! { segments = []; }
+          for vertex in triangle.iter() {
+            js! { segments.push([@{vertex [0]},@{-vertex [1]}]); }
+          }
+          js! {
+            var triangle = new paper.Path({ segments: segments, insert: false });
+            triangle.closed = true;
+            if (tree_shape) {tree_shape= tree_shape.unite (triangle);} else {tree_shape = triangle;}
+          }
+        }
   }
   
   let mut skies = Vec::new();
