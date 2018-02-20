@@ -265,10 +265,14 @@ impl State {
       sky.screen_position [1] -= (sky.screen_position [1] - 0.7*self.constants.perspective.horizon_drop)*0.00003*duration;
     }
     
-    let advance_distance = constants.player_max_speed*duration;
     
-    self.player.center [1] += advance_distance;
-    self.companion.center [1] += advance_distance;
+    let movement_direction = if let Some(click) = self.last_click.as_ref() {click.location} else {Vector2::new (0.0, 1.0)};
+    let movement_vector = movement_direction*constants.player_max_speed*duration/movement_direction.norm();
+    
+    let advance_distance = movement_vector [1];
+    
+    self.player.center += movement_vector;
+    self.companion.center += movement_vector;
     
     let player_center = self.player.center;
     let min_visible_position = player_center [1] - constants.player_position;
@@ -659,12 +663,17 @@ fn main() {
   
   {
     let game = game.clone();
-    let click_callback = move |x: f64,y: f64 | {
-      //let mut game = game.borrow_mut();
+    let mousemove_callback = move |x: f64,y: f64 | {
+      let mut game = game.borrow_mut();
+      game.state.last_click = Some(Click {
+        location: Vector2::new (x - 0.5, 1.0 - y),
+        player_location: game.state.player.center,
+        time: game.state.now,
+      });
     };
     js! {
-      var callback = @{click_callback};
-      canvas.addEventListener ("click", function (event) {
+      var callback = @{mousemove_callback};
+      canvas.addEventListener ("mousemove", function (event) {
         var offset = canvas.getBoundingClientRect();
         callback (
           (event.clientX - offset.left)/offset.width,
