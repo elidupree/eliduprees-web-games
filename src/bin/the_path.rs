@@ -394,7 +394,11 @@ impl State {
         sky.closed = true;
         context.fillStyle = "rgba(255,255,255, 0.1)";
         context.fill(new Path2D(sky.intersect (visible_sky).pathData));
+        sky.remove();
       }
+    }
+    js! {
+      window.visible_sky.remove();
     }
     
     js! {
