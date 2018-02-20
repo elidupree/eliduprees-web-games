@@ -347,6 +347,7 @@ impl State {
     self.objects.retain (| object | {
       object.center [1] > player_center[1] - 0.5
     });
+    self.objects.sort_by_key (| object | {object.center [1]);
     
     self.temporary_pain = self.permanent_pain + (self.temporary_pain - self.permanent_pain) * 0.5f64.powf(duration/1.4);
     self.transient_pain = self.temporary_pain + (self.transient_pain - self.temporary_pain) * 0.5f64.powf(duration/0.03);
