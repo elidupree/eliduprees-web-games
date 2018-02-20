@@ -445,6 +445,8 @@ impl State {
     }
     let mut began = false;
     for component in self.path.components[0..self.path.components.len()-1].iter() {
+      // hack: skip things that are too close to the horizon, to hopefully avoid polygon display glitches
+      if component.center [1] > max_visible_position - 0.01 { continue; }
       let endpoint = self.draw_position (Vector3::new (component.center [0] - self.path.radius, component.center [1], 0.0));
       if began {
         js! {context.lineTo(@{endpoint [0]},@{endpoint [1]});}
@@ -454,7 +456,7 @@ impl State {
         began = true;
       }
     }
-    {
+    /*{
       let last = &self.path.components[self.path.components.len()-2..self.path.components.len()];
       let distance = last [1].center - last [0].center;
       let horizon_distance = max_visible_position - last [0].center [1];
@@ -463,8 +465,10 @@ impl State {
       js! {context.lineTo(@{endpoint [0]},@{endpoint [1]});}
       let endpoint = self.draw_position (Vector3::new (horizon_center [0] + self.path.radius, max_visible_position, 0.0));
       js! {context.lineTo(@{endpoint [0]},@{endpoint [1]});}
-    }
+    }*/
     for component in self.path.components[0..self.path.components.len()-1].iter().rev() {
+      // hack: skip things that are too close to the horizon, to hopefully avoid polygon display glitches
+      if component.center [1] > max_visible_position - 0.01 { continue; }
       let endpoint = self.draw_position (Vector3::new (component.center [0] + self.path.radius, component.center [1], 0.0));
       js! {context.lineTo(@{endpoint [0]},@{endpoint [1]});}
     }
