@@ -49,6 +49,7 @@ pub fn random_vector_within_length <G: Rng> (generator: &mut G, length: f64)->Ve
 struct Constants {
   visible_components: i32,
   visible_length: f64,
+  perspective: CylindricalPerspective,
   
   player_position: f64,
   player_max_speed: f64,
@@ -160,7 +161,7 @@ struct State {
   now: f64,
 }
 
-#[derive (Debug)]
+#[derive (Debug, Default, Deserialize)]
 struct CylindricalPerspective {
   width_at_closest: f64,
   camera_distance_along_tangent: f64,
@@ -324,17 +325,11 @@ impl State {
   }
 
   fn draw_position (&self, location: Vector3)->Vector2 {
-    let perspective = CylindricalPerspective {
-      width_at_closest: 1.0,
-      camera_distance_along_tangent: 0.11,
-      radians_visible: 0.1,
-      horizon_drop: 0.36,
-    };
     let fraction_of_visible = (location [1] - self.player.center [1] + self.constants.player_position)/self.constants.visible_length;
     let horizontal_distance = location [0] - self.player.center [0];
 
-    let scale = perspective.scale (fraction_of_visible);
-    let drop = perspective.ground_screen_drop (fraction_of_visible);
+    let scale = self.constants.perspective.scale (fraction_of_visible);
+    let drop = self.constants.perspective.ground_screen_drop (fraction_of_visible);
     
     Vector2::new (
       0.5 + horizontal_distance*scale,
@@ -356,6 +351,12 @@ impl State {
   fn draw (&self) {
     let min_visible_position = self.player.center [1] - self.constants.player_position;
     let max_visible_position = min_visible_position + self.constants.visible_length;
+    
+    js! {
+      window.visible_sky = new paper.Path.Rectangle ({point: [0.0, 0.0], size: [1.0,@{self.constants.perspective.horizon_drop}]});
+      context.fillStyle = "rgba(255,255,255, 0.3 )";
+      context.fill(new Path2D(visible_sky.pathData));
+    }
     
     js! {
       context.beginPath();
@@ -393,11 +394,6 @@ impl State {
     for object in self.objects.iter() {self.draw_object (object) ;}
     self.draw_object (& self.player);
     self.draw_object (& self.companion);
-    
-    js! {
-      var hack = new paper.Path.Circle ({center: [0.5, 0.5], radius: 0.2,});
-      context.fill(new Path2D(hack.pathData));
-    }
   }
 }
 
@@ -457,6 +453,12 @@ fn main() {
     window.constants = {
       visible_components: 1200,
       visible_length: 2.0,
+      perspective: {
+        width_at_closest: 1.0,
+        camera_distance_along_tangent: 0.11,
+        radians_visible: 0.1,
+        horizon_drop: 0.36,
+      },
   
       player_position: 0.16,
       player_max_speed: 0.1,
