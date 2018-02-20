@@ -219,10 +219,10 @@ impl State {
     let now = self.now;
     let constants = self.constants.clone();
     for sky in self.skies.iter_mut() {
-      sky.screen_position [0] += 0.05*duration*self.generator.gen_range (-1.0, 1.0);
-      sky.screen_position [1] += 0.05*duration*self.generator.gen_range (-1.0, 1.0);
-      sky.screen_position [0] -= (sky.screen_position [0] - 0.5)*0.0006*duration;
-      sky.screen_position [1] -= (sky.screen_position [1] - 0.7*self.constants.perspective.horizon_drop)*0.0003*duration;
+      sky.screen_position [0] += 0.005*duration*self.generator.gen_range (-1.0, 1.0);
+      sky.screen_position [1] += 0.005*duration*self.generator.gen_range (-1.0, 1.0);
+      sky.screen_position [0] -= (sky.screen_position [0] - 0.5)*0.00006*duration;
+      sky.screen_position [1] -= (sky.screen_position [1] - 0.7*self.constants.perspective.horizon_drop)*0.00003*duration;
     }
     
     let advance_distance = constants.player_max_speed*duration;
@@ -393,7 +393,7 @@ impl State {
         ]*/
         var sky = new paper.Path({ segments: segments, insert: false });
         sky.closed = true;
-        context.fillStyle = "rgba(255,255,255, 0.1)";
+        context.fillStyle = "rgba(255,255,255, 0.05)";
         context.fill(new Path2D(sky.intersect (visible_sky).pathData));
       }
     }
