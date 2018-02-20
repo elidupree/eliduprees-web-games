@@ -613,6 +613,7 @@ fn main() {
       speech_fade_duration: 0.25,
       speech_duration: 3.5,
     };
+    window.constants.spawn_radius = 0.5 + window.constants.visible_length * 2.0;
   }
   
   {
