@@ -376,14 +376,48 @@ impl State {
   }
   
   fn draw_object (&self, object: & Object) {
-    let first_corner = self.draw_position (Vector3::new (object.center [0] - object.radius, object.center [1], object.radius));
-    let second_corner = self.draw_position (Vector3::new (object.center [0] + object.radius, object.center [1], 0.0));
-    let size = second_corner - first_corner;
-    //println!("{:?}", (object, first_corner, second_corner, size));
-    js! {
-      context.fillStyle = "rgb(255,255,255)";
-      context.fillRect (@{first_corner[0]}, @{first_corner[1]}, @{size[0]}, @{size[1]});
-    }
+    
+    match object.kind {
+      Kind::Tree => {
+        let triangles = [
+          [[-0.3, 0.0], [0.3, 0.0], [0.0, 2.0]],
+          [[-1.0, 1.0], [1.0, 1.0], [0.0, 2.8]],
+          [[-0.8, 2.0], [0.8, 2.0], [0.0, 3.5]],
+        ];
+        js! { tree = null; }
+        for triangle in triangles.iter() {
+          js! { segments = []; }
+          for vertex in triangle.iter() {
+            let position = self.draw_position (Vector3::new (
+              object.center [0] + object.radius*vertex [0],
+              object.center [1],
+              object.radius*vertex [1],
+            ));
+            js! { segments.push([@{position [0]},@{position [1]}]); }
+          }
+          js! {
+            var triangle = new paper.Path({ segments: segments, insert: false });
+            triangle.closed = true;
+            if (tree) {tree = tree.unite (triangle);} else {tree = triangle;}
+          }
+        }
+        
+        js! {
+          context.fillStyle = "rgb(70, 70, 70)";
+          context.fill(new Path2D(tree.pathData));
+        }
+      },
+      _=> {
+        let first_corner = self.draw_position (Vector3::new (object.center [0] - object.radius, object.center [1], object.radius));
+        let second_corner = self.draw_position (Vector3::new (object.center [0] + object.radius, object.center [1], 0.0));
+        let size = second_corner - first_corner;
+        //println!("{:?}", (object, first_corner, second_corner, size));
+        js! {
+          context.fillStyle = "rgb(255,255,255)";
+          context.fillRect (@{first_corner[0]}, @{first_corner[1]}, @{size[0]}, @{size[1]});
+        }
+      }
+    };
   }
   
   fn draw (&self) {
