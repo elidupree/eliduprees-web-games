@@ -353,7 +353,8 @@ impl State {
     let max_visible_position = min_visible_position + self.constants.visible_length;
     
     js! {
-      window.visible_sky = new paper.Path.Rectangle ({point: [0.0, 0.0], size: [1.0,@{self.constants.perspective.horizon_drop}]});
+      //$(document.body).text(@{self.objects.len() as u32});
+      window.visible_sky = new paper.Path.Rectangle ({point: [0.0, 0.0], size: [1.0,@{self.constants.perspective.horizon_drop}], insert: false, });
     }
     for sky in self.skies.iter() {
       let pos = sky.screen_position;
@@ -390,15 +391,11 @@ impl State {
           ,
           ,
         ]*/
-        var sky = new paper.Path(segments);
+        var sky = new paper.Path({ segments: segments, insert: false });
         sky.closed = true;
         context.fillStyle = "rgba(255,255,255, 0.1)";
         context.fill(new Path2D(sky.intersect (visible_sky).pathData));
-        sky.remove();
       }
-    }
-    js! {
-      window.visible_sky.remove();
     }
     
     js! {
