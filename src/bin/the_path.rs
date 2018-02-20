@@ -216,9 +216,22 @@ impl Object {
       Kind::Person (ref mut person) => {
         let planted_foot = person.planted_foot;
         let moving_foot = 1 - planted_foot;
-        person.feet [moving_foot] += movement*2.0;
-        let offset = person.feet [moving_foot] - person.feet [planted_foot];
-        if offset.norm() > self.radius*1.8 && offset.dot (&movement) > 0.0 {
+        person.feet [moving_foot] += movement;
+        person.feet [planted_foot] -= movement;
+        let mut perpendicular = Vector2::new (movement [1], - movement [0]);
+        let norm = perpendicular.norm();
+        if norm != 0.0 {
+          perpendicular /= norm;
+          let mut perpendicular_component_size = person.feet [moving_foot].dot(& perpendicular);
+          if perpendicular_component_size < 0.0 {
+            perpendicular_component_size = -perpendicular_component_size;
+            perpendicular = -perpendicular;
+          }
+          let mut adjustment_size = movement.norm()/3.0;
+          if adjustment_size > perpendicular_component_size {adjustment_size = perpendicular_component_size;}
+          person.feet [moving_foot] -= perpendicular * adjustment_size;
+        }
+        if person.feet [moving_foot].norm() > self.radius*0.8 && person.feet [moving_foot].dot (&movement) > 0.0 {
           person.planted_foot = moving_foot;
         }
       },
@@ -438,8 +451,9 @@ impl State {
         }
       },
       Kind::Person (ref person) => {
-        for foot in person.feet.iter() {
-          let position = self.draw_position (Vector3::new (foot[0], foot[1], 0.0));
+        for (index, foot) in person.feet.iter().enumerate() {
+          let position = foot + object.center + Vector2::new ((index as f64 - 0.5) * object.radius, 0.0);
+          let position = self.draw_position (Vector3::new (position [0], position[1], 0.0));
           js! {
             context.fillStyle = "rgb(255,255,255)";
             context.fillRect (@{position[0]}, @{position[1]}, 0.004, 0.003);
