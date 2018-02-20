@@ -221,8 +221,8 @@ impl State {
     for sky in self.skies.iter_mut() {
       sky.screen_position [0] += 0.05*duration*self.generator.gen_range (-1.0, 1.0);
       sky.screen_position [1] += 0.05*duration*self.generator.gen_range (-1.0, 1.0);
-      sky.screen_position [0] -= (sky.screen_position [0] - 0.7)*0.0003*duration;
-      sky.screen_position [1] -= (sky.screen_position [1] - 0.5)*0.0006*duration;
+      sky.screen_position [0] -= (sky.screen_position [0] - 0.5)*0.0006*duration;
+      sky.screen_position [1] -= (sky.screen_position [1] - 0.7*self.constants.perspective.horizon_drop)*0.0003*duration;
     }
     
     let advance_distance = constants.player_max_speed*duration;
@@ -354,8 +354,47 @@ impl State {
     
     js! {
       window.visible_sky = new paper.Path.Rectangle ({point: [0.0, 0.0], size: [1.0,@{self.constants.perspective.horizon_drop}]});
-      context.fillStyle = "rgba(255,255,255, 0.3 )";
-      context.fill(new Path2D(visible_sky.pathData));
+    }
+    for sky in self.skies.iter() {
+      let pos = sky.screen_position;
+      js! {
+        var pos = [@{pos[0]}, @{pos[1]}];
+        var steepness = @{sky.steepness};
+        var segments = [];
+        segments.push([
+            pos,
+            [-0.4, 0],
+            [0.4, 0]
+          ]);
+        segments.push([
+            [pos[0]+1.0, pos[1] + steepness],
+            [-0.4, 0],
+            [0, 0]
+          ]);
+        segments.push([pos[0]+1.0, pos[1] + steepness + constants.perspective.horizon_drop]);
+        segments.push([pos[0]-1.0, pos[1] + steepness + constants.perspective.horizon_drop]);
+        segments.push([
+            [pos[0]-1.0, pos[1] + steepness],
+            [0, 0],
+            [0.4, 0]
+          ]);
+        /*segments.push(new paper.Segment (
+            new paper.Point (pos[0]-1.0, pos[1] + steepness),
+            new paper.Point (pos[0]-1.0, pos[1] + steepness),
+            new paper.Point (pos[0]-0.6, pos[1] + steepness)
+          ));
+        [
+          ,
+          ,
+          ,
+          ,
+          ,
+        ]*/
+        var sky = new paper.Path(segments);
+        sky.closed = true;
+        context.fillStyle = "rgba(255,255,255, 0.1)";
+        context.fill(new Path2D(sky.intersect (visible_sky).pathData));
+      }
     }
     
     js! {
@@ -476,6 +515,11 @@ fn main() {
     };
   }
   
+  let mut skies = Vec::new();
+  for _ in 0..15 {
+    skies.push (Sky {screen_position: Vector2::new (rand::thread_rng().gen(), rand::thread_rng().gen::<f64>()*0.36), steepness: rand::thread_rng().gen_range(0.1,0.2)});
+  }
+  
   let game = Rc::new (RefCell::new (
     Game {
       last_ui_time: 0.0,
@@ -483,6 +527,8 @@ fn main() {
         path: Path {max_speed: 1.0, radius: 0.12, components: vec![Component {center: Vector2::new (0.0, - 0.5), velocity: 0.0, acceleration: 0.0}], .. Default::default()},
         player: Object {center: Vector2::new (0.0, 0.0), radius: 0.02, .. Default::default()},
         companion: Object {center: Vector2::new (0.0, -0.1), radius: 0.025, .. Default::default()},
+        
+        skies: skies,
   
         permanent_pain: 0.4,
         temporary_pain: 0.4,
