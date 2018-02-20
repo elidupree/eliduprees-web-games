@@ -96,7 +96,7 @@ struct Object {
   last_statement_start_time: f64,
   
   automatic_statements: Vec<AutomaticStatement>,
-  #[derivative (Default (value = "Kind::Person"))]
+  #[derivative (Default (value = "Kind::Tree"))]
   kind: Kind,
 }
 #[derive (Debug)]
@@ -113,7 +113,7 @@ struct AutomaticStatement {
 }
 #[derive (Debug)]
 enum Kind {
-  Person,
+  Person (Person),
   Chest,
   Reward,
   Monster (Monster),
@@ -122,6 +122,11 @@ enum Kind {
 #[derive (Debug)]
 struct Monster {
   velocity: Vector2,
+}
+#[derive (Debug)]
+struct Person {
+  planted_foot: usize,
+  feet: [Vector2; 2],
 }
 
 #[derive (Debug, Default)]
@@ -205,6 +210,21 @@ impl Object {
     self.last_statement_start_time = statement.start_time;
     self.statements.push (statement);
   }
+  fn move_object (&mut self, movement: Vector2) {
+    self.center += movement;
+    match self.kind {
+      Kind::Person (ref mut person) => {
+        let planted_foot = person.planted_foot;
+        let moving_foot = 1 - planted_foot;
+        person.feet [moving_foot] += movement*2.0;
+        let offset = person.feet [moving_foot] - person.feet [planted_foot];
+        if offset.norm() > self.radius*1.8 && offset.dot (&movement) > 0.0 {
+          person.planted_foot = moving_foot;
+        }
+      },
+      _=>(),
+    }
+  }
 }
 
 impl State {
@@ -271,8 +291,8 @@ impl State {
     
     let advance_distance = movement_vector [1];
     
-    self.player.center += movement_vector;
-    self.companion.center += movement_vector;
+    self.player.move_object (movement_vector);
+    self.companion.move_object (movement_vector);
     
     let player_center = self.player.center;
     let min_visible_position = player_center [1] - constants.player_position;
@@ -415,6 +435,15 @@ impl State {
           tree.translate (@{position [0]}, @{position [1]});
           context.fillStyle = "rgb(70, 70, 70)";
           context.fill(new Path2D(tree.pathData));
+        }
+      },
+      Kind::Person (ref person) => {
+        for foot in person.feet.iter() {
+          let position = self.draw_position (Vector3::new (foot[0], foot[1], 0.0));
+          js! {
+            context.fillStyle = "rgb(255,255,255)";
+            context.fillRect (@{position[0]}, @{position[1]}, 0.004, 0.003);
+          }
         }
       },
       _=> {
@@ -656,8 +685,24 @@ fn main() {
       last_ui_time: 0.0,
       state: State {
         path: Path {max_speed: 1.0, radius: 0.12, components: vec![Component {center: Vector2::new (0.0, - 0.5), velocity: 0.0, acceleration: 0.0}], .. Default::default()},
-        player: Object {center: Vector2::new (0.0, 0.0), radius: 0.02, .. Default::default()},
-        companion: Object {center: Vector2::new (0.0, -0.1), radius: 0.025, .. Default::default()},
+        player: Object {
+          center: Vector2::new (0.0, 0.0),
+          radius: 0.02,
+          kind: Kind::Person (Person {
+            planted_foot: 0,
+            feet: [Vector2::new (0.0, 0.0), Vector2::new (0.0, 0.0)],
+          }),
+          .. Default::default()
+        },
+        companion: Object {
+          center: Vector2::new (0.0, -0.1),
+          radius: 0.025,
+          kind: Kind::Person (Person {
+            planted_foot: 0,
+            feet: [Vector2::new (0.0, -0.1), Vector2::new (0.0, -0.1)],
+          }),
+          .. Default::default()
+        },
         
         skies: skies,
   
