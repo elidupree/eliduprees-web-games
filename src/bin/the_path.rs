@@ -495,7 +495,12 @@ impl State {
     }
     let mut began = false;
     for component in self.path.components[0..self.path.components.len()-1].iter() {
-      let endpoint = self.draw_position (Vector3::new (component.center [0] - self.path.radius, component.center [1], 0.0));
+      let mut endpoint = self.draw_position (Vector3::new (component.center [0] - self.path.radius, component.center [1], 0.0));
+      
+      // hack: work around a polygon display glitch that existed only in chromium, not Firefox
+      if endpoint [0] < -0.02 { endpoint [0] = -0.02; }
+      if endpoint [0] > 1.01 { endpoint [0] = 1.01; }
+      
       if began {
         js! {context.lineTo(@{endpoint [0]},@{endpoint [1]});}
       }
@@ -515,7 +520,12 @@ impl State {
       js! {context.lineTo(@{endpoint [0]},@{endpoint [1]});}
     }
     for component in self.path.components[0..self.path.components.len()-1].iter().rev() {
-      let endpoint = self.draw_position (Vector3::new (component.center [0] + self.path.radius, component.center [1], 0.0));
+      let mut endpoint = self.draw_position (Vector3::new (component.center [0] + self.path.radius, component.center [1], 0.0));
+      
+      // hack: work around a polygon display glitch that existed only in chromium, not Firefox
+      if endpoint [0] < -0.01 { endpoint [0] = -0.01; }
+      if endpoint [0] > 1.02 { endpoint [0] = 1.02; }
+      
       js! {context.lineTo(@{endpoint [0]},@{endpoint [1]});}
     }
     js! {
