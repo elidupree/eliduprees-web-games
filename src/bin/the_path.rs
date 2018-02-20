@@ -425,6 +425,9 @@ impl State {
     }
     for mountain in self.mountains.iter() {
       let screen_peak = self.mountain_screen_peak (& mountain);
+      let visible_base_radius = mountain.base_screen_radius*(self.constants.perspective.horizon_drop - screen_peak [1])/mountain.fake_peak_location [2];
+      if screen_peak [0] + visible_base_radius < 0.0 ||
+         screen_peak [0] - visible_base_radius > 1.0 {continue;}
       js! {
         var pos = [@{screen_peak[0]}, @{screen_peak[1]}];
         var height =@{mountain.fake_peak_location [2]};
