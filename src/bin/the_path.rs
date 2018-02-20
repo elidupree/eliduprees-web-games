@@ -67,6 +67,8 @@ struct Constants {
   chest_density: f64,
   reward_density: f64,
   
+  fadein_distance: f64,
+  
   speech_fade_duration: f64,
   speech_duration: f64,
 }
@@ -383,7 +385,13 @@ impl State {
   }
   
   fn draw_object (&self, object: & Object) {
-    
+    let mut alpha = (self.player.center [1] + self.constants.spawn_distance - object.center [1])/self.constants.fadein_distance;
+    if alpha < 0.0 {alpha = 0.0;}
+    if alpha > 1.0 {alpha = 1.0;}
+    js! {
+      context.save(); 
+      context.globalAlpha = @{alpha};
+    }
     match object.kind {
       Kind::Tree => {
         let raw_position = Vector3::new (
@@ -413,6 +421,9 @@ impl State {
         }
       }
     };
+    js! {
+      context.restore(); 
+    }
   }
   
   fn draw (&self) {
@@ -589,7 +600,9 @@ fn main() {
       tree_density: 5.0,
       chest_density: 1.0,
       reward_density: 1.0,
-  
+      
+      fadein_distance: 0.4,
+        
       speech_fade_duration: 0.25,
       speech_duration: 3.5,
     };
