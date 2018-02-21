@@ -138,7 +138,7 @@ struct Person {
   feet: [Vector2; 2],
 }
 
-#[derive (Debug, Default)]
+#[derive (Clone, Debug, Default)]
 struct Path {
   components: Vec<Component>,
   max_speed: f64,
@@ -249,20 +249,33 @@ impl Object {
   }
 }
 
-impl State {
-  fn spawn(&mut self, advance_distance: f64, mut object: Object) {
-    object.center = Vector2::new (self.player.center [0] + self.generator.gen_range (- self.constants.spawn_radius, self.constants.spawn_radius), self.player.center [1] + self.constants.spawn_distance + self.generator.gen_range(0.0, advance_distance));
-    self.objects.push (object);
+impl Path {
+  fn closest_components (&self, vertical_position: f64)->[Option <&Component>; 2] {
+    let lower = match self.components.binary_search_by_key (&OrderedFloat (vertical_position), | component | OrderedFloat (component.center [1])) {
+      Ok(i)=>i, Err(i)=>i,
+    };
+    [self.components.get (lower), self.components.get (lower + 1)]
   }
-  fn do_spawns <F: FnMut()->Object> (&mut self, advance_distance: f64, density: f64, mut object_generator: F) {
-    let spawn_area = advance_distance*self.constants.spawn_radius*2.0;
-    let average_number = spawn_area*density;
+}
+
+impl State {
+  fn do_spawns_impl <G: FnMut(f64, &mut Box<Rng>)->f64, F: FnMut()->Object> (&mut self, advance_distance: f64, average_number: f64, mut horizontal_position_generator: G, mut object_generator: F) {
     let attempts = (average_number*10.0).ceil() as usize;
     for _ in 0..attempts {
       if self.generator.gen::<f64>() < average_number/attempts as f64 {
-        self.spawn (advance_distance, (object_generator)());
+        let mut object = (object_generator)();
+        let vertical_position = self.player.center [1] + self.constants.spawn_distance - self.generator.gen_range(0.0, advance_distance);
+        object.center = Vector2::new ((horizontal_position_generator)(vertical_position, &mut self.generator), vertical_position);
+        self.objects.push (object);
       }
     }
+  }
+  fn do_spawns <F: FnMut()->Object> (&mut self, advance_distance: f64, density: f64, object_generator: F) {
+    let spawn_area = advance_distance*self.constants.spawn_radius*2.0;
+    let average_number = spawn_area*density;
+    let radius = self.constants.spawn_radius;
+    let player_center = self.player.center [0];
+    self.do_spawns_impl (advance_distance, average_number, |_, generator| player_center + generator.gen_range (-radius, radius), object_generator);
   }
   fn mountain_screen_peak (&self, mountain: & Mountain)->Vector2 {
     let distance = mountain.fake_peak_location [1] - self.player.center [1];
@@ -378,6 +391,32 @@ impl State {
     self.do_spawns (advance_distance, constants.monster_density, || Object {kind: Kind::Monster (Monster {velocity: Vector2::new (0.0, 0.0)}), radius: 0.05, .. Default::default()});
     self.do_spawns (advance_distance, constants.chest_density, || Object {kind: Kind::Chest, radius: 0.03, .. Default::default()});
     self.do_spawns (advance_distance, constants.reward_density, || Object {kind: Kind::Reward, radius: 0.03, .. Default::default()});
+    
+    {
+    // hack-ish: chests and rewards appear more frequently on or near the path.
+    // Symbolism-wise, it should be the path that slightly steers towards rewards,
+    // not the rewards that appear in the path.
+    // But this way is simpler, and they're not very distinguishable to the player in practice.
+    let hack = self.path.clone();
+    self.do_spawns_impl (advance_distance,
+      advance_distance*constants.reward_density*auto_constant ("path_reward_frequency_factor", 0.5),
+      | vertical, generator | {
+        hack.closest_components (vertical) [0].unwrap().center [0]
+        + generator.gen_range (-hack.radius, hack.radius)
+        + generator.gen_range (-hack.radius, hack.radius)
+      },
+      || Object {kind: Kind::Reward, radius: 0.03, .. Default::default()}
+    );
+    self.do_spawns_impl (advance_distance,
+      advance_distance*constants.chest_density*auto_constant ("path_reward_frequency_factor", 0.5),
+      | vertical, generator | {
+        hack.closest_components (vertical) [0].unwrap().center [0]
+        + generator.gen_range (-hack.radius, hack.radius)
+        + generator.gen_range (-hack.radius, hack.radius)
+      },
+      || Object {kind: Kind::Reward, radius: 0.03, .. Default::default()}
+    );
+    }
     
     for object in self.objects.iter_mut() {
       match object.kind {
