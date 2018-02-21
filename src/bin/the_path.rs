@@ -45,6 +45,15 @@ pub fn random_vector_within_length <G: Rng> (generator: &mut G, length: f64)->Ve
     }
   }
 }
+fn auto_constant (name: & str, default: f64)->f64 {
+  (js!{
+    var value = window.auto_constants [@{name}];
+    if (value === undefined) {
+      return window.auto_constants [@{name}] = @{default};
+    }
+    return value;
+  }).try_into().unwrap()
+}
 
 
 #[derive (Debug, Default, Deserialize)]
@@ -432,22 +441,36 @@ impl State {
       context.save(); 
       context.globalAlpha = @{alpha};
     }
+    let raw_position = Vector3::new (
+      object.center [0],
+      object.center [1],
+      0.0,
+    );
+    let scale = self.draw_scale (raw_position);
+    let scaled_radius = scale*object.radius;
+    let position = self.draw_position (raw_position);
     match object.kind {
       Kind::Tree => {
-        let raw_position = Vector3::new (
-          object.center [0],
-          object.center [1],
-          0.0,
-        );
-        let scale = self.draw_scale (raw_position);
-        let position = self.draw_position (raw_position);
-
         js! {
-          tree = tree_shape.clone({insert: false});
-          tree.scale (@{scale*object.radius}, [0,0]);
+          var tree = tree_shape.clone({insert: false});
+          tree.scale (@{scaled_radius}, [0,0]);
           tree.translate (@{position [0]}, @{position [1]});
           context.fillStyle = "rgb(70, 70, 70)";
           context.fill(new Path2D(tree.pathData));
+        }
+      },
+      Kind::Reward => {
+        js! {
+          var reward = reward_shape.clone({insert: false});
+          reward.rotate(0.0, [0,0]);
+          reward.scale (@{scaled_radius}, [0,0]);
+          reward.translate (@{position [0]}, @{position [1]});
+          var path = new Path2D(reward.pathData);
+          context.fillStyle = "rgb(255, 255, 255)";
+          context.strokeStyle = "rgb(0, 0, 0)";
+          context.lineWidth = @{scaled_radius}*0.1;
+          context.fill(path);
+          context.stroke(path);
         }
       },
       Kind::Person (ref person) => {
@@ -632,6 +655,7 @@ fn main() {
     $(document.querySelector("main") || document.body).append (game_container[0]).css("background-color", "black");
     game_container.append(canvas);
     window.context = canvas.getContext ("2d");
+    window.turn = Math.PI*2;
     
     paper.setup ([640, 480]);
     
@@ -669,6 +693,7 @@ fn main() {
       speech_fade_duration: 0.25,
       speech_duration: 3.5,
     };
+    window.auto_constants = {};
   }
   
   {
@@ -688,6 +713,24 @@ fn main() {
             triangle.closed = true;
             if (tree_shape) {tree_shape= tree_shape.unite (triangle);} else {tree_shape = triangle;}
           }
+        }
+        
+        js! {
+    var points = [];
+    for (var index = 0; index <5;++index) {
+      points.push ([
+        Math.sin (turn*(index/5)),
+        -Math.cos (turn*(index/5))
+      ]);
+      points.push ([
+        Math.sin (turn*(0.1 + index/5))/Math.sqrt (5),
+        -Math.cos (turn*(0.1 + index/5))/Math.sqrt (5)
+      ]);
+    }
+    window.reward_shape = new paper.Path({ segments: points, insert: false });
+    reward_shape.closed = true;
+    reward_shape.scale (2.0/reward_shape.bounds.width, [0,0]);
+    reward_shape.translate (0, -reward_shape.bounds.bottom);
         }
   }
   
