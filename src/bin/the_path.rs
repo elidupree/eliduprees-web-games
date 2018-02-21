@@ -635,11 +635,14 @@ fn main() {
     
     paper.setup ([640, 480]);
     
+    var width_at_closest = 0.5;
+    var visible_length = 2.4;
+    
     window.constants = {
       visible_components: 1200,
-      visible_length: 2.0,
+      visible_length: visible_length,
       perspective: {
-        width_at_closest: 1.0,
+        width_at_closest: width_at_closest,
         camera_distance_along_tangent: 0.11,
         radians_visible: 0.1,
         horizon_drop: 0.36,
@@ -648,8 +651,8 @@ fn main() {
       player_position: 0.16,
       player_max_speed: 0.1,
       
-      spawn_radius: 20.0,
-      spawn_distance: 1.54,
+      spawn_radius: width_at_closest*0.5 + visible_length * 2.0,
+      spawn_distance: visible_length*0.8,
       
       mountain_spawn_radius: 35.0,
       mountain_spawn_distance: 35.0,
@@ -661,12 +664,11 @@ fn main() {
       chest_density: 1.0,
       reward_density: 1.0,
       
-      fadein_distance: 0.4,
+      fadein_distance: visible_length*0.2,
         
       speech_fade_duration: 0.25,
       speech_duration: 3.5,
     };
-    window.constants.spawn_radius = 0.5 + window.constants.visible_length * 2.0;
   }
   
   {
@@ -713,7 +715,7 @@ fn main() {
           radius: 0.025,
           kind: Kind::Person (Person {
             planted_foot: 0,
-            feet: [Vector2::new (0.0, -0.1), Vector2::new (0.0, -0.1)],
+            feet: [Vector2::new (0.0, 0.0), Vector2::new (0.0, 0.0)],
           }),
           .. Default::default()
         },
