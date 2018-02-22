@@ -100,6 +100,8 @@ struct Sky {
 struct Object {
   #[derivative (Default (value = "Vector2::new(0.0,0.0)"))]
   center: Vector2,
+  #[derivative (Default (value = "Vector2::new(0.0,0.0)"))]
+  velocity: Vector2,
   radius: f64,
   statements: Vec<Statement>,
   last_statement_start_time: f64,
@@ -130,12 +132,17 @@ enum Kind {
 }
 #[derive (Debug)]
 struct Monster {
-  velocity: Vector2,
 }
 #[derive (Debug)]
 struct Person {
   planted_foot: usize,
   feet: [Vector2; 2],
+  falling: Option <Fall>,
+}
+#[derive (Debug)]
+struct Fall {
+  progress: f64,
+  distance: f64,
 }
 
 #[derive (Clone, Debug, Default)]
@@ -322,8 +329,26 @@ impl State {
     
     
     let movement_direction = if let Some(click) = self.last_click.as_ref() {click.location} else {Vector2::new (0.0, 1.0)};
-    let movement_vector = movement_direction*constants.player_max_speed*duration/movement_direction.norm();
+    self.player.velocity = movement_direction*constants.player_max_speed/movement_direction.norm();
     
+    let mut time_moved = duration;
+    let mut collision = None;
+    for (index, object) in self.objects.iter().enumerate() {
+      let relative_velocity = object.velocity - self.player.velocity;
+      let relative_location = object.center - self.player.center;
+      if relative_velocity [1] < 0.0 && relative_location [1] > 0.0 {
+        let time_to_collide = -relative_location [1] / relative_velocity [1];
+        let horizontal_difference_when_aligned = relative_location[0] + relative_velocity[0]*time_to_collide;
+        if horizontal_difference_when_aligned.abs() < object.radius + self.player.radius {
+          if time_to_collide < time_moved {
+            time_moved = time_to_collide - 0.0001;
+            collision = Some(index);
+          }
+        }
+      }
+    }
+    
+    let movement_vector = self.player.velocity*time_moved;
     let advance_distance = movement_vector [1];
     
     self.player.move_object (movement_vector);
@@ -388,7 +413,7 @@ impl State {
     self.path.components.retain (| component | component.center [1] >= min_visible_position - constants.visible_length/constants.visible_components as f64);
     
     self.do_spawns (advance_distance, constants.tree_density, || Object {kind: Kind::Tree, radius: 0.05, .. Default::default()});
-    self.do_spawns (advance_distance, constants.monster_density, || Object {kind: Kind::Monster (Monster {velocity: Vector2::new (0.0, 0.0)}), radius: 0.05, .. Default::default()});
+    self.do_spawns (advance_distance, constants.monster_density, || Object {kind: Kind::Monster (Monster {}), radius: 0.05, .. Default::default()});
     self.do_spawns (advance_distance, constants.chest_density, || Object {kind: Kind::Chest, radius: 0.03, .. Default::default()});
     self.do_spawns (advance_distance, constants.reward_density, || Object {kind: Kind::Reward, radius: 0.03, .. Default::default()});
     
@@ -419,12 +444,12 @@ impl State {
     }
     
     for object in self.objects.iter_mut() {
+      object.center += object.velocity*duration;
       match object.kind {
         Kind::Monster (ref mut monster) => {
-          object.center += monster.velocity*duration;
-          monster.velocity += random_vector_within_length (&mut self.generator, 0.1*duration);
-          if monster.velocity.norm() > 0.1 {
-            monster.velocity *= 0.5f64.powf (duration/1.0);
+          object.velocity += random_vector_within_length (&mut self.generator, 0.1*duration);
+          if object.velocity.norm() > 0.1 {
+            object.velocity *= 0.5f64.powf (duration/1.0);
           }
         },
         _=>(),
@@ -789,6 +814,7 @@ fn main() {
           kind: Kind::Person (Person {
             planted_foot: 0,
             feet: [Vector2::new (0.0, 0.0), Vector2::new (0.0, 0.0)],
+            falling: None,
           }),
           .. Default::default()
         },
@@ -798,6 +824,7 @@ fn main() {
           kind: Kind::Person (Person {
             planted_foot: 0,
             feet: [Vector2::new (0.0, 0.0), Vector2::new (0.0, 0.0)],
+            falling: None,
           }),
           .. Default::default()
         },
