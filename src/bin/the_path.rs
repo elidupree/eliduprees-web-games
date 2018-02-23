@@ -105,6 +105,7 @@ struct Object {
   radius: f64,
   statements: Vec<Statement>,
   last_statement_start_time: f64,
+  falling: Option <Fall>,
   
   automatic_statements: Vec<AutomaticStatement>,
   #[derivative (Default (value = "Kind::Tree"))]
@@ -137,7 +138,6 @@ struct Monster {
 struct Person {
   planted_foot: usize,
   feet: [Vector2; 2],
-  falling: Option <Fall>,
 }
 #[derive (Debug)]
 struct Fall {
@@ -330,7 +330,10 @@ impl State {
     
     let movement_direction = if let Some(click) = self.last_click.as_ref() {click.location} else {Vector2::new (0.0, 1.0)};
     self.player.velocity = movement_direction*constants.player_max_speed/movement_direction.norm();
-    
+    if let Some(ref fall) = self.player.falling {
+      self.player.velocity *= 0.0;
+    }
+        
     let mut time_moved = duration;
     let mut collision = None;
     for (index, object) in self.objects.iter().enumerate() {
@@ -456,10 +459,21 @@ impl State {
       };
       object.statements.retain (| statement | statement.start_time + constants.speech_duration > now);
     }
+    
+    if let Some(index) = collision {
+      let object = & self.objects [index];
+      match object.kind {
+        _=> {
+          self.player.falling = Some(Fall {
+            distance: (self.player.radius + object.radius) * (self.player.center [0] - object.center [0]).signum(),
+            progress: 0.0,
+          });
+        },
+      }
+    }
     self.objects.retain (| object | {
       object.center [1] > player_center[1] - 0.5
     });
-    self.objects.sort_by_key (| object | OrderedFloat(-object.center [1]));
     
     self.temporary_pain = self.permanent_pain + (self.temporary_pain - self.permanent_pain) * 0.5f64.powf(duration/1.4);
     self.transient_pain = self.temporary_pain + (self.transient_pain - self.temporary_pain) * 0.5f64.powf(duration/0.03);
@@ -663,9 +677,11 @@ impl State {
       context.fill();
     }
     
-    for object in self.objects.iter() {self.draw_object (object) ;}
-    self.draw_object (& self.player);
-    self.draw_object (& self.companion);
+    let mut objects: Vec<_> = self.objects.iter().collect();
+    objects.push (&self.player);
+    objects.push (&self.companion);
+    objects.sort_by_key (| object | OrderedFloat(-object.center [1]));
+    for object in objects.iter() {self.draw_object (object) ;}
   }
 }
 
@@ -814,7 +830,6 @@ fn main() {
           kind: Kind::Person (Person {
             planted_foot: 0,
             feet: [Vector2::new (0.0, 0.0), Vector2::new (0.0, 0.0)],
-            falling: None,
           }),
           .. Default::default()
         },
@@ -824,7 +839,6 @@ fn main() {
           kind: Kind::Person (Person {
             planted_foot: 0,
             feet: [Vector2::new (0.0, 0.0), Vector2::new (0.0, 0.0)],
-            falling: None,
           }),
           .. Default::default()
         },
