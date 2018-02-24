@@ -139,7 +139,7 @@ struct Person {
   planted_foot: usize,
   feet: [Vector2; 2],
 }
-#[derive (Debug)]
+#[derive (Clone, Debug)]
 struct Fall {
   progress: f64,
   distance: f64,
@@ -330,9 +330,32 @@ impl State {
     
     let movement_direction = if let Some(click) = self.last_click.as_ref() {click.location} else {Vector2::new (0.0, 1.0)};
     self.player.velocity = movement_direction*constants.player_max_speed/movement_direction.norm();
-    if let Some(ref fall) = self.player.falling {
-      self.player.velocity *= 0.0;
+    let mut finish_falling = false;
+    if let Some(ref mut fall) = self.player.falling {
+      let hit_ground = auto_constant ("hit_ground", 0.5);
+      let start_getting_up = auto_constant ("start_getting_up", 1.0);
+      let start_moving = auto_constant ("start_moving", 1.5);
+      let finish = auto_constant ("finish_getting_up", 2.0);
+      fall.progress += duration;
+      if fall.progress < hit_ground {
+        //let fraction = fall.progress/hit_ground;
+        self.player.velocity = Vector2::new (fall.distance/hit_ground, 0.0);
+      }
+      else if fall.progress < start_getting_up {
+        self.player.velocity *= 0.0;
+      }
+      else if fall.progress < start_moving {
+        self.player.velocity *= 0.0;
+      }
+      else if fall.progress <finish {
+        let fraction = (fall.progress - start_moving)/(finish - start_moving);
+        self.player.velocity *= fraction;
+      }
+      else {
+        finish_falling = true;
+      }
     }
+    if finish_falling {self.player.falling = None;}
         
     let mut time_moved = duration;
     let mut collision = None;
