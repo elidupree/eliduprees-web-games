@@ -226,6 +226,13 @@ impl CylindricalPerspective {
 }
 
 
+fn move_to (location: Vector2) {
+  js! {context.moveTo (@{location [0]},@{location [1]});}
+}
+fn line_to (location: Vector2) {
+  js! {context.lineTo (@{location [0]},@{location [1]});}
+}
+
 
 impl Fall {
   fn info (&self, constants: & Constants, velocity: Vector2)->(Vector2, f64) {
@@ -682,10 +689,10 @@ impl State {
       if endpoint [0] > 1.01 { endpoint [0] = 1.01; }
       
       if began {
-        js! {context.lineTo(@{endpoint [0]},@{endpoint [1]});}
+        line_to (endpoint);
       }
       else {
-        js! {context.moveTo(@{endpoint [0]},@{endpoint [1]});}
+        move_to (endpoint);
         began = true;
       }
     }
@@ -695,9 +702,9 @@ impl State {
       let horizon_distance = max_visible_position - last [0].center [1];
       let horizon_center = last [0].center + distance*horizon_distance/distance [1];
       let endpoint = self.draw_position (Vector3::new (horizon_center [0] - self.path.radius, max_visible_position, 0.0));
-      js! {context.lineTo(@{endpoint [0]},@{endpoint [1]});}
+      line_to (endpoint);
       let endpoint = self.draw_position (Vector3::new (horizon_center [0] + self.path.radius, max_visible_position, 0.0));
-      js! {context.lineTo(@{endpoint [0]},@{endpoint [1]});}
+      line_to (endpoint);
     }
     for component in self.path.components[0..self.path.components.len()-1].iter().rev() {
       let mut endpoint = self.draw_position (Vector3::new (component.center [0] + self.path.radius, component.center [1], 0.0));
@@ -706,7 +713,7 @@ impl State {
       if endpoint [0] < -0.01 { endpoint [0] = -0.01; }
       if endpoint [0] > 1.02 { endpoint [0] = 1.02; }
       
-      js! {context.lineTo(@{endpoint [0]},@{endpoint [1]});}
+      line_to (endpoint);
     }
     js! {
       context.fillStyle = "rgb(255,255,255)";
