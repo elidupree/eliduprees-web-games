@@ -595,6 +595,26 @@ impl State {
         }
       },
       Kind::Person (ref person) => {
+        let body_base_vector = Vector3::new (0.0, 0.0, auto_constant ("body_base_height", 1.0)*object.radius);
+        let body_base = raw_position + body_base_vector;
+        let body_peak_vector = Vector3::new (0.0, 0.0, auto_constant ("body_height", 2.0)*object.radius);
+        let body_side_vector = Vector3::new (object.radius, 0.0, 0.0);
+        js! {
+          context.fillStyle = "rgb(255, 255, 255)";
+          context.strokeStyle = "rgb(0, 0, 0)";
+          context.lineWidth = @{scaled_radius}*0.1;
+          context.beginPath();
+        }
+        move_to(self.draw_position (body_base + body_peak_vector));
+        line_to(self.draw_position (body_base + body_side_vector));
+        line_to(self.draw_position (body_base - body_side_vector));
+        js! { context.closePath(); context.fill(); context.stroke(); }
+        
+        let leg_side_vector = Vector3::new (auto_constant ("leg_side", 11.0/24.0)*object.radius, 0.0, 0.0);
+        let leg_radius_vector = Vector3::new (auto_constant ("leg_radius", 8.0/24.0)*object.radius, 0.0, 0.0);
+      
+  //canvas_context.arc (center, body_height - 1.7*radius, radius*0.7, 0, turn, true);
+
         for (index, foot) in person.feet.iter().enumerate() {
           let position = foot + object.center + Vector2::new ((index as f64 - 0.5) * object.radius, 0.0);
           let position = self.draw_position (Vector3::new (position [0], position[1], 0.0));
