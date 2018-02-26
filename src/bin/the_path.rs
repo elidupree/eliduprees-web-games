@@ -234,18 +234,24 @@ fn move_to (location: Vector2) {
 fn line_to (location: Vector2) {
   js! {context.lineTo (@{location [0]},@{location [1]});}
 }
+/*fn sigmoidneg11(input: f64)->f64 {
+  (input*(TURN/4.0)).sin()
+}
+fn sigmoid01(input: f64)->f64 {
+  (sigmoidneg11((input*2.0)-1.0)+1.0)/2.0
+}*/
 
 
 impl Fall {
   fn info (&self, constants: & Constants, velocity: Vector2)->(Vector2, f64) {
-      let hit_ground = auto_constant ("hit_ground", 0.5);
-      let start_getting_up = auto_constant ("start_getting_up", 1.0);
-      let start_moving_fraction = auto_constant ("start_moving_fraction", 0.5);
+      let hit_ground = auto_constant ("hit_ground", 0.3);
+      let start_getting_up = auto_constant ("start_getting_up", 1.5);
+      let start_moving_fraction = auto_constant ("start_moving_fraction", 0.1);
       let finish = constants.fall_duration;
       let fallen_angle = self.distance.signum()*TURN/4.0;
       if self.progress < hit_ground {
         let fraction = self.progress/hit_ground;
-        (Vector2::new (self.distance/hit_ground, 0.0), fraction*fallen_angle) 
+        (Vector2::new (self.distance/hit_ground, 0.0), fraction*fraction*fallen_angle) 
       }
       else if self.progress < start_getting_up {
         (Vector2::new (0.0, 0.0), fallen_angle)
@@ -253,7 +259,14 @@ impl Fall {
       else {
         let fraction = (self.progress - start_getting_up)/(finish - start_getting_up);
         let velocity_factor = if fraction < start_moving_fraction {0.0} else {(fraction - start_moving_fraction)/(1.0 - start_moving_fraction)};
-        (velocity*velocity_factor, (1.0 - fraction)*fallen_angle)
+        let steepness = auto_constant ("rise_steepness", 4.0);
+        let angle_frac = 
+          fraction*fraction*fraction*fraction*0.0
+          + 4.0*fraction*fraction*fraction*(1.0 - fraction)*0.0
+          + 6.0*fraction*fraction*(1.0 - fraction)*(1.0 - fraction)*((0.5-fraction)*steepness + 0.5)
+          + 4.0*fraction*(1.0 - fraction)*(1.0 - fraction)*(1.0 - fraction)*1.0
+          + (1.0 - fraction)*(1.0 - fraction)*(1.0 - fraction)*(1.0 - fraction)*1.0;
+        (velocity*velocity_factor, angle_frac*fallen_angle)
       }
   }
 }
@@ -876,7 +889,7 @@ fn main() {
       speech_fade_duration: 0.25,
       speech_duration: 3.5,
       
-      fall_duration: 2.5,
+      fall_duration: 3.2,
     };
     window.auto_constants = {};
   }
