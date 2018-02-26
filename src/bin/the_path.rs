@@ -618,7 +618,9 @@ impl State {
           let (_,r) = fall.info (& self.constants, object.velocity);
           rotation = r;
         }
-        let transformation = Rotation3::new (Vector3::new (0.0, rotation, 0.0));
+        let transformation1 = Rotation3::new (Vector3::new (0.0, rotation, 0.0));
+        //let transformation2 = Rotation3::new (Vector3::new (0.0, 0.0, -rotation));
+        let transformation = transformation1;//*transformation2;
         let transform = | vector: Vector3 | transformation*vector;
         let body_base_vector = transform(Vector3::new (0.0, 0.0, auto_constant ("body_base_height", 1.0)*object.radius));
         let body_base = raw_position + body_base_vector;
@@ -653,7 +655,7 @@ impl State {
         line_to(self.draw_position (body_base - body_side_vector));
         js! { context.closePath(); context.fill(); context.stroke(); }
         
-        let head_center = body_base + Vector3::new (0.0, 0.0, auto_constant ("head_height", 1.7)*object.radius);
+        let head_center = body_base + transform(Vector3::new (0.0, 0.0, auto_constant ("head_height", 1.7)*object.radius));
         let head_position = self.draw_position (head_center);
         let head_radius = auto_constant ("head_radius", 0.7)*scaled_radius;
         js! {
