@@ -24,6 +24,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 
 type Vector3 = nalgebra::Vector3 <f64>;
+type Rotation3 = nalgebra::Rotation3 <f64>;
 type Vector2 = nalgebra::Vector2 <f64>;
 
 const TURN: f64 = ::std::f64::consts::PI*2.0;
@@ -612,26 +613,33 @@ impl State {
         }
       },
       Kind::Person (ref person) => {
-        let body_base_vector = Vector3::new (0.0, 0.0, auto_constant ("body_base_height", 1.0)*object.radius);
+        let mut rotation = 0.0;
+        if let Some(ref fall) = object.falling {
+          let (_,r) = fall.info (& self.constants, object.velocity);
+          rotation = r;
+        }
+        let transformation = Rotation3::new (Vector3::new (0.0, rotation, 0.0));
+        let transform = | vector: Vector3 | transformation*vector;
+        let body_base_vector = transform(Vector3::new (0.0, 0.0, auto_constant ("body_base_height", 1.0)*object.radius));
         let body_base = raw_position + body_base_vector;
-        let body_peak = body_base + Vector3::new (0.0, 0.0, auto_constant ("body_height", 2.0)*object.radius);
-        let body_side_vector = Vector3::new (object.radius, 0.0, 0.0);
+        let body_peak = body_base + transform(Vector3::new (0.0, 0.0, auto_constant ("body_height", 2.0)*object.radius));
+        let body_side_vector = transform(Vector3::new (object.radius, 0.0, 0.0));
         js! {
           context.fillStyle = "rgb(255, 255, 255)";
           context.strokeStyle = "rgb(0, 0, 0)";
           context.lineWidth = @{scaled_radius}*0.1;
         }
         
-        let leg_side_vector = Vector3::new (auto_constant ("leg_side", 11.0/24.0)*object.radius, 0.0, 0.0);
-        let leg_inner_radius_vector = Vector3::new (auto_constant ("leg_inner_radius", 8.0/24.0)*object.radius, 0.0, 0.0);
-        let leg_outer_radius_vector = Vector3::new (auto_constant ("leg_outer_radius", 7.0/24.0)*object.radius, 0.0, 0.0);
+        let leg_side_vector = transform(Vector3::new (auto_constant ("leg_side", 11.0/24.0)*object.radius, 0.0, 0.0));
+        let leg_inner_radius_vector = transform(Vector3::new (auto_constant ("leg_inner_radius", 8.0/24.0)*object.radius, 0.0, 0.0));
+        let leg_outer_radius_vector = transform(Vector3::new (auto_constant ("leg_outer_radius", 7.0/24.0)*object.radius, 0.0, 0.0));
       
   //canvas_context.arc (center, body_height - 1.7*radius, radius*0.7, 0, turn, true);
 
         let mut feet = [(-1.0, &person.feet[0]), (1.0, &person.feet[1])];
         feet.sort_by_key (| foot | OrderedFloat (-foot.1 [1]));
         for &(direction, foot) in feet.iter() {
-          let foot = Vector3::new (foot [0], foot [1], 0.0);
+          let foot = transform(Vector3::new (foot [0], foot [1], 0.0));
           js! { context.beginPath(); }
           move_to(self.draw_position (body_base + (leg_side_vector + leg_outer_radius_vector) * direction));
           line_to(self.draw_position (body_base + (leg_side_vector - leg_inner_radius_vector) * direction));
