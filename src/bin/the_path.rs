@@ -628,8 +628,9 @@ impl State {
       
   //canvas_context.arc (center, body_height - 1.7*radius, radius*0.7, 0, turn, true);
 
-        for (index, foot) in person.feet.iter().enumerate() {
-          let direction = (index as f64 - 0.5)*2.0;
+        let mut feet = [(-1.0, &person.feet[0]), (1.0, &person.feet[1])];
+        feet.sort_by_key (| foot | OrderedFloat (-foot.1 [1]));
+        for &(direction, foot) in feet.iter() {
           let foot = Vector3::new (foot [0], foot [1], 0.0);
           js! { context.beginPath(); }
           move_to(self.draw_position (body_base + (leg_side_vector + leg_outer_radius_vector) * direction));
