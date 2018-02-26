@@ -1,4 +1,5 @@
 #![recursion_limit="256"]
+#![feature (slice_patterns)]
 
 extern crate eliduprees_web_games;
 
@@ -298,6 +299,17 @@ impl Path {
     };
     [self.components.get (lower), self.components.get (lower + 1)]
   }
+  
+  fn horizontal_center (&self, vertical_position: f64)->f64 {
+    match self.closest_components (vertical_position) {
+      [None, None] => unreachable!(),
+      [None, Some(component)] | [Some(component), None] => component.center [0],
+      [Some(first), Some(second)] => {
+        let fraction = (vertical_position - first.center [1])/(second.center [1] - first.center [1]);
+        first.center [0]*(1.0 - fraction) + second.center [0]*fraction
+      },
+    }
+  }
 }
 
 impl State {
@@ -471,7 +483,7 @@ impl State {
     self.do_spawns_impl (advance_distance,
       advance_distance*constants.reward_density*auto_constant ("path_reward_frequency_factor", 0.5),
       | vertical, generator | {
-        hack.closest_components (vertical) [0].unwrap().center [0]
+        hack.horizontal_center (vertical)
         + generator.gen_range (-hack.radius, hack.radius)
         + generator.gen_range (-hack.radius, hack.radius)
       },
@@ -480,7 +492,7 @@ impl State {
     self.do_spawns_impl (advance_distance,
       advance_distance*constants.chest_density*auto_constant ("path_reward_frequency_factor", 0.5),
       | vertical, generator | {
-        hack.closest_components (vertical) [0].unwrap().center [0]
+        hack.horizontal_center (vertical)
         + generator.gen_range (-hack.radius, hack.radius)
         + generator.gen_range (-hack.radius, hack.radius)
       },
@@ -503,7 +515,7 @@ impl State {
     }
     
     let companion_movement_vector = Vector2::new (
-      self.path.closest_components (self.companion.center [1] + advance_distance) [0].unwrap().center [0] - self.companion.center [0],
+      self.path.horizontal_center (self.companion.center [1] + advance_distance) - self.companion.center [0],
       advance_distance,
     );
     self.companion.move_object (companion_movement_vector);
