@@ -597,31 +597,43 @@ impl State {
       Kind::Person (ref person) => {
         let body_base_vector = Vector3::new (0.0, 0.0, auto_constant ("body_base_height", 1.0)*object.radius);
         let body_base = raw_position + body_base_vector;
-        let body_peak_vector = Vector3::new (0.0, 0.0, auto_constant ("body_height", 2.0)*object.radius);
+        let body_peak = body_base + Vector3::new (0.0, 0.0, auto_constant ("body_height", 2.0)*object.radius);
         let body_side_vector = Vector3::new (object.radius, 0.0, 0.0);
         js! {
           context.fillStyle = "rgb(255, 255, 255)";
           context.strokeStyle = "rgb(0, 0, 0)";
           context.lineWidth = @{scaled_radius}*0.1;
-          context.beginPath();
         }
-        move_to(self.draw_position (body_base + body_peak_vector));
-        line_to(self.draw_position (body_base + body_side_vector));
-        line_to(self.draw_position (body_base - body_side_vector));
-        js! { context.closePath(); context.fill(); context.stroke(); }
         
         let leg_side_vector = Vector3::new (auto_constant ("leg_side", 11.0/24.0)*object.radius, 0.0, 0.0);
-        let leg_radius_vector = Vector3::new (auto_constant ("leg_radius", 8.0/24.0)*object.radius, 0.0, 0.0);
+        let leg_inner_radius_vector = Vector3::new (auto_constant ("leg_inner_radius", 8.0/24.0)*object.radius, 0.0, 0.0);
+        let leg_outer_radius_vector = Vector3::new (auto_constant ("leg_outer_radius", 7.0/24.0)*object.radius, 0.0, 0.0);
       
   //canvas_context.arc (center, body_height - 1.7*radius, radius*0.7, 0, turn, true);
 
         for (index, foot) in person.feet.iter().enumerate() {
-          let position = foot + object.center + Vector2::new ((index as f64 - 0.5) * object.radius, 0.0);
-          let position = self.draw_position (Vector3::new (position [0], position[1], 0.0));
-          js! {
-            context.fillStyle = "rgb(255,255,255)";
-            context.fillRect (@{position[0]}, @{position[1]}, 0.004, 0.003);
-          }
+          let direction = (index as f64 - 0.5)*2.0;
+          let foot = Vector3::new (foot [0], foot [1], 0.0);
+          js! { context.beginPath(); }
+          move_to(self.draw_position (body_base + (leg_side_vector + leg_outer_radius_vector) * direction));
+          line_to(self.draw_position (body_base + (leg_side_vector - leg_inner_radius_vector) * direction));
+          line_to(self.draw_position (raw_position + leg_side_vector * direction + foot));
+          js! { context.closePath(); context.fill(); context.stroke(); }
+        }
+        
+        js! { context.beginPath(); }
+        move_to(self.draw_position (body_peak));
+        line_to(self.draw_position (body_base + body_side_vector));
+        line_to(self.draw_position (body_base - body_side_vector));
+        js! { context.closePath(); context.fill(); context.stroke(); }
+        
+        let head_center = body_base + Vector3::new (0.0, 0.0, auto_constant ("head_height", 1.7)*object.radius);
+        let head_position = self.draw_position (head_center);
+        let head_radius = auto_constant ("head_radius", 0.7)*scaled_radius;
+        js! {
+          context.beginPath();
+          context.arc (@{head_position[0]}, @{head_position[1]}, @{head_radius}, 0, turn, true);
+          context.fill(); context.stroke();
         }
       },
       _=> {
