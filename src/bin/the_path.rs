@@ -398,7 +398,6 @@ impl State {
     let advance_distance = movement_vector [1];
     
     self.player.move_object (movement_vector);
-    self.companion.move_object (movement_vector);
     
     let player_center = self.player.center;
     let min_visible_position = player_center [1] - constants.player_position;
@@ -502,6 +501,12 @@ impl State {
       };
       object.statements.retain (| statement | statement.start_time + constants.speech_duration > now);
     }
+    
+    let companion_movement_vector = Vector2::new (
+      self.path.closest_components (self.companion.center [1] + advance_distance) [0].unwrap().center [0] - self.companion.center [0],
+      advance_distance,
+    );
+    self.companion.move_object (companion_movement_vector);
     
     if let Some(index) = collision {
       let object = & self.objects [index];
