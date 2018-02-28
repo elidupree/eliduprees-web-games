@@ -542,8 +542,10 @@ impl State {
       let object = & self.objects [index];
       match object.kind {
         _=> {
+          let center_distance = self.player.center [0] - object.center [0];
+          let minimal_escape_distance = (self.player.radius + object.radius) * center_distance.signum() - center_distance;
           self.player.falling = Some(Fall {
-            distance: (self.player.radius + object.radius) * (self.player.center [0] - object.center [0]).signum(),
+            distance: minimal_escape_distance + self.player.radius*0.25 * center_distance.signum(),
             progress: 0.0,
           });
         },
