@@ -735,6 +735,7 @@ impl State {
       translate (position*10000.0);
       js! {
         context.rotate(@{distortion*TURN/17.0});
+        context.globalAlpha = @{1.0 - distortion.abs()};
         context.textBaseline = "middle";
         context.fillStyle = "rgb(255,0,255)";
         context.fillText (@{&statement.text}, 0, 0);
