@@ -238,12 +238,17 @@ fn line_to (location: Vector2) {
 fn translate (location: Vector2) {
   js! {context.translate (@{location [0]},@{location [1]});}
 }
+fn quadratic_curve (control: Vector2, location: Vector2) {
+  js! {context.quadraticCurveTo (@{control [0]},@{control [1]},@{location [0]},@{location [1]});}
+}
 /*fn sigmoidneg11(input: f64)->f64 {
   (input*(TURN/4.0)).sin()
 }
 fn sigmoid01(input: f64)->f64 {
   (sigmoidneg11((input*2.0)-1.0)+1.0)/2.0
 }*/
+
+fn max (first: f64, second: f64)->f64 {if first > second {first} else {second}}
 
 
 impl Fall {
@@ -727,18 +732,67 @@ impl State {
       if age < fade { distortion = (fade - age)/fade; }
       if countdown < fade { distortion = (countdown - fade)/fade; }
       
-      js! {
+      let big_factor = 10000.0;
+      let text_height = auto_constant ("text_height", 0.03) * big_factor;
+      let text_width: f64 = js! {
         context.save();
-        context.font = 300 +"px Arial, Helvetica, sans-serif";
+        context.font = @{text_height}+"px Arial, Helvetica, sans-serif";
+        context.textBaseline = "middle";
         context.scale(0.0001,0.0001);
-      }
-      translate (position*10000.0);
+        return context.measureText (@{&statement.text}).width;
+      }.try_into().unwrap();
+      translate (position*big_factor);
       js! {
         context.rotate(@{distortion*TURN/17.0});
         context.globalAlpha = @{1.0 - distortion.abs()};
-        context.textBaseline = "middle";
-        context.fillStyle = "rgb(255,0,255)";
-        context.fillText (@{&statement.text}, 0, 0);
+        
+        context.beginPath();
+        
+      }
+      
+      let padding = max(text_height/2.0, text_width/13.0);
+      let bubble_left = -padding;
+      let bubble_right = text_width + padding;
+      let bubble_bottom = auto_constant ("bubble_bottom", -0.016) * big_factor;
+      let text_middle = bubble_bottom - padding - text_height/2.0;
+      let bubble_top = text_middle - padding - text_height/2.0;
+      
+      let tail_left_join_x = auto_constant ("tail_left_join_x", 0.017) * big_factor;
+      let tail_right_join_x = auto_constant ("tail_right_join_x", 0.03) * big_factor;
+      
+      move_to(Vector2::new (0.0, 0.0));
+      quadratic_curve (
+        Vector2::new (tail_left_join_x, auto_constant ("tail_left_control_y", -0.005)),
+        Vector2::new (tail_left_join_x, bubble_bottom),
+      );
+      quadratic_curve (
+        Vector2::new (bubble_left, bubble_bottom),
+        Vector2::new (bubble_left, text_middle),
+      );
+      quadratic_curve (
+        Vector2::new (bubble_left, bubble_top),
+        Vector2::new (text_width*0.5, bubble_top),
+      );
+      quadratic_curve (
+        Vector2::new (bubble_right, bubble_top),
+        Vector2::new (bubble_right, text_middle),
+      );
+      quadratic_curve (
+        Vector2::new (bubble_right, bubble_bottom),
+        Vector2::new (tail_right_join_x, bubble_bottom),
+      );
+      quadratic_curve (
+        Vector2::new (tail_right_join_x, auto_constant ("tail_right_control_y", -0.005)),
+        Vector2::new (0.0, 0.0),
+      );
+      js! {
+        context.closePath();
+        context.fillStyle = "rgb(255, 255, 255)";
+        context.strokeStyle = "rgb(0, 0, 0)";
+        context.lineWidth = @{auto_constant ("speech_stroke_width", 0.002)*big_factor};
+        context.fill(); context.stroke();
+        context.fillStyle = "rgb(0, 0, 0)";
+        context.fillText (@{&statement.text}, 0, @{text_middle});
         context.restore();
       }
     }
