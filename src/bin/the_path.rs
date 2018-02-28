@@ -234,6 +234,9 @@ fn move_to (location: Vector2) {
 fn line_to (location: Vector2) {
   js! {context.lineTo (@{location [0]},@{location [1]});}
 }
+fn translate (location: Vector2) {
+  js! {context.translate (@{location [0]},@{location [1]});}
+}
 /*fn sigmoidneg11(input: f64)->f64 {
   (input*(TURN/4.0)).sin()
 }
@@ -693,6 +696,32 @@ impl State {
     }
   }
   
+  fn draw_speech (&self, object: & Object) {
+    let raw_position = Vector3::new (
+      object.center [0],
+      object.center [1],
+      0.0,
+    );
+    let scale = self.draw_scale (raw_position);
+    let scaled_radius = scale*object.radius;
+    let position = self.draw_position (raw_position);
+    js! {
+      context.save();
+      context.font = 300 +"px Arial, Helvetica, sans-serif";
+      context.scale(0.0001,0.0001);
+      context.rotate(0.1);
+    }
+    translate (position*10000.0);
+    js! {
+      context.textBaseline = "middle";
+      context.fillStyle = "rgb(255,0,255)";
+      context.fillText ("test statement", 0, 0); context.restore();
+    }
+    //for statement in object.statements.iter() {
+    //  js! { context.fillText (@{&statement.text}, 0.5, 0.5); }
+    //}
+  }
+  
   fn draw (&self) {
     let min_visible_position = self.player.center [1] - self.constants.player_position;
     let max_visible_position = min_visible_position + self.constants.visible_length;
@@ -798,6 +827,9 @@ impl State {
     objects.push (&self.companion);
     objects.sort_by_key (| object | OrderedFloat(-object.center [1]));
     for object in objects.iter() {self.draw_object (object) ;}
+    
+    self.draw_speech (& self.player);
+    self.draw_speech (& self.companion);
   }
 }
 
