@@ -607,7 +607,7 @@ impl State {
     )
   }
   
-  fn draw_object (&self, object: & Object) {
+  fn draw_object (&self, object: & Object, speech_layer: bool) {
     let mut alpha = (self.player.center [1] + self.constants.spawn_distance - object.center [1])/self.constants.fadein_distance;
     if alpha < 0.0 {alpha = 0.0;}
     if alpha > 1.0 {alpha = 1.0;}
@@ -661,17 +661,19 @@ impl State {
         let body_base = raw_position + body_base_vector;
         let body_peak = body_base + transform(Vector3::new (0.0, 0.0, auto_constant ("body_height", 2.0)*object.radius));
         let body_side_vector = transform(Vector3::new (object.radius, 0.0, 0.0));
+        let leg_side_vector = transform(Vector3::new (auto_constant ("leg_side", 11.0/24.0)*object.radius, 0.0, 0.0));
+        let leg_inner_radius_vector = transform(Vector3::new (auto_constant ("leg_inner_radius", 8.0/24.0)*object.radius, 0.0, 0.0));
+        let leg_outer_radius_vector = transform(Vector3::new (auto_constant ("leg_outer_radius", 7.0/24.0)*object.radius, 0.0, 0.0));
+        let head_center = body_base + transform(Vector3::new (0.0, 0.0, auto_constant ("head_height", 1.7)*object.radius));
+        let head_position = self.draw_position (head_center);
+        let head_radius = auto_constant ("head_radius", 0.7)*scaled_radius;
+        
+        if !speech_layer {
         js! {
           context.fillStyle = "rgb(255, 255, 255)";
           context.strokeStyle = "rgb(0, 0, 0)";
           context.lineWidth = @{scaled_radius}*0.1;
         }
-        
-        let leg_side_vector = transform(Vector3::new (auto_constant ("leg_side", 11.0/24.0)*object.radius, 0.0, 0.0));
-        let leg_inner_radius_vector = transform(Vector3::new (auto_constant ("leg_inner_radius", 8.0/24.0)*object.radius, 0.0, 0.0));
-        let leg_outer_radius_vector = transform(Vector3::new (auto_constant ("leg_outer_radius", 7.0/24.0)*object.radius, 0.0, 0.0));
-      
-  //canvas_context.arc (center, body_height - 1.7*radius, radius*0.7, 0, turn, true);
 
         let mut feet = [(-1.0, &person.feet[0]), (1.0, &person.feet[1])];
         feet.sort_by_key (| foot | OrderedFloat (-foot.1 [1]));
@@ -690,40 +692,14 @@ impl State {
         line_to(self.draw_position (body_base - body_side_vector));
         js! { context.closePath(); context.fill(); context.stroke(); }
         
-        let head_center = body_base + transform(Vector3::new (0.0, 0.0, auto_constant ("head_height", 1.7)*object.radius));
-        let head_position = self.draw_position (head_center);
-        let head_radius = auto_constant ("head_radius", 0.7)*scaled_radius;
         js! {
           context.beginPath();
           context.arc (@{head_position[0]}, @{head_position[1]}, @{head_radius}, 0, turn, true);
           context.fill(); context.stroke();
         }
-      },
-      _=> {
-        let first_corner = self.draw_position (Vector3::new (object.center [0] - object.radius, object.center [1], object.radius));
-        let second_corner = self.draw_position (Vector3::new (object.center [0] + object.radius, object.center [1], 0.0));
-        let size = second_corner - first_corner;
-        //println!("{:?}", (object, first_corner, second_corner, size));
-        js! {
-          context.fillStyle = "rgb(255,255,255)";
-          context.fillRect (@{first_corner[0]}, @{first_corner[1]}, @{size[0]}, @{size[1]});
         }
-      }
-    };
-    js! {
-      context.restore(); 
-    }
-  }
-  
-  fn draw_speech (&self, object: & Object) {
-    let raw_position = Vector3::new (
-      object.center [0],
-      object.center [1],
-      0.0,
-    );
-    let scale = self.draw_scale (raw_position);
-    let scaled_radius = scale*object.radius;
-    let position = self.draw_position (raw_position);
+        else { // speech layer
+        
     for statement in object.statements.iter() {
       let mut distortion = 0.0;
       let age = self.now - statement.start_time;
@@ -741,7 +717,7 @@ impl State {
         context.scale(0.0001,0.0001);
         return context.measureText (@{&statement.text}).width;
       }.try_into().unwrap();
-      translate (position*big_factor);
+      translate ((head_position+ Vector2::new (head_radius*auto_constant ("speech_distance_from_head", 1.4), 0.0))*big_factor);
       js! {
         context.rotate(@{distortion*TURN/17.0});
         context.globalAlpha = @{1.0 - distortion.abs()};
@@ -795,6 +771,22 @@ impl State {
         context.fillText (@{&statement.text}, 0, @{text_middle});
         context.restore();
       }
+    }
+        }
+      },
+      _=> {
+        let first_corner = self.draw_position (Vector3::new (object.center [0] - object.radius, object.center [1], object.radius));
+        let second_corner = self.draw_position (Vector3::new (object.center [0] + object.radius, object.center [1], 0.0));
+        let size = second_corner - first_corner;
+        //println!("{:?}", (object, first_corner, second_corner, size));
+        js! {
+          context.fillStyle = "rgb(255,255,255)";
+          context.fillRect (@{first_corner[0]}, @{first_corner[1]}, @{size[0]}, @{size[1]});
+        }
+      }
+    };
+    js! {
+      context.restore(); 
     }
   }
   
@@ -902,10 +894,10 @@ impl State {
     objects.push (&self.player);
     objects.push (&self.companion);
     objects.sort_by_key (| object | OrderedFloat(-object.center [1]));
-    for object in objects.iter() {self.draw_object (object) ;}
+    for object in objects.iter() {self.draw_object (object, false) ;}
     
-    self.draw_speech (& self.player);
-    self.draw_speech (& self.companion);
+    self.draw_object (& self.player, true);
+    self.draw_object (& self.companion, true);
   }
 }
 
