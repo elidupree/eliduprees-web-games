@@ -529,6 +529,8 @@ impl State {
         },
         _=>(),
       };
+    }
+    for object in self.objects.iter_mut().chain(::std::iter::once(&mut self.player)).chain(::std::iter::once(&mut self.companion)) {
       object.statements.retain (| statement | statement.start_time + constants.speech_duration > now);
     }
     
