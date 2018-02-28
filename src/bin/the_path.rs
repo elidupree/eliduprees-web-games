@@ -22,6 +22,7 @@ use boolinator::Boolinator;
 
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::str::FromStr;
 
 type Vector3 = nalgebra::Vector3 <f64>;
 type Rotation3 = nalgebra::Rotation3 <f64>;
@@ -112,7 +113,7 @@ struct Object {
   velocity: Vector2,
   radius: f64,
   statements: Vec<Statement>,
-  last_statement_start_time: f64,
+  last_statement_start_time: Option <f64>,
   falling: Option <Fall>,
   
   automatic_statements: Vec<AutomaticStatement>,
@@ -276,7 +277,7 @@ impl Fall {
 
 impl Object {
   fn say (&mut self, statement: Statement) {
-    self.last_statement_start_time = statement.start_time;
+    self.last_statement_start_time = Some(statement.start_time);
     self.statements.push (statement);
   }
   fn move_object (&mut self, movement: Vector2) {
@@ -557,16 +558,25 @@ impl State {
     
     let mut companion_say = None;
     for statement in self.companion.automatic_statements.iter_mut() {
-      if self.now > self.companion.last_statement_start_time + 5.0
+      if self.companion.last_statement_start_time.map_or (true, | when | now > when + 5.0)
           && statement.last_stated.map_or (true, | when | now > when + 100.0) {
-        statement.last_stated = Some(now);
-        companion_say = Some(statement.text.clone());
+        let distance = (self.path.horizontal_center (self.player.center [1]) - self.player.center [0]).abs()/self.path.radius;
+        if distance >= statement.distances [0] && distance <= statement.distances [1] {
+          statement.last_stated = Some(now);
+          companion_say = Some(statement.text.clone());
+          break
+        }
       }
     }
     if let Some(companion_say) = companion_say {
       self.companion.say (Statement {text: companion_say, start_time: now, response: None});
     }
   }
+  
+  
+  
+  
+  
 
   fn fraction_of_visible (&self, location: Vector3)->f64 {
     (location [1] - self.player.center [1] + self.constants.player_position)/self.constants.visible_length
@@ -705,21 +715,28 @@ impl State {
     let scale = self.draw_scale (raw_position);
     let scaled_radius = scale*object.radius;
     let position = self.draw_position (raw_position);
-    js! {
-      context.save();
-      context.font = 300 +"px Arial, Helvetica, sans-serif";
-      context.scale(0.0001,0.0001);
-      context.rotate(0.1);
+    for statement in object.statements.iter() {
+      let mut distortion = 0.0;
+      let age = self.now - statement.start_time;
+      let countdown = self.constants.speech_duration - age;
+      let fade = self.constants.speech_fade_duration;
+      if age < fade { distortion = (fade - age)/fade; }
+      if countdown < fade { distortion = (countdown - fade)/fade; }
+      
+      js! {
+        context.save();
+        context.font = 300 +"px Arial, Helvetica, sans-serif";
+        context.scale(0.0001,0.0001);
+      }
+      translate (position*10000.0);
+      js! {
+        context.rotate(@{distortion*TURN/17.0});
+        context.textBaseline = "middle";
+        context.fillStyle = "rgb(255,0,255)";
+        context.fillText (@{&statement.text}, 0, 0);
+        context.restore();
+      }
     }
-    translate (position*10000.0);
-    js! {
-      context.textBaseline = "middle";
-      context.fillStyle = "rgb(255,0,255)";
-      context.fillText ("test statement", 0, 0); context.restore();
-    }
-    //for statement in object.statements.iter() {
-    //  js! { context.fillText (@{&statement.text}, 0.5, 0.5); }
-    //}
   }
   
   fn draw (&self) {
@@ -990,6 +1007,13 @@ fn main() {
             planted_foot: 0,
             feet: [Vector2::new (0.0, 0.0), Vector2::new (0.0, 0.0)],
           }),
+          automatic_statements: vec![
+            AutomaticStatement {
+              text: String::from_str ("Don't stray from the path").unwrap(),
+              last_stated: None,
+              distances: [0.9, 1.1],
+            },
+          ],
           .. Default::default()
         },
         
