@@ -861,12 +861,31 @@ impl State {
     }
   }
   
+  fn pain_radius (&self, pain: f64)->f64 {
+    let fraction = 0.5 - pain.atan()/(TURN/8.0);
+    // allow it to go a bit outside the boundaries of the screen,
+    // don't allow it to reduce to a 0 size
+    0.2 + fraction*0.4
+  }
+  
   fn draw (&self, visible_radius: f64) {
     //let (min_visible_position, max_visible_position) = self.visible_range();
+    
+    let transient_pain_radius = self.pain_radius (self.transient_pain);
+    let temporary_pain_radius = self.pain_radius (self.transient_pain);
     
     js! {
       //$(document.body).text(@{self.objects.len() as u32});
       window.visible_sky = new paper.Path.Rectangle ({point: [@{-visible_radius}, 0.0], size: [@{visible_radius*2.0},@{self.constants.perspective.horizon_drop}], insert: false, });
+      
+      window.transient_pain_ellipse = new paper.Path.Ellipse ({center: [0.0, 0.5], radius: [@{transient_pain_radius*visible_radius*2.0},@{transient_pain_radius}], insert: false, });
+      
+      window.temporary_pain_ellipse = new paper.Path.Ellipse ({center: [0.0, 0.5], radius: [@{temporary_pain_radius*visible_radius*2.0},@{temporary_pain_radius}], insert: false, });
+      
+      context.save();
+      context.clip(new Path2D(transient_pain_ellipse.pathData));
+      
+      window.visible_sky = window.visible_sky.intersect (transient_pain_ellipse);
     }
     for mountain in self.mountains.iter() {
       let screen_peak = self.mountain_screen_peak (& mountain);
@@ -966,6 +985,8 @@ impl State {
     objects.push (&self.companion);
     objects.sort_by_key (| object | OrderedFloat(-object.center [1]));
     for object in objects.iter() {self.draw_object (object, visible_radius, false) ;}
+    
+    js!{ context.restore();}
     
     self.draw_object (& self.player, visible_radius, true);
     self.draw_object (& self.companion, visible_radius, true);
@@ -1147,9 +1168,9 @@ fn main() {
         
         skies: skies,
   
-        permanent_pain: 0.4,
-        temporary_pain: 0.4,
-        transient_pain: 0.4,
+        permanent_pain: 0.0,
+        temporary_pain: 0.0,
+        transient_pain: 0.0,
   
         generator: Box::new(rand::thread_rng()),
         
