@@ -631,7 +631,7 @@ impl State {
     self.temporary_pain = self.permanent_pain_smoothed +
       (self.temporary_pain - self.permanent_pain_smoothed) * 0.5f64.powf(duration/auto_constant ("temporary_pain_halflife", 1.4));
     self.temporary_pain_smoothed = self.temporary_pain +
-      (self.temporary_pain_smoothed - self.temporary_pain) * 0.5f64.powf(duration/auto_constant ("temporary_pain_smoothed_halflife", 0.03));
+      (self.temporary_pain_smoothed - self.temporary_pain) * 0.5f64.powf(duration/auto_constant ("temporary_pain_smoothed_halflife", 0.1));
     
     
     if companion_say.is_none() {for statement in self.companion.automatic_statements.iter_mut() {
