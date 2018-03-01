@@ -115,6 +115,7 @@ struct Object {
   statements: Vec<Statement>,
   last_statement_start_time: Option <f64>,
   falling: Option <Fall>,
+  collect_progress: f64,
   
   automatic_statements: Vec<AutomaticStatement>,
   #[derivative (Default (value = "Kind::Tree"))]
@@ -579,9 +580,10 @@ impl State {
     let companion_center = self.companion.center;
     
     if let Some(index) = collision {
-      let object = & self.objects [index];
+      {
+      let object = &mut self.objects [index];
       match object.kind {
-        _=> {
+        Kind::Tree => {
           let center_distance = self.player.center [0] - object.center [0];
           let direction = if center_distance <0.0 {- 1.0} else {1.0};
           let minimal_escape_distance = (self.player.radius + object.radius) *direction - center_distance;
@@ -595,9 +597,29 @@ impl State {
             response: Some(String::from_str (if player_distance_from_path < 1.2 {"That's just part of life"} else {"It's your fault for straying"}).unwrap()),
             direction: Cell::new (direction),
           });
-          self.permanent_pain += self.generator.gen_range (-0.06, 0.06);
-          //self.temporary_pain += 0.3;
+          self.temporary_pain += 1.0;
         },
+        Kind::Reward => {
+          if object.collect_progress == 0.0 {
+            self.permanent_pain -= 0.20;
+          }
+          object.collect_progress += duration;
+        },
+        Kind::Chest => {
+          if object.collect_progress == 0.0 {
+            //self.permanent_pain -= 0.05;
+          }
+          object.collect_progress += duration;
+        },
+        Kind::Monster(_) => {
+          self.permanent_pain += 0.32;
+          self.temporary_pain += 1.4;
+        },
+        Kind::Person(_) => unreachable!(),
+      }
+      }
+      if self.objects [index].collect_progress >= 1.0 {
+        self.objects.remove (index);
       }
     }
     self.objects.retain (| object | {
@@ -872,7 +894,7 @@ impl State {
   }
   
   fn pain_radius (&self, pain: f64)->f64 {
-    let fraction = 0.5 - pain.atan()/(TURN/8.0);
+    let fraction = 0.5 - pain.atan()/(TURN/2.0);
     // allow it to go a bit outside the boundaries of the screen,
     // don't allow it to reduce to a 0 size
     0.2 + fraction*0.4
