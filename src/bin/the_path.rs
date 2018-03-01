@@ -21,7 +21,7 @@ use ordered_float::OrderedFloat;
 use boolinator::Boolinator;
 
 use std::rc::Rc;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::str::FromStr;
 
 type Vector3 = nalgebra::Vector3 <f64>;
@@ -125,6 +125,7 @@ struct Statement {
   text: String,
   start_time: f64,
   response: Option <String>,
+  direction: Cell <f64>,
 }
 #[derive (Debug)]
 struct AutomaticStatement {
@@ -535,7 +536,14 @@ impl State {
         _=>(),
       };
     }
+    let mut companion_say = None;
+    let player_distance_from_path = (self.path.horizontal_center (self.player.center [1]) - self.player.center [0]).abs()/self.path.radius;
     for object in self.objects.iter_mut().chain(::std::iter::once(&mut self.player)).chain(::std::iter::once(&mut self.companion)) {
+      for statement in object.statements.iter_mut() {
+        if now - statement.start_time > auto_constant ("response_time", 1.0) && statement.response.is_some() {
+          companion_say = statement.response.take();
+        }
+      }
       object.statements.retain (| statement | statement.start_time + constants.speech_duration > now);
     }
     
@@ -544,16 +552,24 @@ impl State {
       advance_distance,
     );
     self.companion.move_object (companion_movement_vector);
+    let companion_center = self.companion.center;
     
     if let Some(index) = collision {
       let object = & self.objects [index];
       match object.kind {
         _=> {
           let center_distance = self.player.center [0] - object.center [0];
-          let minimal_escape_distance = (self.player.radius + object.radius) * center_distance.signum() - center_distance;
+          let direction = if center_distance <0.0 {- 1.0} else {1.0};
+          let minimal_escape_distance = (self.player.radius + object.radius) *direction - center_distance;
           self.player.falling = Some(Fall {
-            distance: minimal_escape_distance + self.player.radius*0.25 * center_distance.signum(),
+            distance: minimal_escape_distance + self.player.radius*0.25 *direction,
             progress: 0.0,
+          });
+          self.player.statements.push (Statement {
+            text: String::from_str ("Ow, it hurts").unwrap(),
+            start_time: now,
+            response: Some(String::from_str (if player_distance_from_path < 1.2 {"That's just part of life"} else {"It's your fault for straying"}).unwrap()),
+            direction: Cell::new (direction),
           });
         },
       }
@@ -565,20 +581,20 @@ impl State {
     self.temporary_pain = self.permanent_pain + (self.temporary_pain - self.permanent_pain) * 0.5f64.powf(duration/1.4);
     self.transient_pain = self.temporary_pain + (self.transient_pain - self.temporary_pain) * 0.5f64.powf(duration/0.03);
     
-    let mut companion_say = None;
-    for statement in self.companion.automatic_statements.iter_mut() {
+    
+    if companion_say.is_none() {for statement in self.companion.automatic_statements.iter_mut() {
       if self.companion.last_statement_start_time.map_or (true, | when | now > when + 5.0)
           && statement.last_stated.map_or (true, | when | now > when + 100.0) {
-        let distance = (self.path.horizontal_center (self.player.center [1]) - self.player.center [0]).abs()/self.path.radius;
+        let distance = player_distance_from_path;
         if distance >= statement.distances [0] && distance <= statement.distances [1] {
           statement.last_stated = Some(now);
           companion_say = Some(statement.text.clone());
           break
         }
       }
-    }
+    }}
     if let Some(companion_say) = companion_say {
-      self.companion.say (Statement {text: companion_say, start_time: now, response: None});
+      self.companion.say (Statement {text: companion_say, start_time: now, response: None, direction: Cell::new (if companion_center [0] <player_center [0] {1.0} else {- 1.0}) });
     }
   }
   
@@ -709,22 +725,29 @@ impl State {
       if countdown < fade { distortion = (countdown - fade)/fade; }
       
       let big_factor = 10000.0;
-      let text_height = auto_constant ("text_height", 0.03) * big_factor;
-      let text_width: f64 = js! {
+      
+      js! {
         context.save();
-        context.font = @{text_height}+"px Arial, Helvetica, sans-serif";
         context.textBaseline = "middle";
         context.scale(0.0001,0.0001);
+      }
+      // try drawing, but sometimes we need to switch direction
+      loop {
+      let direction = statement.direction.get();
+      let mut tail_tip_position = head_position+ Vector2::new (head_radius*auto_constant ("speech_distance_from_head", 1.4)*direction, 0.0);
+      let limit = auto_constant ("speech_position_limit", 0.005);
+      let distance_below_limit = -0.5 + limit - (tail_tip_position[0] - 0.5)*direction;
+      if distance_below_limit > 0.0 {
+        tail_tip_position[0] += distance_below_limit*direction;
+      }
+      
+      let text_height = auto_constant ("text_height", 0.03) * big_factor;
+      js! {
+        context.font = @{text_height}+"px Arial, Helvetica, sans-serif";
+      }
+      let text_width: f64 = js! {
         return context.measureText (@{&statement.text}).width;
       }.try_into().unwrap();
-      translate ((head_position+ Vector2::new (head_radius*auto_constant ("speech_distance_from_head", 1.4), 0.0))*big_factor);
-      js! {
-        context.rotate(@{distortion*TURN/17.0});
-        context.globalAlpha = @{1.0 - distortion.abs()};
-        
-        context.beginPath();
-        
-      }
       
       let padding = max(text_height/2.0, text_width/13.0);
       let bubble_left = -padding;
@@ -735,6 +758,21 @@ impl State {
       
       let tail_left_join_x = auto_constant ("tail_left_join_x", 0.017) * big_factor;
       let tail_right_join_x = auto_constant ("tail_right_join_x", 0.03) * big_factor;
+      
+      if (head_position[0] - 0.5)*direction > 0.0 && (tail_tip_position[0] - 0.5)*direction + bubble_right/big_factor > 0.5 {
+        statement.direction.set (direction * -1.0);
+        continue
+      }
+      
+      translate (tail_tip_position*big_factor);
+      js! {
+        context.rotate(@{distortion*TURN/17.0});
+        context.scale(@{direction}, 1);
+        context.globalAlpha = @{1.0 - distortion.abs()};
+        
+        context.beginPath();
+        
+      }
       
       move_to(Vector2::new (0.0, 0.0));
       quadratic_curve (
@@ -768,9 +806,19 @@ impl State {
         context.lineWidth = @{auto_constant ("speech_stroke_width", 0.002)*big_factor};
         context.fill(); context.stroke();
         context.fillStyle = "rgb(0, 0, 0)";
-        context.fillText (@{&statement.text}, 0, @{text_middle});
-        context.restore();
       }
+      if direction <0.0 {
+        js! {
+          context.scale(@{direction}, 1);
+          context.translate (@{- text_width}, 0);
+        }
+      }
+      js! {
+        context.fillText (@{&statement.text}, 0, @{text_middle});
+      }
+        break;
+      }
+      js! {context.restore();}
     }
         }
       },
@@ -1063,6 +1111,11 @@ fn main() {
               text: String::from_str ("Don't stray from the path").unwrap(),
               last_stated: None,
               distances: [0.9, 1.1],
+            },
+            AutomaticStatement {
+              text: String::from_str ("It's dangerous out there").unwrap(),
+              last_stated: None,
+              distances: [2.0, 10000.0],
             },
           ],
           .. Default::default()
