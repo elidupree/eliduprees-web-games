@@ -624,7 +624,8 @@ impl State {
       }
     }}
     if let Some(companion_say) = companion_say {
-      let distance = companion_center [0] - player_center [0];
+      let virtual_location = player_center [0] + self.player.statements.iter().map(| statement | statement.direction.get()).sum::<f64>() / (self.player.statements.len() as f64 + 0.01) * 0.15;
+      let distance = companion_center [0] - virtual_location;
       let direction = if distance < 0.0 {1.0} else {- 1.0} * if distance.abs() < 0.25 {-1.0} else { 1.0};
       self.companion.say (Statement {text: companion_say, start_time: now, response: None, direction: Cell::new (direction) });
     }
