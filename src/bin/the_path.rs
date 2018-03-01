@@ -428,7 +428,7 @@ impl State {
         );
         let mountain = Mountain {
           fake_peak_location: location,
-          base_screen_radius: self.generator.gen_range (0.2, 0.4),
+          base_screen_radius: self.generator.gen_range (0.3, 0.6),
         };
         let screen_peak = self.mountain_screen_peak (& mountain)[0];
         let partial_radius = mountain.base_screen_radius * 0.8;
@@ -1049,7 +1049,7 @@ fn main() {
       mountain_spawn_radius: 35.0,
       mountain_spawn_distance: 35.0,
       mountain_viewable_distances_radius: 5.0,
-      mountain_density: 0.15,
+      mountain_density: 0.10,
   
       monster_density: 0.7,
       tree_density: 5.0,
