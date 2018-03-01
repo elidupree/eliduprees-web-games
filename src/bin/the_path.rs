@@ -624,7 +624,9 @@ impl State {
       }
     }}
     if let Some(companion_say) = companion_say {
-      self.companion.say (Statement {text: companion_say, start_time: now, response: None, direction: Cell::new (if companion_center [0] <player_center [0] {1.0} else {- 1.0}) });
+      let distance = companion_center [0] - player_center [0];
+      let direction = if distance < 0.0 {1.0} else {- 1.0} * if distance.abs() < 0.25 {-1.0} else { 1.0};
+      self.companion.say (Statement {text: companion_say, start_time: now, response: None, direction: Cell::new (direction) });
     }
   }
   
