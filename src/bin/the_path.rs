@@ -684,7 +684,7 @@ impl State {
     if alpha > 1.0 {alpha = 1.0;}
     js! {
       context.save(); 
-      context.globalAlpha = @{alpha};
+      context.globalAlpha = @{alpha*(1.0 - object.collect_progress)};
     }
     let raw_position = Vector3::new (
       object.center [0],
