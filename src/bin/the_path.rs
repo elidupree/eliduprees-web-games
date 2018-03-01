@@ -529,8 +529,9 @@ impl State {
     // not the rewards that appear in the path.
     // But this way is simpler, and they're not very distinguishable to the player in practice.
     let hack = self.path.clone();
+    let factor = auto_constant ("path_reward_frequency_factor", 0.1);
     self.do_spawns_impl (advance_distance,
-      advance_distance*constants.reward_density*auto_constant ("path_reward_frequency_factor", 0.5),
+      advance_distance*constants.reward_density*factor,
       | vertical, generator | {
         hack.horizontal_center (vertical)
         + generator.gen_range (-hack.radius, hack.radius)
@@ -539,7 +540,7 @@ impl State {
       || Object {kind: Kind::Reward, radius: 0.03, .. Default::default()}
     );
     self.do_spawns_impl (advance_distance,
-      advance_distance*constants.chest_density*auto_constant ("path_reward_frequency_factor", 0.5),
+      advance_distance*constants.chest_density*factor,
       | vertical, generator | {
         hack.horizontal_center (vertical)
         + generator.gen_range (-hack.radius, hack.radius)
@@ -1115,8 +1116,8 @@ fn main() {
   
       monster_density: 0.7,
       tree_density: 5.0,
-      chest_density: 1.0,
-      reward_density: 1.0,
+      chest_density: 1.5,
+      reward_density: 1.5,
       
       fadein_distance: visible_length*0.2,
         
