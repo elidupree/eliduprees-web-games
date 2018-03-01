@@ -187,8 +187,9 @@ struct State {
   companion: Object,
   
   permanent_pain: f64,
+  permanent_pain_smoothed: f64,
   temporary_pain: f64,
-  transient_pain: f64,
+  temporary_pain_smoothed: f64,
   
   last_click: Option <Click>,
   
@@ -594,6 +595,8 @@ impl State {
             response: Some(String::from_str (if player_distance_from_path < 1.2 {"That's just part of life"} else {"It's your fault for straying"}).unwrap()),
             direction: Cell::new (direction),
           });
+          self.permanent_pain += self.generator.gen_range (-0.06, 0.06);
+          //self.temporary_pain += 0.3;
         },
       }
     }
@@ -601,8 +604,12 @@ impl State {
       object.center [1] > player_center[1] - 0.5
     });
     
-    self.temporary_pain = self.permanent_pain + (self.temporary_pain - self.permanent_pain) * 0.5f64.powf(duration/1.4);
-    self.transient_pain = self.temporary_pain + (self.transient_pain - self.temporary_pain) * 0.5f64.powf(duration/0.03);
+    self.permanent_pain_smoothed = self.permanent_pain +
+      (self.permanent_pain_smoothed - self.permanent_pain) * 0.5f64.powf(duration/auto_constant ("permanent_pain_smoothed_halflife", 0.7));
+    self.temporary_pain = self.permanent_pain_smoothed +
+      (self.temporary_pain - self.permanent_pain_smoothed) * 0.5f64.powf(duration/auto_constant ("temporary_pain_halflife", 1.4));
+    self.temporary_pain_smoothed = self.temporary_pain +
+      (self.temporary_pain_smoothed - self.temporary_pain) * 0.5f64.powf(duration/auto_constant ("temporary_pain_smoothed_halflife", 0.03));
     
     
     if companion_say.is_none() {for statement in self.companion.automatic_statements.iter_mut() {
@@ -871,21 +878,29 @@ impl State {
   fn draw (&self, visible_radius: f64) {
     //let (min_visible_position, max_visible_position) = self.visible_range();
     
-    let transient_pain_radius = self.pain_radius (self.transient_pain);
-    let temporary_pain_radius = self.pain_radius (self.transient_pain);
+    let temporary_pain_radius = self.pain_radius (self.temporary_pain_smoothed);
+    
+    let permanent_pain_speed = (self.permanent_pain_smoothed - self.permanent_pain).abs();
+    if permanent_pain_speed > auto_constant ("permanent_pain_threshold", 0.0001) {
+      let permanent_pain_radius = self.pain_radius (self.permanent_pain_smoothed);
+      js! {
+        window.permanent_pain_ellipse = new paper.Path.Ellipse ({center: [0.0, 0.5], radius: [@{permanent_pain_radius*visible_radius*2.0},@{permanent_pain_radius}], insert: false, });
+        context.lineWidth = @{permanent_pain_speed*auto_constant ("permanent_pain_factor", 0.1)};
+        context.strokeStyle = "rgb(255,255,255)";
+        context.stroke(new Path2D(permanent_pain_ellipse.pathData));
+      }
+    }
     
     js! {
       //$(document.body).text(@{self.objects.len() as u32});
       window.visible_sky = new paper.Path.Rectangle ({point: [@{-visible_radius}, 0.0], size: [@{visible_radius*2.0},@{self.constants.perspective.horizon_drop}], insert: false, });
       
-      window.transient_pain_ellipse = new paper.Path.Ellipse ({center: [0.0, 0.5], radius: [@{transient_pain_radius*visible_radius*2.0},@{transient_pain_radius}], insert: false, });
-      
       window.temporary_pain_ellipse = new paper.Path.Ellipse ({center: [0.0, 0.5], radius: [@{temporary_pain_radius*visible_radius*2.0},@{temporary_pain_radius}], insert: false, });
       
       context.save();
-      context.clip(new Path2D(transient_pain_ellipse.pathData));
+      context.clip(new Path2D(temporary_pain_ellipse.pathData));
       
-      window.visible_sky = window.visible_sky.intersect (transient_pain_ellipse);
+      window.visible_sky = window.visible_sky.intersect (temporary_pain_ellipse);
     }
     for mountain in self.mountains.iter() {
       let screen_peak = self.mountain_screen_peak (& mountain);
@@ -1170,7 +1185,8 @@ fn main() {
   
         permanent_pain: 0.0,
         temporary_pain: 0.0,
-        transient_pain: 0.0,
+        permanent_pain_smoothed: 0.0,
+        temporary_pain_smoothed: 0.0,
   
         generator: Box::new(rand::thread_rng()),
         
