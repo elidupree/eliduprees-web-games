@@ -603,13 +603,13 @@ impl State {
           if object.collect_progress == 0.0 {
             self.permanent_pain -= 0.20;
           }
-          object.collect_progress += duration;
+          object.collect_progress += duration*0.7;
         },
         Kind::Chest => {
           if object.collect_progress == 0.0 {
             //self.permanent_pain -= 0.05;
           }
-          object.collect_progress += duration;
+          object.collect_progress += duration*1.5;
         },
         Kind::Monster(_) => {
           self.permanent_pain += 0.32;
@@ -707,9 +707,10 @@ impl State {
       Kind::Reward => {
         js! {
           var reward = reward_shape.clone({insert: false});
-          reward.rotate(0.0, [0,0]);
+          reward.rotate(@{360.0*object.collect_progress}, [0,0]);
+          reward.translate (0,-reward_shape.bounds.bottom);
           reward.scale (@{scaled_radius}, [0,0]);
-          reward.translate (@{position [0]}, @{position [1]});
+          reward.translate (@{position [0]}, @{position [1] - object.radius*2.0*object.collect_progress});
           var path = new Path2D(reward.pathData);
           context.fillStyle = "rgb(255, 255, 255)";
           context.strokeStyle = "rgb(0, 0, 0)";
@@ -910,7 +911,7 @@ impl State {
       let permanent_pain_radius = self.pain_radius (self.permanent_pain_smoothed);
       js! {
         window.permanent_pain_ellipse = new paper.Path.Ellipse ({center: [0.0, 0.5], radius: [@{permanent_pain_radius*visible_radius*2.0},@{permanent_pain_radius}], insert: false, });
-        context.lineWidth = @{permanent_pain_speed*auto_constant ("permanent_pain_factor", 0.1)};
+        context.lineWidth = @{permanent_pain_speed*auto_constant ("permanent_pain_factor", 0.025)};
         context.strokeStyle = "rgb(255,255,255)";
         context.stroke(new Path2D(permanent_pain_ellipse.pathData));
       }
@@ -1161,7 +1162,6 @@ fn main() {
     window.reward_shape = new paper.Path({ segments: points, insert: false });
     reward_shape.closed = true;
     reward_shape.scale (2.0/reward_shape.bounds.width, [0,0]);
-    reward_shape.translate (0, -reward_shape.bounds.bottom);
         }
   }
   
