@@ -603,18 +603,37 @@ impl State {
         Kind::Reward => {
           if object.collect_progress == 0.0 {
             self.permanent_pain -= 0.10;
+            self.player.statements.push (Statement {
+              text: String::from_str ("Yay!").unwrap(),
+              start_time: now,
+              response: Some(String::from_str (if player_distance_from_path < 1.2 {"I'm proud of you"} else {"That's not good for you"}).unwrap()),
+              direction: Cell::new (1.0),
+            });
           }
           object.collect_progress += duration*0.7;
+          
         },
         Kind::Chest => {
           if object.collect_progress == 0.0 {
             //self.permanent_pain -= 0.05;
+            self.player.statements.push (Statement {
+              text: String::from_str ("What's inside?").unwrap(),
+              start_time: now,
+              response: None,
+              direction: Cell::new (-1.0),
+            });
           }
           object.collect_progress += duration*1.5;
         },
         Kind::Monster(_) => {
           self.permanent_pain += 0.22;
           self.temporary_pain += 1.4;
+          self.player.statements.push (Statement {
+            text: String::from_str ("Ow, it hurts!").unwrap(),
+            start_time: now,
+            response: Some(String::from_str (if player_distance_from_path < 1.2 {"Liar, that would never happen on the path"} else {"It's your fault for straying"}).unwrap()),
+            direction: Cell::new (1.0),
+          });
         },
         Kind::Person(_) => unreachable!(),
       }
