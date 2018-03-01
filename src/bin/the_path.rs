@@ -423,7 +423,7 @@ impl State {
       if self.generator.gen::<f64>() < average_number/attempts as f64 {
         let location = Vector3::new (
           self.player.center [0] + self.generator.gen_range (- self.constants.mountain_spawn_radius, self.constants.mountain_spawn_radius),
-          self.player.center [1] + self.constants.mountain_spawn_distance + self.generator.gen_range(0.0, advance_distance),
+          self.player.center [1] + self.constants.mountain_spawn_distance - self.generator.gen_range(0.0, advance_distance),
           self.generator.gen_range (0.1, 0.2),
         );
         let mountain = Mountain {
@@ -457,12 +457,16 @@ impl State {
       sky.screen_position [1] -= (sky.screen_position [1] - 0.7*self.constants.perspective.horizon_drop)*0.00003*duration;
     }
     
-    // hack: make the player start on the path even though the path isn't generated yet
+    // hack: initialization stuff
     if tick_start == 0.0 {
+      // hack: make the player start on the path even though the path isn't generated yet
       let (_min_visible_position, max_visible_position) = self.visible_range();
       self.path.extend(max_visible_position, self.player.center [0], &mut self.generator, &constants);
       self.player.center [0] = self.path.horizontal_center (self.player.center [1]);
       self.companion.center [0] = self.path.horizontal_center (self.companion.center [1]);
+      
+      // generate as many mountains as would be visible
+      self.spawn_mountains (constants.mountain_viewable_distances_radius*2.0);
     }
     
     let movement_direction = if let Some(click) = self.last_click.as_ref() {click.location} else {Vector2::new (0.0, 1.0)};
