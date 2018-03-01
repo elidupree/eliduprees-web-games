@@ -249,6 +249,7 @@ fn sigmoid01(input: f64)->f64 {
   (sigmoidneg11((input*2.0)-1.0)+1.0)/2.0
 }*/
 
+fn min (first: f64, second: f64)->f64 {if first < second {first} else {second}}
 fn max (first: f64, second: f64)->f64 {if first > second {first} else {second}}
 
 
@@ -360,7 +361,7 @@ impl State {
     let highest_distance = self.constants.mountain_spawn_distance - self.constants.mountain_viewable_distances_radius;
     let distance_from_highest = (distance - highest_distance).abs() / self.constants.mountain_viewable_distances_radius;
     Vector2::new (
-      0.5 + (mountain.fake_peak_location [0] - self.player.center [0])/distance,
+      (mountain.fake_peak_location [0] - self.player.center [0])/distance,
       self.constants.perspective.horizon_drop - (mountain.fake_peak_location [2])*(distance_from_highest*(TURN/4.0)).cos()
     )
   }
@@ -381,7 +382,7 @@ impl State {
         };
         let screen_peak = self.mountain_screen_peak (& mountain)[0];
         let partial_radius = mountain.base_screen_radius * 0.8;
-        if screen_peak + partial_radius < 0.5 || 0.5 < screen_peak - partial_radius {
+        if screen_peak + partial_radius < 0.0 || 0.0 < screen_peak - partial_radius {
           self.mountains.push (mountain);
         }
       }
@@ -394,7 +395,7 @@ impl State {
     for sky in self.skies.iter_mut() {
       sky.screen_position [0] += 0.005*duration*self.generator.gen_range (-1.0, 1.0);
       sky.screen_position [1] += 0.005*duration*self.generator.gen_range (-1.0, 1.0);
-      sky.screen_position [0] -= (sky.screen_position [0] - 0.5)*0.00006*duration;
+      sky.screen_position [0] -= (sky.screen_position [0])*0.00006*duration;
       sky.screen_position [1] -= (sky.screen_position [1] - 0.7*self.constants.perspective.horizon_drop)*0.00003*duration;
     }
     
@@ -618,12 +619,12 @@ impl State {
     let drop = self.constants.perspective.ground_screen_drop (fraction_of_visible);
     
     Vector2::new (
-      0.5 + horizontal_distance*scale,
+      horizontal_distance*scale,
       drop - location [2]*scale,
     )
   }
   
-  fn draw_object (&self, object: & Object, speech_layer: bool) {
+  fn draw_object (&self, object: & Object, visible_radius: f64, speech_layer: bool) {
     let mut alpha = (self.player.center [1] + self.constants.spawn_distance - object.center [1])/self.constants.fadein_distance;
     if alpha < 0.0 {alpha = 0.0;}
     if alpha > 1.0 {alpha = 1.0;}
@@ -736,7 +737,7 @@ impl State {
       let direction = statement.direction.get();
       let mut tail_tip_position = head_position+ Vector2::new (head_radius*auto_constant ("speech_distance_from_head", 1.4)*direction, 0.0);
       let limit = auto_constant ("speech_position_limit", 0.005);
-      let distance_below_limit = -0.5 + limit - (tail_tip_position[0] - 0.5)*direction;
+      let distance_below_limit = -visible_radius + limit - tail_tip_position[0]*direction;
       if distance_below_limit > 0.0 {
         tail_tip_position[0] += distance_below_limit*direction;
       }
@@ -759,7 +760,7 @@ impl State {
       let tail_left_join_x = auto_constant ("tail_left_join_x", 0.017) * big_factor;
       let tail_right_join_x = auto_constant ("tail_right_join_x", 0.03) * big_factor;
       
-      if (head_position[0] - 0.5)*direction > 0.0 && (tail_tip_position[0] - 0.5)*direction + bubble_right/big_factor > 0.5 {
+      if head_position[0]*direction > 0.0 && tail_tip_position[0]*direction + bubble_right/big_factor > visible_radius {
         statement.direction.set (direction * -1.0);
         continue
       }
@@ -838,19 +839,19 @@ impl State {
     }
   }
   
-  fn draw (&self) {
+  fn draw (&self, visible_radius: f64) {
     let min_visible_position = self.player.center [1] - self.constants.player_position;
     let max_visible_position = min_visible_position + self.constants.visible_length;
     
     js! {
       //$(document.body).text(@{self.objects.len() as u32});
-      window.visible_sky = new paper.Path.Rectangle ({point: [0.0, 0.0], size: [1.0,@{self.constants.perspective.horizon_drop}], insert: false, });
+      window.visible_sky = new paper.Path.Rectangle ({point: [@{-visible_radius}, 0.0], size: [@{visible_radius*2.0},@{self.constants.perspective.horizon_drop}], insert: false, });
     }
     for mountain in self.mountains.iter() {
       let screen_peak = self.mountain_screen_peak (& mountain);
       let visible_base_radius = mountain.base_screen_radius*(self.constants.perspective.horizon_drop - screen_peak [1])/mountain.fake_peak_location [2];
-      if screen_peak [0] + visible_base_radius < 0.0 ||
-         screen_peak [0] - visible_base_radius > 1.0 {continue;}
+      if screen_peak [0] + visible_base_radius < -visible_radius ||
+         screen_peak [0] - visible_base_radius > visible_radius {continue;}
       js! {
         var pos = [@{screen_peak[0]}, @{screen_peak[1]}];
         var height =@{mountain.fake_peak_location [2]};
@@ -869,6 +870,7 @@ impl State {
       let pos = sky.screen_position;
       js! {
         var pos = [@{pos[0]}, @{pos[1]}];
+        var visible_radius = @{visible_radius};
         var steepness = @{sky.steepness};
         var segments = [];
         segments.push([
@@ -877,14 +879,14 @@ impl State {
             [0.4, 0]
           ]);
         segments.push([
-            [pos[0]+1.0, pos[1] + steepness],
+            [Math.max (visible_radius, pos[0]+1.0), pos[1] + steepness],
             [-0.4, 0],
             [0, 0]
           ]);
-        segments.push([pos[0]+1.0, pos[1] + steepness + constants.perspective.horizon_drop]);
-        segments.push([pos[0]-1.0, pos[1] + steepness + constants.perspective.horizon_drop]);
+        segments.push([Math.max (visible_radius, pos[0]+1.0), pos[1] + steepness + constants.perspective.horizon_drop]);
+        segments.push([Math.min (-visible_radius, pos[0]-1.0), pos[1] + steepness + constants.perspective.horizon_drop]);
         segments.push([
-            [pos[0]-1.0, pos[1] + steepness],
+            [Math.min (-visible_radius, pos[0]-1.0), pos[1] + steepness],
             [0, 0],
             [0.4, 0]
           ]);
@@ -903,8 +905,8 @@ impl State {
       let mut endpoint = self.draw_position (Vector3::new (component.center [0] - self.path.radius, component.center [1], 0.0));
       
       // hack: work around a polygon display glitch that existed only in chromium, not Firefox
-      if endpoint [0] < -0.02 { endpoint [0] = -0.02; }
-      if endpoint [0] > 1.01 { endpoint [0] = 1.01; }
+      if endpoint [0] < -visible_radius - 0.02 { endpoint [0] = -visible_radius - 0.02; }
+      if endpoint [0] >  visible_radius + 0.01 { endpoint [0] =  visible_radius + 0.01; }
       
       if began {
         line_to (endpoint);
@@ -914,7 +916,7 @@ impl State {
         began = true;
       }
     }
-    {
+    /*{
       let last = &self.path.components[self.path.components.len()-2..self.path.components.len()];
       let distance = last [1].center - last [0].center;
       let horizon_distance = max_visible_position - last [0].center [1];
@@ -923,13 +925,13 @@ impl State {
       line_to (endpoint);
       let endpoint = self.draw_position (Vector3::new (horizon_center [0] + self.path.radius, max_visible_position, 0.0));
       line_to (endpoint);
-    }
+    }*/
     for component in self.path.components[0..self.path.components.len()-1].iter().rev() {
       let mut endpoint = self.draw_position (Vector3::new (component.center [0] + self.path.radius, component.center [1], 0.0));
       
       // hack: work around a polygon display glitch that existed only in chromium, not Firefox
-      if endpoint [0] < -0.01 { endpoint [0] = -0.01; }
-      if endpoint [0] > 1.02 { endpoint [0] = 1.02; }
+      if endpoint [0] < -visible_radius - 0.01 { endpoint [0] = -visible_radius - 0.01; }
+      if endpoint [0] >  visible_radius + 0.02 { endpoint [0] =  visible_radius + 0.02; }
       
       line_to (endpoint);
     }
@@ -942,10 +944,10 @@ impl State {
     objects.push (&self.player);
     objects.push (&self.companion);
     objects.sort_by_key (| object | OrderedFloat(-object.center [1]));
-    for object in objects.iter() {self.draw_object (object, false) ;}
+    for object in objects.iter() {self.draw_object (object, visible_radius, false) ;}
     
-    self.draw_object (& self.player, true);
-    self.draw_object (& self.companion, true);
+    self.draw_object (& self.player, visible_radius, true);
+    self.draw_object (& self.companion, visible_radius, true);
   }
 }
 
@@ -957,17 +959,18 @@ struct Game {
 
 
 fn draw_game (game: & Game) {
-  let canvas_width: f64 = js! {return canvas.width;}.try_into().unwrap();
-  let scale = canvas_width;
-  js! {
+  let radius: f64 = js! {
     var size = Math.min (window.innerHeight, window.innerWidth);
-    canvas.setAttribute ("width", size);
-    canvas.setAttribute ("height", size);
+    canvas.setAttribute ("width", window.innerWidth);
+    canvas.setAttribute ("height", window.innerHeight);
     context.clearRect (0, 0, canvas.width, canvas.height);
     context.save();
-    context.scale (@{scale},@{scale});
-  }
-  game.state.draw();
+    context.scale (canvas.height,canvas.height);
+    var visible_radius = canvas.width / canvas.height / 2.0;
+    context.translate (visible_radius, 0);
+    return visible_radius;
+  }.try_into().unwrap();
+  game.state.draw(radius);
   js! {
     context.restore();
   }
@@ -1082,7 +1085,7 @@ fn main() {
   
   let mut skies = Vec::new();
   for _ in 0..15 {
-    skies.push (Sky {screen_position: Vector2::new (rand::thread_rng().gen(), rand::thread_rng().gen::<f64>()*0.36), steepness: rand::thread_rng().gen_range(0.1,0.2)});
+    skies.push (Sky {screen_position: Vector2::new (rand::thread_rng().gen_range(-0.5, 0.5), rand::thread_rng().gen::<f64>()*0.36), steepness: rand::thread_rng().gen_range(0.1,0.2)});
   }
   
   let game = Rc::new (RefCell::new (
