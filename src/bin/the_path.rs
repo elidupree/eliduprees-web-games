@@ -601,7 +601,7 @@ impl State {
         },
         Kind::Reward => {
           if object.collect_progress == 0.0 {
-            self.permanent_pain -= 0.20;
+            self.permanent_pain -= 0.10;
           }
           object.collect_progress += duration*0.7;
         },
@@ -612,7 +612,7 @@ impl State {
           object.collect_progress += duration*1.5;
         },
         Kind::Monster(_) => {
-          self.permanent_pain += 0.32;
+          self.permanent_pain += 0.22;
           self.temporary_pain += 1.4;
         },
         Kind::Person(_) => unreachable!(),
