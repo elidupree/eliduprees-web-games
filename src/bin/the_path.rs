@@ -335,6 +335,56 @@ impl Path {
       },
     }
   }
+  
+  fn extend (&mut self, until: f64, player_horizontal: f64, generator: &mut Box<Rng>, constants: & Constants) {
+    while self.components.last().unwrap().center [1] <until {
+      let previous = self.components.last().unwrap().clone();
+      let distance = constants.visible_length/constants.visible_components as f64;
+      let mut new = Component {
+        center: previous.center + Vector2::new (distance*previous.velocity, distance),
+        velocity: previous.velocity + distance*previous.acceleration,
+        acceleration: previous.acceleration,
+      };
+      
+      let default_acceleration_change_radius = self.max_speed*216.0*distance;
+      let mut bias = - previous.velocity*36.0*distance;
+      // The path secretly follows the player if the player moves too far away,
+      // for both gameplay and symbolism reasons.
+      let player_offset = player_horizontal - previous.center [0];
+      if player_offset > 0.7 {
+        bias += (player_offset - 0.7)*self.max_speed*40.0*distance;
+      }
+      if player_offset < -0.7 {
+        bias += (player_offset + 0.7)*self.max_speed*40.0*distance;
+      }
+      
+      let limits_1 = [
+        previous.acceleration - default_acceleration_change_radius + bias,
+        previous.acceleration + default_acceleration_change_radius + bias,
+      ];
+      // It's forbidden to accelerate to higher than max speed.
+      // To keep things smooth, we never accelerate more than a fraction of the way to max speed at a time.
+      // TODO: make this formula less dependent on the component size
+      let limits_2 = [
+        (-self.max_speed - previous.velocity)*200.0,
+        (self.max_speed - previous.velocity)*200.0,
+      ];
+      let acceleration_limits = [
+        if limits_1 [0] > limits_2 [0] {limits_1 [0]} else {limits_2 [0]},
+        if limits_1 [1] < limits_2 [1] {limits_1 [1]} else {limits_2 [1]},
+      ];
+      
+      //println!("{:?}", (limits_1, limits_2, acceleration_limits));
+      if acceleration_limits[0] < acceleration_limits[1] {
+        new.acceleration = generator.gen_range (acceleration_limits [0], acceleration_limits [1]);
+      }
+      else {
+        new.acceleration = (acceleration_limits[0] + acceleration_limits[1]) /2.0;
+      }
+      
+      self.components.push (new);
+    }
+  }
 }
 
 impl State {
@@ -388,7 +438,15 @@ impl State {
       }
     }
   }
+  
+  fn visible_range (&self)->(f64, f64) {
+    let min_visible_position = self.player.center [1] - self.constants.player_position;
+    let max_visible_position = min_visible_position + self.constants.visible_length;
+    (min_visible_position, max_visible_position)
+  }
+  
   fn simulate (&mut self, duration: f64) {
+    let tick_start = self.now;
     self.now += duration;
     let now = self.now;
     let constants = self.constants.clone();
@@ -399,6 +457,13 @@ impl State {
       sky.screen_position [1] -= (sky.screen_position [1] - 0.7*self.constants.perspective.horizon_drop)*0.00003*duration;
     }
     
+    // hack: make the player start on the path even though the path isn't generated yet
+    if tick_start == 0.0 {
+      let (_min_visible_position, max_visible_position) = self.visible_range();
+      self.path.extend(max_visible_position, self.player.center [0], &mut self.generator, &constants);
+      self.player.center [0] = self.path.horizontal_center (self.player.center [1]);
+      self.companion.center [0] = self.path.horizontal_center (self.companion.center [1]);
+    }
     
     let movement_direction = if let Some(click) = self.last_click.as_ref() {click.location} else {Vector2::new (0.0, 1.0)};
     self.player.velocity = movement_direction*constants.player_max_speed/movement_direction.norm();
@@ -437,61 +502,14 @@ impl State {
     self.player.move_object (movement_vector);
     
     let player_center = self.player.center;
-    let min_visible_position = player_center [1] - constants.player_position;
-    let max_visible_position = min_visible_position + constants.visible_length;
+    let (min_visible_position, max_visible_position) = self.visible_range();
     
     self.spawn_mountains (advance_distance);
     self.mountains.retain (| mountain | {
       let distance = mountain.fake_peak_location [1] - player_center [1];
       distance > constants.mountain_spawn_distance - constants.mountain_viewable_distances_radius*2.0
     });
-    while self.path.components.last().unwrap().center [1] < max_visible_position {
-      let previous = self.path.components.last().unwrap().clone();
-      let distance = constants.visible_length/constants.visible_components as f64;
-      let mut new = Component {
-        center: previous.center + Vector2::new (distance*previous.velocity, distance),
-        velocity: previous.velocity + distance*previous.acceleration,
-        acceleration: previous.acceleration,
-      };
-      
-      let default_acceleration_change_radius = self.path.max_speed*216.0*distance;
-      let mut bias = - previous.velocity*36.0*distance;
-      // The path secretly follows the player if the player moves too far away,
-      // for both gameplay and symbolism reasons.
-      let player_offset = player_center [0] - previous.center [0];
-      if player_offset > 0.7 {
-        bias += (player_offset - 0.7)*self.path.max_speed*40.0*distance;
-      }
-      if player_offset < -0.7 {
-        bias += (player_offset + 0.7)*self.path.max_speed*40.0*distance;
-      }
-      
-      let limits_1 = [
-        previous.acceleration - default_acceleration_change_radius + bias,
-        previous.acceleration + default_acceleration_change_radius + bias,
-      ];
-      // It's forbidden to accelerate to higher than max speed.
-      // To keep things smooth, we never accelerate more than a fraction of the way to max speed at a time.
-      // TODO: make this formula less dependent on the component size
-      let limits_2 = [
-        (-self.path.max_speed - previous.velocity)*200.0,
-        (self.path.max_speed - previous.velocity)*200.0,
-      ];
-      let acceleration_limits = [
-        if limits_1 [0] > limits_2 [0] {limits_1 [0]} else {limits_2 [0]},
-        if limits_1 [1] < limits_2 [1] {limits_1 [1]} else {limits_2 [1]},
-      ];
-      
-      //println!("{:?}", (limits_1, limits_2, acceleration_limits));
-      if acceleration_limits[0] < acceleration_limits[1] {
-        new.acceleration = self.generator.gen_range (acceleration_limits [0], acceleration_limits [1]);
-      }
-      else {
-        new.acceleration = (acceleration_limits[0] + acceleration_limits[1]) /2.0;
-      }
-      
-      self.path.components.push (new);
-    }
+    self.path.extend(max_visible_position, self.player.center [0], &mut self.generator, &constants);
     self.path.components.retain (| component | component.center [1] >= min_visible_position - constants.visible_length/constants.visible_components as f64);
     
     self.do_spawns (advance_distance, constants.tree_density, || Object {kind: Kind::Tree, radius: 0.05, .. Default::default()});
@@ -840,8 +858,7 @@ impl State {
   }
   
   fn draw (&self, visible_radius: f64) {
-    let min_visible_position = self.player.center [1] - self.constants.player_position;
-    let max_visible_position = min_visible_position + self.constants.visible_length;
+    //let (min_visible_position, max_visible_position) = self.visible_range();
     
     js! {
       //$(document.body).text(@{self.objects.len() as u32});
