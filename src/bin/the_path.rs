@@ -311,7 +311,7 @@ impl Object {
               perpendicular_component_size = -perpendicular_component_size;
               perpendicular = -perpendicular;
             }
-            let mut adjustment_size = movement.norm()/3.0;
+            let mut adjustment_size = (movement.norm()/parts)*auto_constant("feet_perpendicular_adjustement_ratio", 0.4);
             if adjustment_size > perpendicular_component_size {adjustment_size = perpendicular_component_size;}
             person.feet [moving_foot] -= perpendicular * adjustment_size;
             if person.feet [moving_foot].norm() > limit && person.feet [moving_foot].dot (&movement) > 0.0 {
