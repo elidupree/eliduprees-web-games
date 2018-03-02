@@ -943,6 +943,8 @@ impl State {
       }
     }
     
+    let no_sky: bool = js! {return auto_constants.no_sky = auto_constants.no_sky || false}.try_into().unwrap();
+    if !no_sky {
     js! {
       //$(document.body).text(@{self.objects.len() as u32});
       window.visible_sky = new paper.Path.Rectangle ({point: [@{-visible_radius}, 0.0], size: [@{visible_radius*2.0},@{self.constants.perspective.horizon_drop}], insert: false, });
@@ -1002,6 +1004,7 @@ impl State {
         context.fillStyle = "rgba(255,255,255, 0.05)";
         context.fill(new Path2D(sky.intersect (visible_sky).pathData));
       }
+    }
     }
     
     js! {
