@@ -293,25 +293,31 @@ impl Object {
     self.center += movement;
     match self.kind {
       Kind::Person (ref mut person) => {
-        let planted_foot = person.planted_foot;
-        let moving_foot = 1 - planted_foot;
-        person.feet [moving_foot] += movement;
-        person.feet [planted_foot] -= movement;
+        // hack: subdivide movement to reduce error in foot switching
         let mut perpendicular = Vector2::new (movement [1], - movement [0]);
         let norm = perpendicular.norm();
         if norm != 0.0 {
           perpendicular /= norm;
-          let mut perpendicular_component_size = person.feet [moving_foot].dot(& perpendicular);
-          if perpendicular_component_size < 0.0 {
-            perpendicular_component_size = -perpendicular_component_size;
-            perpendicular = -perpendicular;
+          let limit = self.radius*auto_constant("feet_motion_limit", 0.8);
+          let parts = (movement.norm()*10.0/limit).ceil();
+          for _ in 0..parts as usize {
+            let planted_foot = person.planted_foot;
+            let moving_foot = 1 - planted_foot;
+            person.feet [moving_foot] += movement/parts;
+            person.feet [planted_foot] -= movement/parts;
+            
+            let mut perpendicular_component_size = person.feet [moving_foot].dot(& perpendicular);
+            if perpendicular_component_size < 0.0 {
+              perpendicular_component_size = -perpendicular_component_size;
+              perpendicular = -perpendicular;
+            }
+            let mut adjustment_size = movement.norm()/3.0;
+            if adjustment_size > perpendicular_component_size {adjustment_size = perpendicular_component_size;}
+            person.feet [moving_foot] -= perpendicular * adjustment_size;
+            if person.feet [moving_foot].norm() > limit && person.feet [moving_foot].dot (&movement) > 0.0 {
+              person.planted_foot = moving_foot;
+            }
           }
-          let mut adjustment_size = movement.norm()/3.0;
-          if adjustment_size > perpendicular_component_size {adjustment_size = perpendicular_component_size;}
-          person.feet [moving_foot] -= perpendicular * adjustment_size;
-        }
-        if person.feet [moving_foot].norm() > self.radius*0.8 && person.feet [moving_foot].dot (&movement) > 0.0 {
-          person.planted_foot = moving_foot;
         }
       },
       _=>(),
@@ -474,16 +480,16 @@ impl State {
     let movement_direction = if let Some(click) = self.last_click.as_ref() {click.location} else {Vector2::new (0.0, 1.0)};
     self.player.velocity = movement_direction*constants.player_max_speed/movement_direction.norm();
     
-    self.player.falling = self.player.falling.take().and_then (| mut fall | {
-      fall.progress += duration;
-      (fall.progress < constants.fall_duration).as_some (fall)
-    });
-    
-    
     if let Some(ref fall) = self.player.falling {
       let (velocity,_) = fall.info (& constants, self.player.velocity);
       self.player.velocity = velocity;
     }
+    
+    self.player.falling = self.player.falling.take().and_then (| mut fall | {
+      fall.progress += duration;
+      (fall.progress < constants.fall_duration).as_some (fall)
+    });
+
         
     let mut time_moved = duration;
     let mut collision = None;
@@ -1085,7 +1091,7 @@ fn main_loop (time: f64, game: Rc<RefCell<Game>>) {
     let mut game = game.borrow_mut();
     game.state.constants = Rc::new (js! {return window.constants;}.try_into().unwrap());
     let observed_duration = time - game.last_ui_time;
-    let duration_to_simulate = if observed_duration < 100.0 {observed_duration} else {100.0}/1000.0;
+    let duration_to_simulate = min(observed_duration, 50.0)/1000.0;
     game.last_ui_time = time;
     if duration_to_simulate > 0.0 {
       game.state.simulate (duration_to_simulate);
