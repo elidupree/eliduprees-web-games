@@ -175,6 +175,7 @@ struct Component {
 struct Click {
   location: Vector2,
   player_location: Vector2,
+  distance_traveled: f64,
   time: f64,
 }
 
@@ -194,6 +195,7 @@ struct State {
   temporary_pain_smoothed: f64,
   
   last_click: Option <Click>,
+  distance_traveled: f64,
   
   stars_collected: i32,
   
@@ -269,6 +271,8 @@ fn sigmoid01(input: f64)->f64 {
 
 fn min (first: f64, second: f64)->f64 {if first < second {first} else {second}}
 fn max (first: f64, second: f64)->f64 {if first > second {first} else {second}}
+
+fn as_ground (location: Vector2)->Vector3 {Vector3::new (location [0], location [1], 0.0)}
 
 
 impl Fall {
@@ -528,6 +532,7 @@ impl State {
     let advance_distance = movement_vector [1];
     
     self.player.move_object (movement_vector);
+    self.distance_traveled += movement_vector.norm();
     
     let player_center = self.player.center;
     let (min_visible_position, max_visible_position) = self.visible_range();
@@ -1076,22 +1081,36 @@ impl State {
     }
     
     if let Some(click) = self.last_click.as_ref() {
-      js! { context.beginPath(); }
-      {
-        let location = click.player_location;
-        move_to (self.draw_position (Vector3::new (location [0], location [1], 0.0)));
-      }
       let offset = click.location - click.player_location;
-      let increments = (offset.norm()*600.0).ceil();
-      for index in 0..increments as usize {
-        let location = click.player_location + offset*(index+1) as f64/increments;
-        line_to (self.draw_position (Vector3::new (location [0], location [1], 0.0)));
-      }
+      let forward = offset/offset.norm();
+      let perpendicular = Vector2::new (- forward[1], forward[0]);
+      let segment_length = auto_constant ("movement_segment_length", 0.025);
+      let segment_period = 2.0*segment_length;
+      let segment_radius = auto_constant ("movement_segment_radius ", 0.0025);
       
-      js! {
-        context.lineWidth = @{0.005};
-        context.strokeStyle = "rgb(255,255,255)";
-        context.stroke();
+      let initial_offset = -(click.distance_traveled % segment_period);
+      let segments = ((offset.norm() - initial_offset)/segment_period).ceil();
+
+      for index in 0..segments as usize {
+        let first = click.player_location + forward*(initial_offset + index as f64*segment_period);
+        let second = first + forward*segment_length;
+        js! { context.beginPath(); }
+        move_to (self.draw_position (as_ground (
+          first - perpendicular*segment_radius
+        )));
+        line_to (self.draw_position (as_ground (
+          first + perpendicular*segment_radius
+        )));
+        line_to (self.draw_position (as_ground (
+          second + perpendicular*segment_radius
+        )));
+        line_to (self.draw_position (as_ground (
+          second - perpendicular*segment_radius
+        )));
+        js! {
+          context.fillStyle = "rgb(255,255,255)";
+          context.fill();
+        }
       }
     }
     
@@ -1316,6 +1335,7 @@ fn main() {
       game.state.last_click = Some(Click {
         location: location,
         player_location: game.state.player.center,
+        distance_traveled: game.state.distance_traveled,
         time: game.state.now,
       });
     };
