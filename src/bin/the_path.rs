@@ -1301,12 +1301,12 @@ fn main() {
       let mut location = game.state.screen_to_ground (Vector2::new (x,y));
       let player_center = game.state.player.center;
       let mut offset = location - player_center;
-      if offset.dot(&offset) < 0.000001 {
-        return;
-      }
       let limit = auto_constant ("angle_limit", TURN/6.0);
       if offset [1] < 0.0 {
         offset = Rotation2::new (-limit*2.0*x)*Vector2::new (0.0, 0.3);
+      }
+      if offset.norm() < game.state.player.radius {
+        return;
       }
       let angle = (-offset [0]).atan2(offset[1]);
       if angle >  limit { offset = Rotation2::new ( limit - angle)*offset; }
