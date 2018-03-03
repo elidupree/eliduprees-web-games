@@ -1090,6 +1090,11 @@ impl State {
       
       let initial_offset = -(click.distance_traveled % segment_period);
       let segments = ((offset.norm() - initial_offset)/segment_period).ceil();
+      let age = self.now - click.time;
+      let fade_in = auto_constant ("movement_fade_in", 0.2);
+      let fade_out = auto_constant ("movement_fade_out", 0.2);
+      let alpha = if age < fade_in {age/fade_in} else {fade_out/(age - fade_in + fade_out)}*auto_constant ("movement_variable_alpha", 0.6) + auto_constant ("movement_fixed_alpha", 0.1);
+      let brightness = (255.0*auto_constant ("movement_brightness", 0.7)).ceil();
 
       for index in 0..segments as usize {
         let first = click.player_location + forward*(initial_offset + index as f64*segment_period);
@@ -1108,7 +1113,7 @@ impl State {
           second - perpendicular*segment_radius
         )));
         js! {
-          context.fillStyle = "rgb(255,255,255)";
+          context.fillStyle = "rgba("+@{brightness}+","+@{brightness}+","+@{brightness}+","+@{alpha}+")";
           context.fill();
         }
       }
