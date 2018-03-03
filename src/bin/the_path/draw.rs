@@ -383,17 +383,25 @@ impl State {
       let segment_period = 2.0*segment_length;
       let segment_radius = auto_constant ("movement_segment_radius ", 0.0025);
       
-      let initial_offset = -(click.distance_traveled % segment_period);
-      let segments = ((offset.norm() - initial_offset)/segment_period).ceil();
+      let initial_offset = - self.player.radius-(self.distance_traveled % segment_period);
+      
+      let min_offset = - self.player.radius -segment_period;
+      let max_offset = offset.norm() + segment_period - segment_length;
+      let segments = 1.0+((max_offset - initial_offset)/segment_period).floor();
+      
       let age = self.now - click.time;
       let fade_in = auto_constant ("movement_fade_in", 0.2);
       let fade_out = auto_constant ("movement_fade_out", 0.2);
-      let alpha = if age < fade_in {age/fade_in} else {fade_out/(age - fade_in + fade_out)}*auto_constant ("movement_variable_alpha", 0.6) + auto_constant ("movement_fixed_alpha", 0.1);
+      let alpha = if age < fade_in {age/fade_in} else {fade_out/(age - fade_in + fade_out)}*auto_constant ("movement_variable_alpha", 0.1) + auto_constant ("movement_fixed_alpha", 0.4);
       let brightness = (255.0*auto_constant ("movement_brightness", 0.7)).ceil();
 
       for index in 0..segments as usize {
-        let first = click.player_location + forward*(initial_offset + index as f64*segment_period);
+        let offset = initial_offset + index as f64*segment_period;
+        let first = self.player.center + forward*offset;
         let second = first + forward*segment_length;
+        let alpha = alpha * ((offset - min_offset)/(max_offset - min_offset)*(TURN/2.0)).sin().sqrt();
+        //if index == 0 {alpha *= 1.0 + initial_offset/segment_period;}
+        //if index+1 == segments as usize {alpha *= - initial_offset/segment_period;}
         js! { context.beginPath(); }
         move_to (self.draw_position (as_ground (
           first - perpendicular*segment_radius
