@@ -27,6 +27,7 @@ use std::str::FromStr;
 type Vector3 = nalgebra::Vector3 <f64>;
 type Rotation3 = nalgebra::Rotation3 <f64>;
 type Vector2 = nalgebra::Vector2 <f64>;
+type Rotation2 = nalgebra::Rotation2 <f64>;
 
 const TURN: f64 = ::std::f64::consts::PI*2.0;
 
@@ -228,6 +229,21 @@ impl CylindricalPerspective {
     let coordinates = self.coordinates_on_circle_relative_to_camera (fraction_of_visible);
     let coordinates0 = self.coordinates_on_circle_relative_to_camera (0.0);
     self.horizon_drop + (1.0 - self.horizon_drop)*coordinates [1].atan2(coordinates [0])/coordinates0 [1].atan2(coordinates0 [0])
+  }
+  
+  fn screen_drop_to_fraction_of_visible (&self, screen_drop: f64)->f64 {
+    let coordinates0 = self.coordinates_on_circle_relative_to_camera (0.0);
+    if screen_drop < self.horizon_drop {return 1.0;}
+    //let camera_angle = (screen_drop - self.horizon_drop)/(1.0 - self.horizon_drop)*coordinates0 [1].atan2(coordinates0 [0]);
+    //eh, forget figuring out the formulas, this is an infrequent operation
+    let mut min = 0.0;
+    let mut max = 1.0;
+    while max - min > 0.0001 {
+      let mid = (max + min)/2.0;
+      let test_drop = self.ground_screen_drop (mid);
+      if test_drop > screen_drop { min = mid; } else { max = mid; }
+    }
+    min
   }
 }
 
@@ -477,7 +493,7 @@ impl State {
       self.spawn_mountains (constants.mountain_viewable_distances_radius*2.0);
     }
     
-    let movement_direction = if let Some(click) = self.last_click.as_ref() {click.location} else {Vector2::new (0.0, 1.0)};
+    let movement_direction = if let Some(click) = self.last_click.as_ref() {click.location - click.player_location} else {Vector2::new (0.0, 1.0)};
     self.player.velocity = movement_direction*constants.player_max_speed/movement_direction.norm();
     
     if let Some(ref fall) = self.player.falling {
@@ -701,6 +717,15 @@ impl State {
     Vector2::new (
       horizontal_distance*scale,
       drop - location [2]*scale,
+    )
+  }
+  
+  fn screen_to_ground (&self, screen_coordinates: Vector2)->Vector2 {
+    let fraction_of_visible = self.constants.perspective.screen_drop_to_fraction_of_visible(screen_coordinates [1]);
+    let scale = self.constants.perspective.scale (fraction_of_visible);
+    Vector2::new (
+      screen_coordinates [0]/scale + self.player.center [0],
+      (fraction_of_visible*self.constants.visible_length) + self.player.center [1] - self.constants.player_position,
     )
   }
   
@@ -1050,6 +1075,19 @@ impl State {
       context.fill();
     }
     
+    if let Some(click) = self.last_click.as_ref() {
+      js! { context.beginPath(); }
+      let mut location = click.location;
+      move_to (self.draw_position (Vector3::new (location [0], location [1], 0.0)));
+      location = click.player_location;
+      line_to (self.draw_position (Vector3::new (location [0], location [1], 0.0)));
+      js! {
+        context.lineWidth = @{0.025};
+        context.strokeStyle = "rgb(255,255,255)";
+        context.stroke();
+      }
+    }
+    
     let mut objects: Vec<_> = self.objects.iter().collect();
     objects.push (&self.player);
     objects.push (&self.companion);
@@ -1253,8 +1291,23 @@ fn main() {
     let game = game.clone();
     let mousemove_callback = move |x: f64,y: f64 | {
       let mut game = game.borrow_mut();
+      let mut location = game.state.screen_to_ground (Vector2::new (x,y));
+      let player_center = game.state.player.center;
+      let mut offset = location - player_center;
+      if offset.dot(&offset) < 0.000001 {
+        return;
+      }
+      let limit = auto_constant ("angle_limit", TURN/6.0);
+      if offset [1] < 0.0 {
+        offset = Rotation2::new (-limit*2.0*x)*Vector2::new (0.0, 0.3);
+      }
+      let angle = (-offset [0]).atan2(offset[1]);
+      if angle >  limit { offset = Rotation2::new ( limit - angle)*offset; }
+      if angle < -limit { offset = Rotation2::new (-limit - angle)*offset; }
+      location = player_center + offset;
+      
       game.state.last_click = Some(Click {
-        location: Vector2::new (x - 0.5, 1.0 - y),
+        location: location,
         player_location: game.state.player.center,
         time: game.state.now,
       });
@@ -1264,7 +1317,7 @@ fn main() {
       canvas.addEventListener ("mousemove", function (event) {
         var offset = canvas.getBoundingClientRect();
         callback (
-          (event.clientX - offset.left)/offset.width,
+          ((event.clientX - offset.left)/offset.width-0.5)*offset.width/offset.height,
           (event.clientY - offset.top)/offset.height
         );
         event.preventDefault();
