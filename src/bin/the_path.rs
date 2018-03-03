@@ -1077,12 +1077,19 @@ impl State {
     
     if let Some(click) = self.last_click.as_ref() {
       js! { context.beginPath(); }
-      let mut location = click.location;
-      move_to (self.draw_position (Vector3::new (location [0], location [1], 0.0)));
-      location = click.player_location;
-      line_to (self.draw_position (Vector3::new (location [0], location [1], 0.0)));
+      {
+        let location = click.player_location;
+        move_to (self.draw_position (Vector3::new (location [0], location [1], 0.0)));
+      }
+      let offset = click.location - click.player_location;
+      let increments = (offset.norm()*600.0).ceil();
+      for index in 0..increments as usize {
+        let location = click.player_location + offset*(index+1) as f64/increments;
+        line_to (self.draw_position (Vector3::new (location [0], location [1], 0.0)));
+      }
+      
       js! {
-        context.lineWidth = @{0.025};
+        context.lineWidth = @{0.005};
         context.strokeStyle = "rgb(255,255,255)";
         context.stroke();
       }
