@@ -775,6 +775,30 @@ impl State {
           context.stroke(path);
         }
       },
+      Kind::Monster(_) => {
+        let eyeball_height = object.radius*auto_constant ("monster_eyeball_height", 1.7);
+        let eyeball_radius = object.radius*auto_constant ("monster_eyeball_radius", 1.0/3.0);
+        js! {
+          context.fillStyle = "rgb(255, 255, 255)";
+          context.strokeStyle = "rgb(0, 0, 0)";
+          context.lineWidth = @{scaled_radius}*0.04;
+        }
+        let directions = [- 1.0, 1.0];
+        for &direction in directions.iter() {
+          let eyeball_center = self.draw_position(Vector3::new (object.center [0] + (object.radius - eyeball_radius)*direction, object.center [1], eyeball_height));
+          js! {
+            context.beginPath();
+            context.arc (@{eyeball_center[0]}, @{eyeball_center[1]}, @{eyeball_radius*scale}, 0, turn, true);
+            context.fill(); context.stroke();
+          }
+        }
+        let vertical_scale = (self.draw_position (raw_position + Vector3::new (0.0, 0.0001, 0.0)) [1] - position [1])/0.0001;
+        js! {
+          context.fillStyle = "rgba(100, 100, 100, 0.5)";
+          var shape = new paper.Path.Ellipse ({center: [@{position [0]},@{position [1]}], radius: [@{scaled_radius},@{eyeball_radius*vertical_scale}], insert: false, });
+          context.fill(new Path2D(shape.pathData));
+        }
+      },
       Kind::Person (ref person) => {
         let mut rotation = 0.0;
         if let Some(ref fall) = object.falling {
