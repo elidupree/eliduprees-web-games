@@ -405,7 +405,8 @@ impl State {
         let offset = initial_offset + index as f64*segment_period;
         let first = self.player.center + forward*offset;
         let second = first + forward*segment_length;
-        let alpha = alpha * ((offset - min_offset)/(max_offset - min_offset)*(TURN/2.0)).sin().sqrt();
+        let sin = ((offset - min_offset)/(max_offset - min_offset)*(TURN/2.0)).sin();
+        let alpha = alpha * min(sin*max(1.5, segments*0.15), sin.sqrt());
         //if index == 0 {alpha *= 1.0 + initial_offset/segment_period;}
         //if index+1 == segments as usize {alpha *= - initial_offset/segment_period;}
         js! { context.beginPath(); }
