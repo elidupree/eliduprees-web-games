@@ -109,7 +109,7 @@ fn main() {
       mountain_viewable_distances_radius: 5.0,
       mountain_density: 0.10,
   
-      monster_density: 0.7,
+      monster_density: 0.5,
       tree_density: 5.0,
       chest_density: 1.5,
       reward_density: 1.5,
