@@ -395,8 +395,11 @@ impl State {
     self.path.extend(max_visible_position, self.player.center [0], &mut self.generator, &constants);
     self.path.components.retain (| component | component.center [1] >= min_visible_position - constants.visible_length/constants.visible_components as f64);
     
+    // hack: monsters pursuing the player means that it's disproportionately likely that the first thing you'll encounter is a monster. I want you to generally meet the other game mechanics before you meet monsters. So make monsters less frequent early on.
+    let monster_density = constants.monster_density * min(1.0, player_center[1]/(constants.visible_length*2.0));
+    
     self.do_spawns (advance_distance, constants.tree_density, || Object {kind: Kind::Tree, radius: 0.05, .. Default::default()});
-    self.do_spawns (advance_distance, constants.monster_density, || Object {kind: Kind::Monster (Monster {}), radius: 0.05, .. Default::default()});
+    self.do_spawns (advance_distance, monster_density, || Object {kind: Kind::Monster (Monster {}), radius: 0.05, .. Default::default()});
     self.do_spawns (advance_distance, constants.chest_density, || Object {kind: Kind::Chest, radius: 0.03, .. Default::default()});
     self.do_spawns (advance_distance, constants.reward_density, || Object {kind: Kind::Reward, radius: 0.03, .. Default::default()});
     
