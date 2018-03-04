@@ -300,6 +300,10 @@ impl State {
         window.visible_sky = window.visible_sky.subtract (mountain);
       }
     }
+    js! {
+      context.save();
+      context.clip(new Path2D(visible_sky.pathData));
+    }
     for sky in self.skies.iter() {
       let pos = sky.screen_position;
       js! {
@@ -327,9 +331,10 @@ impl State {
         var sky = new paper.Path({ segments: segments, insert: false });
         sky.closed = true;
         context.fillStyle = "rgba(255,255,255, 0.05)";
-        context.fill(new Path2D(sky.intersect (visible_sky).pathData));
+        context.fill(new Path2D(sky.pathData));
       }
     }
+      js! {context.restore();}
     }
     
     js! {
@@ -428,7 +433,7 @@ impl State {
     objects.sort_by_key (| object | OrderedFloat(-object.center [1]));
     for object in objects.iter() {self.draw_object (object, visible_radius, false) ;}
     
-    js!{ context.restore();}
+    if !no_sky {js!{ context.restore();}}
     
     self.draw_object (& self.player, visible_radius, true);
     self.draw_object (& self.companion, visible_radius, true);
