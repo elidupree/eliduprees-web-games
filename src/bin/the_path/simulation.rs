@@ -431,10 +431,27 @@ impl State {
       object.center += object.velocity*duration;
       match object.kind {
         Kind::Monster (ref mut monster) => {
-          object.velocity += random_vector_within_length (&mut self.generator, 0.1*duration);
-          if object.velocity.norm() > 0.1 {
-            object.velocity *= 0.5f64.powf (duration/1.0);
+          let mut speed_limit = 0.1;
+          let mut acceleration = random_vector_within_length (&mut self.generator, 0.1);
+          if object.center [1] > player_center [1] {
+            let player_attack_location = Vector2::new (player_center [0], object.center [1]/2.0 + player_center [1]/2.0);
+            let player_attack_vector = player_attack_location - object.center;
+            let angle = player_attack_vector [0].atan2(-player_attack_vector [1]);
+            if angle.abs() < TURN/5.0 && player_attack_vector.norm() <auto_constant ("monster_attack_range", 0.4) {
+              acceleration = player_attack_vector/player_attack_vector.norm()*0.8;
+            }
           }
+          
+          object.velocity += acceleration*duration;
+          if object.velocity.norm() > speed_limit {
+            object.velocity *= 0.5f64.powf (duration/0.1);
+          }
+          
+          // hack: monsters going backwards near the player kind of breaks the game mechanics.
+          // So make sure monsters are always going forwards once they get to the player,
+          // but try to smooth it out at least a bit.
+          let max_backwards = max(-0.01, (object.center [1] - (player_center [1]+0.01)));
+          object.velocity [1] = min (object.velocity [1], max_backwards);
         },
         _=>(),
       };
