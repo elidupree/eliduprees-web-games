@@ -225,7 +225,8 @@ fn main() {
       let mut offset = location - player_center;
       let limit = auto_constant ("angle_limit", TURN/6.0);
       if offset [1] < 0.0 {
-        offset = Rotation2::new (-limit*2.0*x)*Vector2::new (0.0, 0.3);
+        //offset = Rotation2::new (-limit*2.0*x)*Vector2::new (0.0, 0.3);
+        offset [1] *= -1.0;
       }
       if offset.norm() < game.state.player.radius {
         return;
