@@ -242,6 +242,9 @@ impl Path {
         bias += (player_offset + 0.7)*self.max_speed*40.0*distance;
       }
       
+      // can move faster to catch up
+      let hard_max = self.max_speed * max(1.0, min(2.5, player_offset.abs()));
+      
       let limits_1 = [
         previous.acceleration - default_acceleration_change_radius + bias,
         previous.acceleration + default_acceleration_change_radius + bias,
@@ -250,12 +253,12 @@ impl Path {
       // To keep things smooth, we never accelerate more than a fraction of the way to max speed at a time.
       // TODO: make this formula less dependent on the component size
       let limits_2 = [
-        (-self.max_speed - previous.velocity)*200.0,
-        (self.max_speed - previous.velocity)*200.0,
+        (-hard_max - previous.velocity)*200.0,
+        (hard_max - previous.velocity)*200.0,
       ];
       let acceleration_limits = [
-        if limits_1 [0] > limits_2 [0] {limits_1 [0]} else {limits_2 [0]},
-        if limits_1 [1] < limits_2 [1] {limits_1 [1]} else {limits_2 [1]},
+        max(limits_1 [0], limits_2 [0]),
+        min(limits_1 [1], limits_2 [1]),
       ];
       
       //println!("{:?}", (limits_1, limits_2, acceleration_limits));
