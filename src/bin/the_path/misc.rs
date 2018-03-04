@@ -114,10 +114,10 @@ pub fn as_ground (location: Vector2)->Vector3 {Vector3::new (location [0], locat
 
 impl Path {
   pub fn closest_components (&self, vertical_position: f64)->[Option <&Component>; 2] {
-    let lower = match self.components.binary_search_by_key (&OrderedFloat (vertical_position), | component | OrderedFloat (component.center [1])) {
+    let next = match self.components.binary_search_by_key (&OrderedFloat (vertical_position), | component | OrderedFloat (component.center [1])) {
       Ok(i)=>i, Err(i)=>i,
     };
-    [self.components.get (lower), self.components.get (lower + 1)]
+    [self.components.get (next.wrapping_sub (1)), self.components.get (next)]
   }
   
   pub fn horizontal_center (&self, vertical_position: f64)->f64 {
