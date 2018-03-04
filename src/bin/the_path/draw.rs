@@ -6,6 +6,13 @@ use ordered_float::OrderedFloat;
 
 impl State {
   pub fn draw_object (&self, object: & Object, visible_radius: f64, speech_layer: bool) {
+    let raw_position = as_ground(object.center);
+    let position = self.draw_position (raw_position);
+    let scale = self.draw_scale (raw_position);
+    let scaled_radius = scale*object.radius;
+    
+    if !speech_layer && position[0].abs() > visible_radius + scaled_radius*1.2 { return; }
+    
     let mut alpha = (self.player.center [1] + self.constants.spawn_distance - object.center [1])/self.constants.fadein_distance;
     if alpha < 0.0 {alpha = 0.0;}
     if alpha > 1.0 {alpha = 1.0;}
@@ -13,14 +20,7 @@ impl State {
       context.save(); 
       context.globalAlpha = @{alpha*(1.0 - object.collect_progress)};
     }
-    let raw_position = Vector3::new (
-      object.center [0],
-      object.center [1],
-      0.0,
-    );
-    let scale = self.draw_scale (raw_position);
-    let scaled_radius = scale*object.radius;
-    let position = self.draw_position (raw_position);
+    
     match object.kind {
       Kind::Tree => {
         js! {
@@ -256,6 +256,7 @@ impl State {
     //let (min_visible_position, max_visible_position) = self.visible_range();
     
     let temporary_pain_radius = self.pain_radius (self.temporary_pain_smoothed);
+    let actually_visible_radius = temporary_pain_radius*visible_radius*2.0;
     
     let permanent_pain_speed = (self.permanent_pain_smoothed - self.permanent_pain).abs();
     if permanent_pain_speed > auto_constant ("permanent_pain_threshold", 0.0001) {
@@ -274,7 +275,7 @@ impl State {
       //$(document.body).text(@{self.objects.len() as u32});
       window.visible_sky = new paper.Path.Rectangle ({point: [@{-visible_radius}, 0.0], size: [@{visible_radius*2.0},@{self.constants.perspective.horizon_drop}], insert: false, });
       
-      window.temporary_pain_ellipse = new paper.Path.Ellipse ({center: [0.0, 0.5], radius: [@{temporary_pain_radius*visible_radius*2.0},@{temporary_pain_radius}], insert: false, });
+      window.temporary_pain_ellipse = new paper.Path.Ellipse ({center: [0.0, 0.5], radius: [@{actually_visible_radius},@{temporary_pain_radius}], insert: false, });
       
       context.save();
       context.clip(new Path2D(temporary_pain_ellipse.pathData));
@@ -284,8 +285,8 @@ impl State {
     for mountain in self.mountains.iter() {
       let screen_peak = self.mountain_screen_peak (& mountain);
       let visible_base_radius = mountain.base_screen_radius*(self.constants.perspective.horizon_drop - screen_peak [1])/mountain.fake_peak_location [2];
-      if screen_peak [0] + visible_base_radius < -visible_radius ||
-         screen_peak [0] - visible_base_radius > visible_radius {continue;}
+      if screen_peak [0] + visible_base_radius < -actually_visible_radius ||
+         screen_peak [0] - visible_base_radius > actually_visible_radius {continue;}
       js! {
         var pos = [@{screen_peak[0]}, @{screen_peak[1]}];
         var height =@{mountain.fake_peak_location [2]};
@@ -431,7 +432,7 @@ impl State {
     objects.push (&self.player);
     objects.push (&self.companion);
     objects.sort_by_key (| object | OrderedFloat(-object.center [1]));
-    for object in objects.iter() {self.draw_object (object, visible_radius, false) ;}
+    for object in objects.iter() {self.draw_object (object, actually_visible_radius, false) ;}
     
     if !no_sky {js!{ context.restore();}}
     
