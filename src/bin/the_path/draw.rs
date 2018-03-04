@@ -249,7 +249,7 @@ impl State {
     let fraction = 0.5 - pain.atan()/(TURN/2.0);
     // allow it to go a bit outside the boundaries of the screen,
     // don't allow it to reduce to a 0 size
-    0.2 + fraction*0.4
+    0.1 + fraction*0.5
   }
   
   pub fn draw (&self, visible_radius: f64) {
