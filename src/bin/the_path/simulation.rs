@@ -477,11 +477,11 @@ impl State {
     if let Some(index) = collision {
       {
       let object = &mut self.objects [index];
+      let center_distance = self.player.center [0] - object.center [0];
+      let direction = if center_distance <0.0 {- 1.0} else {1.0};
+      let minimal_escape_distance = (self.player.radius + object.radius) *direction - center_distance;
       match object.kind {
         Kind::Tree => {
-          let center_distance = self.player.center [0] - object.center [0];
-          let direction = if center_distance <0.0 {- 1.0} else {1.0};
-          let minimal_escape_distance = (self.player.radius + object.radius) *direction - center_distance;
           self.player.falling = Some(Fall {
             distance: minimal_escape_distance + self.player.radius*0.25 *direction,
             progress: 0.0,
@@ -522,6 +522,10 @@ impl State {
         Kind::Monster(_) => {
           self.permanent_pain += 0.22;
           self.temporary_pain += 1.4;
+          self.player.falling = Some(Fall {
+            distance: minimal_escape_distance + self.player.radius*2.25 *direction,
+            progress: 0.0,
+          });
           self.player.statements.push (Statement {
             text: String::from_str ("Ow, it hurts!").unwrap(),
             start_time: now,
