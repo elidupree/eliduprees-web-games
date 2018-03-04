@@ -49,18 +49,28 @@ impl State {
       Kind::Monster(_) => {
         let eyeball_height = object.radius*auto_constant ("monster_eyeball_height", 1.7);
         let eyeball_radius = object.radius*auto_constant ("monster_eyeball_radius", 1.0/3.0);
-        js! {
-          context.fillStyle = "rgb(255, 255, 255)";
-          context.strokeStyle = "rgb(0, 0, 0)";
-          context.lineWidth = @{scaled_radius}*0.04;
-        }
         let directions = [- 1.0, 1.0];
         for &direction in directions.iter() {
-          let eyeball_center = self.draw_position(Vector3::new (object.center [0] + (object.radius - eyeball_radius)*direction, object.center [1], eyeball_height));
+          let raw_eyeball_center = Vector3::new (object.center [0] + (object.radius - eyeball_radius)*direction, object.center [1], eyeball_height);
+          let eyeball_center = self.draw_position(raw_eyeball_center);
           js! {
+            context.fillStyle = "rgb(255, 255, 255)";
+            context.strokeStyle = "rgb(0, 0, 0)";
+            context.lineWidth = @{scaled_radius}*0.04;
             context.beginPath();
             context.arc (@{eyeball_center[0]}, @{eyeball_center[1]}, @{eyeball_radius*scale}, 0, turn, true);
             context.fill(); context.stroke();
+          }
+          if object.velocity [1] < 0.0 {
+            let pupil_offset = as_ground (object.velocity/object.velocity.norm()*eyeball_radius);
+            let pupil_center = self.draw_position(raw_eyeball_center + pupil_offset);
+            let pupil_radius = eyeball_radius*auto_constant ("monster_pupil_radius", 1.0/3.0);
+            js! {
+              context.fillStyle = "rgb(0, 0, 0)";
+              context.beginPath();
+              context.arc (@{pupil_center[0]}, @{pupil_center[1]}, @{pupil_radius*scale}, 0, turn, true);
+              context.fill();
+            }
           }
         }
         let vertical_scale = (self.draw_position (raw_position + Vector3::new (0.0, 0.0001, 0.0)) [1] - position [1])/0.0001;

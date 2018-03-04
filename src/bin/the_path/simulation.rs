@@ -456,7 +456,7 @@ impl State {
           // hack: monsters going backwards near the player kind of breaks the game mechanics.
           // So make sure monsters are always going forwards once they get to the player,
           // but try to smooth it out at least a bit.
-          let max_backwards = max(-0.01, (object.center [1] - (player_center [1]+0.01)));
+          let max_backwards = max(-0.01, object.center [1] - (player_center [1]+0.01));
           object.velocity [1] = min (object.velocity [1], max_backwards);
         },
         _=>(),
