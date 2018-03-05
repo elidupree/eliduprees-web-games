@@ -13,9 +13,7 @@ impl State {
     
     if !speech_layer && position[0].abs() > visible_radius + scaled_radius*1.2 { return; }
     
-    let mut alpha = (self.player.center [1] + self.constants.spawn_distance - object.center [1])/self.constants.fadein_distance;
-    if alpha < 0.0 {alpha = 0.0;}
-    if alpha > 1.0 {alpha = 1.0;}
+    let alpha = max (0.0, min (1.0, (self.player.center [1] + self.constants.spawn_distance - object.center [1])/self.constants.fadein_distance)) * (1.0 - object.creation_progress);
     js! {
       context.save(); 
       context.globalAlpha = @{alpha*(1.0 - object.collect_progress)};

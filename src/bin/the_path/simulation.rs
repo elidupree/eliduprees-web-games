@@ -6,36 +6,67 @@ use boolinator::Boolinator;
 use std::rc::Rc;
 use std::cell::Cell;
 use std::str::FromStr;
-
-#[derive (Debug, Default, Deserialize)]
+    
+pub const VISIBLE_LENGTH: f64 = 2.4;   
+pub const WIDTH_AT_CLOSEST: f64 = 0.5;
+#[derive (Serialize, Deserialize, Debug, Derivative)]
+#[derivative (Default)]
 pub struct Constants {
+  #[derivative (Default (value = "1200"))]
   pub visible_components: i32,
+  #[derivative (Default (value = "VISIBLE_LENGTH"))]
   pub visible_length: f64,
+  #[derivative (Default (value = "CylindricalPerspective {
+        width_at_closest: WIDTH_AT_CLOSEST,
+        camera_distance_along_tangent: 0.11,
+        radians_visible: 0.1,
+        horizon_drop: 0.36,
+      }"))]
   pub perspective: CylindricalPerspective,
   
+  #[derivative (Default (value = "0.16"))]
   pub player_position: f64,
+  #[derivative (Default (value = "0.1"))]
   pub player_max_speed: f64,
   
+  #[derivative (Default (value = "WIDTH_AT_CLOSEST*0.5 + VISIBLE_LENGTH*2.0"))]
   pub spawn_radius: f64,
+  #[derivative (Default (value = "VISIBLE_LENGTH*0.8"))]
   pub spawn_distance: f64,
   
+  #[derivative (Default (value = "35.0"))]
   pub mountain_spawn_radius: f64,
+  #[derivative (Default (value = "35.0"))]
   pub mountain_spawn_distance: f64,
+  #[derivative (Default (value = "5.0"))]
   pub mountain_viewable_distances_radius: f64,
+  #[derivative (Default (value = "0.10"))]
   pub mountain_density: f64,
   
+  #[derivative (Default (value = "0.5"))]
   pub monster_density: f64,
+  #[derivative (Default (value = "5.0"))]
   pub tree_density: f64,
+  #[derivative (Default (value = "1.5"))]
   pub chest_density: f64,
+  #[derivative (Default (value = "1.5"))]
   pub reward_density: f64,
   
+  #[derivative (Default (value = "VISIBLE_LENGTH*0.2"))]
   pub fadein_distance: f64,
   
+  #[derivative (Default (value = "0.25"))]
   pub speech_fade_duration: f64,
+  #[derivative (Default (value = "3.5"))]
   pub speech_duration: f64,
   
+  #[derivative (Default (value = "3.2"))]
   pub fall_duration: f64,
+  
+  #[derivative (Default (value = "0.7"))]
+  pub chest_open_duration: f64,
 }
+js_serializable! (Constants);
 js_deserializable! (Constants);
 
 #[derive (Debug)]
@@ -60,6 +91,7 @@ pub struct Object {
   pub last_statement_start_time: Option <f64>,
   pub falling: Option <Fall>,
   pub collect_progress: f64,
+  pub creation_progress: f64,
   
   pub automatic_statements: Vec<AutomaticStatement>,
   #[derivative (Default (value = "Kind::Tree"))]
@@ -439,6 +471,11 @@ impl State {
     
     for object in self.objects.iter_mut() {
       object.center += object.velocity*duration;
+      if object.creation_progress > 0.0 {
+        object.creation_progress = max (0.0, object.creation_progress - duration/constants.chest_open_duration);
+        continue;
+      }
+      
       match object.kind {
         Kind::Monster (ref mut monster) => if monster.attack_progress == 0.0 || monster.attack_progress >= 1.0 {
           let mut speed_limit = 0.1;
@@ -492,6 +529,7 @@ impl State {
     self.companion.move_object (companion_movement_vector);
     let companion_center = self.companion.center;
     
+    let mut created_objects = Vec::new() ;
     if let Some(index) = collision {
       {
       let object = &mut self.objects [index];
@@ -523,19 +561,27 @@ impl State {
             });
           }
           object.collect_progress += duration*0.7;
-          
         },
         Kind::Chest => {
           if object.collect_progress == 0.0 {
-            //self.permanent_pain -= 0.05;
             self.player.statements.push (Statement {
               text: String::from_str ("What's inside?").unwrap(),
               start_time: now,
               response: None,
               direction: Cell::new (-1.0),
             });
+            let mut new_object = if self.generator.gen::<f64>() < 0.25 {
+              Object {kind: Kind::Monster (Monster {attack_progress: 0.0, attack_direction: 0.0, eye_direction: Vector2::new (0.0, -1.0)}), radius: 0.05, .. Default::default()}
+            }
+            else {
+              Object {kind: Kind::Reward, radius: 0.03, .. Default::default()}
+            };
+            new_object.creation_progress = 1.0;
+            new_object.center = object.center;
+            new_object.center [1] += 0.0001;
+            created_objects.push (new_object);
           }
-          object.collect_progress += duration*1.5;
+          object.collect_progress += duration/constants.chest_open_duration;
         },
         Kind::Monster(ref mut monster) => {
           self.permanent_pain += 0.22;
@@ -564,6 +610,7 @@ impl State {
     self.objects.retain (| object | {
       object.center [1] > player_center[1] - 0.5
     });
+    self.objects.extend (created_objects);
     
     self.permanent_pain_smoothed = self.permanent_pain +
       (self.permanent_pain_smoothed - self.permanent_pain) * 0.5f64.powf(duration/auto_constant ("permanent_pain_smoothed_halflife", 0.7));
