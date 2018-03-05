@@ -469,9 +469,6 @@ impl State {
           object.velocity [1] = min (object.velocity [1], max_backwards);
         } else {
           monster.attack_progress += duration/auto_constant ("monster_attack_duration", 0.12);
-          let player_offset = player_center - object.center;
-          monster.eye_direction += safe_normalize (player_offset)*duration*auto_constant ("monster_player_hit_focus_factor", 25.0);
-          monster.eye_direction = safe_normalize (monster.eye_direction);
         },
         _=>(),
       };
@@ -546,7 +543,7 @@ impl State {
           monster.attack_direction = direction;
           object.velocity = Vector2::new (0.0, 0.0);
           self.player.falling = Some(Fall {
-            distance: minimal_escape_distance + self.player.radius*2.25 *direction,
+            distance: self.player.radius*0.25 *direction, // minimal_escape_distance + self.player.radius*2.25 *direction,
             progress: 0.0,
           });
           self.player.statements.push (Statement {
