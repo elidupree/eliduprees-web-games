@@ -64,12 +64,17 @@ impl State {
           }
           let pupil_offset = as_ground (monster.eye_direction*eyeball_radius);
           let pupil_center = self.draw_position(raw_eyeball_center + pupil_offset);
+          let pupil_visual_offset = pupil_center - eyeball_center;
           let pupil_radius = eyeball_radius*auto_constant ("monster_pupil_radius", 1.0/3.0);
           js! {
             context.fillStyle = "rgb(0, 0, 0)";
+            context.strokeStyle = "rgb(0, 0, 0)";
+            context.lineWidth = @{pupil_radius*scale}*0.1;
             context.beginPath();
-            context.arc (@{pupil_center[0]}, @{pupil_center[1]}, @{pupil_radius*scale}, 0, turn, true);
-            context.fill();
+            var shape = new paper.Path.Ellipse ({center: [@{pupil_center [0]},@{pupil_center [1]}], radius: [@{pupil_radius*scale*(monster.eye_direction[1].abs()+0.00001)},@{pupil_radius*scale}], insert: false, });
+            shape.rotate (@{pupil_visual_offset [1].atan2(pupil_visual_offset [0])*360.0/TURN });
+            var path = new Path2D(shape.pathData);
+            context.fill(path); context.stroke(path);
           }
         }
         let vertical_scale = (self.draw_position (raw_position + Vector3::new (0.0, 0.0001, 0.0)) [1] - position [1])/0.0001;
