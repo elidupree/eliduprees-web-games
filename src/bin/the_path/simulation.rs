@@ -63,7 +63,7 @@ pub struct Constants {
   #[derivative (Default (value = "3.2"))]
   pub fall_duration: f64,
   
-  #[derivative (Default (value = "0.7"))]
+  #[derivative (Default (value = "1.2"))]
   pub chest_open_duration: f64,
 }
 js_serializable! (Constants);
