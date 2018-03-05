@@ -85,42 +85,7 @@ fn main() {
     
     paper.setup ([640, 480]);
     
-    var width_at_closest = 0.5;
-    var visible_length = 2.4;
-    
-    window.constants = {
-      visible_components: 1200,
-      visible_length: visible_length,
-      perspective: {
-        width_at_closest: width_at_closest,
-        camera_distance_along_tangent: 0.11,
-        radians_visible: 0.1,
-        horizon_drop: 0.36,
-      },
-  
-      player_position: 0.16,
-      player_max_speed: 0.1,
-      
-      spawn_radius: width_at_closest*0.5 + visible_length * 2.0,
-      spawn_distance: visible_length*0.8,
-      
-      mountain_spawn_radius: 35.0,
-      mountain_spawn_distance: 35.0,
-      mountain_viewable_distances_radius: 5.0,
-      mountain_density: 0.10,
-  
-      monster_density: 0.5,
-      tree_density: 5.0,
-      chest_density: 1.5,
-      reward_density: 1.5,
-      
-      fadein_distance: visible_length*0.2,
-        
-      speech_fade_duration: 0.25,
-      speech_duration: 3.5,
-      
-      fall_duration: 3.2,
-    };
+    window.constants = @{Constants::default()};
     window.auto_constants = {};
   }
   

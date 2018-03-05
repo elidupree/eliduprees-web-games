@@ -43,7 +43,7 @@ pub fn auto_constant (name: & str, default: f64)->f64 {
   }).try_into().unwrap()
 }
 
-#[derive (Debug, Default, Deserialize)]
+#[derive (Debug, Default, Serialize, Deserialize)]
 pub struct CylindricalPerspective {
   pub width_at_closest: f64,
   pub camera_distance_along_tangent: f64,
