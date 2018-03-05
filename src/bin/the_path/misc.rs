@@ -152,6 +152,10 @@ pub fn sigmoid01(input: f64)->f64 {
 
 pub fn min (first: f64, second: f64)->f64 {if first < second {first} else {second}}
 pub fn max (first: f64, second: f64)->f64 {if first > second {first} else {second}}
+pub fn safe_normalize (vector: Vector2)->Vector2 {
+  let norm = vector.norm();
+  if norm == 0.0 {vector} else {vector/norm}
+}
 
 pub fn as_ground (location: Vector2)->Vector3 {Vector3::new (location [0], location [1], 0.0)}
 

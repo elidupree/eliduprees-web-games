@@ -62,16 +62,14 @@ impl State {
             context.arc (@{eyeball_center[0]}, @{eyeball_center[1]}, @{eyeball_radius*scale}, 0, turn, true);
             context.fill(); context.stroke();
           }
-          if object.velocity [1] < 0.0 {
-            let pupil_offset = as_ground (object.velocity/object.velocity.norm()*eyeball_radius);
-            let pupil_center = self.draw_position(raw_eyeball_center + pupil_offset);
-            let pupil_radius = eyeball_radius*auto_constant ("monster_pupil_radius", 1.0/3.0);
-            js! {
-              context.fillStyle = "rgb(0, 0, 0)";
-              context.beginPath();
-              context.arc (@{pupil_center[0]}, @{pupil_center[1]}, @{pupil_radius*scale}, 0, turn, true);
-              context.fill();
-            }
+          let pupil_offset = as_ground (monster.eye_direction*eyeball_radius);
+          let pupil_center = self.draw_position(raw_eyeball_center + pupil_offset);
+          let pupil_radius = eyeball_radius*auto_constant ("monster_pupil_radius", 1.0/3.0);
+          js! {
+            context.fillStyle = "rgb(0, 0, 0)";
+            context.beginPath();
+            context.arc (@{pupil_center[0]}, @{pupil_center[1]}, @{pupil_radius*scale}, 0, turn, true);
+            context.fill();
           }
         }
         let vertical_scale = (self.draw_position (raw_position + Vector3::new (0.0, 0.0001, 0.0)) [1] - position [1])/0.0001;

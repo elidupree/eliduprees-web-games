@@ -90,6 +90,7 @@ pub enum Kind {
 pub struct Monster {
   pub attack_progress: f64,
   pub attack_direction: f64,
+  pub eye_direction: Vector2,
 }
 #[derive (Debug)]
 pub struct Person {
@@ -404,7 +405,7 @@ impl State {
     let monster_density = constants.monster_density * min(1.0, player_center[1]/(constants.visible_length*2.0));
     
     self.do_spawns (advance_distance, constants.tree_density, || Object {kind: Kind::Tree, radius: 0.05, .. Default::default()});
-    self.do_spawns (advance_distance, monster_density, || Object {kind: Kind::Monster (Monster {attack_progress: 0.0, attack_direction: 0.0,}), radius: 0.05, .. Default::default()});
+    self.do_spawns (advance_distance, monster_density, || Object {kind: Kind::Monster (Monster {attack_progress: 0.0, attack_direction: 0.0, eye_direction: Vector2::new (0.0, 0.0)}), radius: 0.05, .. Default::default()});
     self.do_spawns (advance_distance, constants.chest_density, || Object {kind: Kind::Chest, radius: 0.03, .. Default::default()});
     self.do_spawns (advance_distance, constants.reward_density, || Object {kind: Kind::Reward, radius: 0.03, .. Default::default()});
     
@@ -441,12 +442,18 @@ impl State {
         Kind::Monster (ref mut monster) => if monster.attack_progress == 0.0 || monster.attack_progress >= 1.0 {
           let mut speed_limit = 0.1;
           let mut acceleration = random_vector_within_length (&mut self.generator, 0.1);
+          monster.eye_direction += safe_normalize (object.velocity)*duration;
+          monster.eye_direction = safe_normalize (monster.eye_direction);
           if object.center [1] > player_center [1] {
             let player_attack_location = Vector2::new (player_center [0], object.center [1]/2.0 + player_center [1]/2.0);
             let player_attack_vector = player_attack_location - object.center;
             let angle = player_attack_vector [0].atan2(-player_attack_vector [1]);
             if angle.abs() < TURN/5.0 && player_attack_vector.norm() <auto_constant ("monster_attack_range", 0.4) {
-              acceleration = player_attack_vector/player_attack_vector.norm()*0.8;
+              acceleration = safe_normalize (player_attack_vector)*0.8;
+              
+              let player_offset = player_center - object.center;
+              monster.eye_direction += safe_normalize (player_offset)*duration*auto_constant ("monster_player_eye_focus_factor", 15.0);
+              monster.eye_direction = safe_normalize (monster.eye_direction);
             }
           }
           
@@ -462,6 +469,9 @@ impl State {
           object.velocity [1] = min (object.velocity [1], max_backwards);
         } else {
           monster.attack_progress += duration/auto_constant ("monster_attack_duration", 0.12);
+          let player_offset = player_center - object.center;
+          monster.eye_direction += safe_normalize (player_offset)*duration*auto_constant ("monster_player_hit_focus_factor", 25.0);
+          monster.eye_direction = safe_normalize (monster.eye_direction);
         },
         _=>(),
       };
