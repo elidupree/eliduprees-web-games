@@ -570,8 +570,8 @@ impl State {
               response: None,
               direction: Cell::new (-1.0),
             });
-            let mut new_object = if self.generator.gen::<f64>() < 0.25 {
-              Object {kind: Kind::Monster (Monster {attack_progress: 0.0, attack_direction: 0.0, eye_direction: Vector2::new (0.0, -1.0)}), radius: 0.05, .. Default::default()}
+            let mut new_object = if self.generator.gen::<f64>() < auto_constant ("chest_monster_frequency", 0.25) {
+              Object {kind: Kind::Monster (Monster {attack_progress: 0.0, attack_direction: 0.0, eye_direction: safe_normalize (Vector2::new (center_distance/(self.player.radius + object.radius)*2.0, -1.0))}), radius: 0.05, .. Default::default()}
             }
             else {
               Object {kind: Kind::Reward, radius: 0.03, .. Default::default()}
