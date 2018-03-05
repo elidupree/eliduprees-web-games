@@ -370,6 +370,7 @@ impl State {
     let mut time_moved = duration;
     let mut collision = None;
     for (index, object) in self.objects.iter().enumerate() {
+      if match object.kind { Kind::Monster (Monster {attack_progress,..}) if attack_progress >0.0 => true,_=> false} {continue;}
       let relative_velocity = object.velocity - self.player.velocity;
       let relative_location = object.center - self.player.center;
       if relative_velocity [1] < 0.0 && relative_location [1] > 0.0 {
