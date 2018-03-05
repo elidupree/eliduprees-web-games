@@ -194,7 +194,7 @@ impl State {
         return context.measureText (@{&statement.text}).width;
       }.try_into().unwrap();
       
-      let padding = max(text_height/2.0, text_width/13.0);
+      let padding = max(text_height/1.8, text_width/20.0);
       let bubble_left = -padding;
       let bubble_right = text_width + padding;
       let bubble_bottom = auto_constant ("bubble_bottom", -0.016) * big_factor;
