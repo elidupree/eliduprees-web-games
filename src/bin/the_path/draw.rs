@@ -47,11 +47,12 @@ impl State {
         }
       },
       Kind::Monster(ref monster) => {
-        let eyeball_height = object.radius*auto_constant ("monster_eyeball_height", 1.7);
-        let eyeball_radius = object.radius*auto_constant ("monster_eyeball_radius", 1.0/3.0);
+        let eyeball_height = object.radius*auto_constant ("monster_eyeball_height", 1.3);
+        let eyeball_radius = object.radius*auto_constant ("monster_eyeball_radius", 0.27);
+        let eyeball_pinching = object.radius*auto_constant ("monster_eyeball_pinching", 0.22);
         let directions = [- 1.0, 1.0];
         for &direction in directions.iter() {
-          let raw_eyeball_center = Vector3::new (object.center [0] + (object.radius - eyeball_radius)*direction, object.center [1], eyeball_height);
+          let raw_eyeball_center = Vector3::new (object.center [0] + (object.radius - eyeball_radius - eyeball_pinching)*direction, object.center [1], eyeball_height);
           let eyeball_center = self.draw_position(raw_eyeball_center);
           js! {
             context.fillStyle = "rgb(255, 255, 255)";
