@@ -46,7 +46,7 @@ impl State {
           context.stroke(path);
         }
       },
-      Kind::Monster(_) => {
+      Kind::Monster(ref monster) => {
         let eyeball_height = object.radius*auto_constant ("monster_eyeball_height", 1.7);
         let eyeball_radius = object.radius*auto_constant ("monster_eyeball_radius", 1.0/3.0);
         let directions = [- 1.0, 1.0];
@@ -78,6 +78,30 @@ impl State {
           context.fillStyle = "rgba(100, 100, 100, 0.5)";
           var shape = new paper.Path.Ellipse ({center: [@{position [0]},@{position [1]}], radius: [@{scaled_radius},@{eyeball_radius*vertical_scale}], insert: false, });
           context.fill(new Path2D(shape.pathData));
+        }
+        
+        if monster.attack_progress >0.0 && monster.attack_progress <1.0 {
+          let claw_direction = Vector3::new (-1.0*monster.attack_direction, 0.0, 0.3)*object.radius*1.2;
+          let claws_center = raw_position + Vector3::new (0.0, 0.0, eyeball_height/2.0) + claw_direction*(1.0 - monster.attack_progress*2.0);
+          let claw_crosswise = Vector3::new (0.06*monster.attack_direction, 0.0, 0.2)*object.radius;
+          for index in -1..2 {
+            let center = claws_center + claw_crosswise*index as f64*2.0;
+            let tip_offset = claw_direction*0.5;
+            let tips = (center - tip_offset, center + tip_offset);
+            let sides = (center - claw_crosswise, center + claw_crosswise);
+            js! {
+              context.fillStyle = "rgb(255, 255, 255)";
+              context.strokeStyle = "rgb(0, 0, 0)";
+              context.lineWidth = @{scaled_radius}*0.04;
+              context.beginPath();
+            }
+            move_to (self.draw_position(tips.0));
+            quadratic_curve (self.draw_position(sides.0), self.draw_position(tips.1)) ;
+            quadratic_curve (self.draw_position(sides.1), self.draw_position(tips.0)) ;
+            js! {
+              context.fill(); context.stroke();
+            }
+          }
         }
       },
       Kind::Person (ref person) => {

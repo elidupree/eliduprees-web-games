@@ -88,6 +88,8 @@ pub enum Kind {
 }
 #[derive (Debug)]
 pub struct Monster {
+  pub attack_progress: f64,
+  pub attack_direction: f64,
 }
 #[derive (Debug)]
 pub struct Person {
@@ -402,7 +404,7 @@ impl State {
     let monster_density = constants.monster_density * min(1.0, player_center[1]/(constants.visible_length*2.0));
     
     self.do_spawns (advance_distance, constants.tree_density, || Object {kind: Kind::Tree, radius: 0.05, .. Default::default()});
-    self.do_spawns (advance_distance, monster_density, || Object {kind: Kind::Monster (Monster {}), radius: 0.05, .. Default::default()});
+    self.do_spawns (advance_distance, monster_density, || Object {kind: Kind::Monster (Monster {attack_progress: 0.0, attack_direction: 0.0,}), radius: 0.05, .. Default::default()});
     self.do_spawns (advance_distance, constants.chest_density, || Object {kind: Kind::Chest, radius: 0.03, .. Default::default()});
     self.do_spawns (advance_distance, constants.reward_density, || Object {kind: Kind::Reward, radius: 0.03, .. Default::default()});
     
@@ -436,7 +438,7 @@ impl State {
     for object in self.objects.iter_mut() {
       object.center += object.velocity*duration;
       match object.kind {
-        Kind::Monster (ref mut monster) => {
+        Kind::Monster (ref mut monster) => if monster.attack_progress == 0.0 || monster.attack_progress >= 1.0 {
           let mut speed_limit = 0.1;
           let mut acceleration = random_vector_within_length (&mut self.generator, 0.1);
           if object.center [1] > player_center [1] {
@@ -458,6 +460,8 @@ impl State {
           // but try to smooth it out at least a bit.
           let max_backwards = max(-0.01, object.center [1] - (player_center [1]+0.01));
           object.velocity [1] = min (object.velocity [1], max_backwards);
+        } else {
+          monster.attack_progress += duration/auto_constant ("monster_attack_duration", 0.12);
         },
         _=>(),
       };
@@ -525,9 +529,12 @@ impl State {
           }
           object.collect_progress += duration*1.5;
         },
-        Kind::Monster(_) => {
+        Kind::Monster(ref mut monster) => {
           self.permanent_pain += 0.22;
           self.temporary_pain += 1.4;
+          monster.attack_progress = 0.000001;
+          monster.attack_direction = direction;
+          object.velocity = Vector2::new (0.0, 0.0);
           self.player.falling = Some(Fall {
             distance: minimal_escape_distance + self.player.radius*2.25 *direction,
             progress: 0.0,
