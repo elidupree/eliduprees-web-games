@@ -179,7 +179,7 @@ fn main() {
       }
     }
   };
-  js! {$("<style> .menu {text-align: center; font-size: 2em; font-size: 4vh; margin: 0.7em 2.3em; } .menu.bubble {background-color: white; padding: 0.7em; border-radius: 1.2em;} .menu.bubble.clickable {cursor: pointer} .menu.bubble.clickable:hover {background-color: black; color: white;} </style>").appendTo ("head");}
+  js! {$("<style> .menu {text-align: center; margin: 0.7em 2.3em; } .menu.bubble {background-color: white; padding: 0.7em; border-radius: 1.2em;} .menu.bubble.clickable {cursor: pointer} .menu.bubble.clickable:hover {background-color: black; color: white;} </style>").appendTo ("head");}
   js! {
     // If we happen to be able to lock the orientation to landscape, do it, otherwise, it's not vitally important
     screen.lockOrientation = screen.lockOrientation || screen.mozLockOrientation || screen.msLockOrientation;
@@ -199,12 +199,10 @@ fn main() {
     paper.setup ([640, 480]);
   }
   js! {
-    var start_playing_callback = @{start_playing_callback};
     window.menu = $("<div>").css({
       position: "absolute",
       top: 0,
-      width: "100%",
-      height: "100%"
+      width: "100%"
     });
     
     game_container.append (menu);
@@ -214,8 +212,9 @@ fn main() {
     window.auto_constants = {};
   }
   js! {
+    var start_playing_callback = @{start_playing_callback};
     menu.append (
-      $("<h1>", {class: "menu"}).text ("The Path").css({color: "white", "font-size": "5em"}).css({color: "white", "font-size": "10vh"}),
+      $("<h1>", {class: "menu"}).text ("The Path").css({color: "white", "font-size": "250%"}),
       $("<div>", {class: "menu"}).text ("placeholder for the game blurb").css({color: "white"}),
       window.content_warnings = $("<div>", {class: "menu bubble clickable"}).text ("Show content warnings").click (function() {
         content_warnings.text ("Content warning: a voice victim-blames you for stuff").removeClass("clickable").css({color: "white"}).css({color: "black", transition: "color 0.6s"});
@@ -316,6 +315,11 @@ fn main() {
       js! {
         canvas.setAttribute ("width", window.innerWidth);
         canvas.setAttribute ("height", window.innerHeight);
+        var size = 4;
+        do {
+          menu.css({ "font-size": (size/2)+"em" }).css({ "font-size": size+"vh" });
+          size *= 0.9;
+        } while (size > 0.5 && menu.height() > window.innerHeight);
       }
       draw_game (& game.borrow());
     };
