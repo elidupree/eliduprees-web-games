@@ -73,7 +73,7 @@ fn main_loop (time: f64, game: Rc<RefCell<Game>>) {
     game.last_ui_time = time;
     if duration_to_simulate > 0.0 { match game.menu_state {
       MenuState::Hidden => {
-        js! { menu.css("display": "none"); }
+        js! { menu.css({display: "none"}); }
         game.state.simulate (duration_to_simulate);
         draw_game (& game);
       },
