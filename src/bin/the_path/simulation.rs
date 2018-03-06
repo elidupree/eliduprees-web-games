@@ -597,7 +597,7 @@ impl State {
             text: String::from_str ("Ow, it hurts!").unwrap(),
             start_time: now,
             response: Some(String::from_str (if player_distance_from_path < 1.2 {"Liar, that would never happen on the path"} else {"It's your fault for straying"}).unwrap()),
-            direction: Cell::new (1.0),
+            direction: Cell::new (direction),
           });
         },
         Kind::Person(_) => unreachable!(),
