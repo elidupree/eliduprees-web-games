@@ -71,24 +71,37 @@ fn main_loop (time: f64, game: Rc<RefCell<Game>>) {
     let observed_duration = time - game.last_ui_time;
     let duration_to_simulate = min(observed_duration, 50.0)/1000.0;
     game.last_ui_time = time;
+    let menu_game_opacity = 0.4;
     if duration_to_simulate > 0.0 { match game.menu_state {
       MenuState::Hidden => {
-        js! { menu.css({display: "none"}); }
+        js! {
+          menu.css({display: "none"});
+          $(canvas).css({opacity: @{1.0}});
+        }
         game.state.simulate (duration_to_simulate);
         draw_game (& game);
       },
       MenuState::Appearing (progress) => {
-        js! { menu.css({display: "block", opacity: @{progress}}); }
+        js! {
+          menu.css({display: "block", opacity: @{progress}});
+          $(canvas).css({opacity: @{menu_game_opacity + (1.0 - menu_game_opacity)*(1.0 - progress)}});
+        }
         let new_progress = progress + duration_to_simulate;
         game.menu_state = if new_progress > 1.0 {MenuState::Shown} else {MenuState::Appearing (new_progress)};
       },
       MenuState::Disappearing (progress) => {
-        js! { menu.css({display: "block", opacity: @{1.0 - progress}}); }
+        js! {
+          menu.css({display: "block", opacity: @{1.0 - progress}});
+          $(canvas).css({opacity: @{menu_game_opacity + (1.0 - menu_game_opacity)*progress}});
+        }
         let new_progress = progress + duration_to_simulate;
         game.menu_state = if new_progress > 1.0 {MenuState::Hidden} else {MenuState::Disappearing (new_progress)};
       },
       MenuState::Shown => {
-        js! { menu.css({display: "block", opacity: 1.0}); }
+        js! {
+          menu.css({display: "block", opacity: 1.0});
+          $(canvas).css({opacity: @{menu_game_opacity} });
+        }
       },
     }}
   }
@@ -162,38 +175,42 @@ fn main() {
     let game = game.clone();
     move | | {
       let mut game = game.borrow_mut();
+      println!("a");
       if let MenuState::Shown = game.menu_state {
+        println!("b");
         game.menu_state = MenuState::Disappearing (0.0);
       }
     }
   };
   js! {
-    var start_playing_callback = @{start_playing_callback};
-    var game_container = window.game_container = $("<div>").css({
+    window.game_container = $("<div>").css({
       position: "absolute",
       width: "100%",
       height: "100%"
     });
-    var canvas = window.canvas = document.createElement ("canvas");
+    window.canvas = document.createElement ("canvas");
     $(document.querySelector("main") || document.body).append (game_container[0]).css("background-color", "black");
     game_container.append(canvas);
     window.context = canvas.getContext ("2d");
     window.turn = Math.PI*2;
     
     paper.setup ([640, 480]);
-    
+  }
+  js! {
+    var start_playing_callback = @{start_playing_callback};
     window.menu = $("<div>").css({
       position: "absolute",
+      top: 0,
       width: "100%",
       height: "100%"
     }).append (
-      $("<h1>").text ("The Path"),
-      $("<div>").text ("placeholder for the game blurb"),
-      $("<div>").text ("Show content warnings"),
-      $("<div>").text ("Start playing").click (function() {start_playing_callback();}),
+      $("<h1>").text ("The Path").css({color: "white", "font-size": "3em"}),
+      $("<div>").text ("placeholder for the game blurb").css({color: "white"}),
+      $("<div>").text ("Show content warnings").css({"background-color": "white"}),
+      $("<div>").text ("Start playing").css({"background-color": "white"}).click (function() {start_playing_callback();}),
       $("<div>").append (
-        $("<a>").text ("Return to elidupree.com")
-      )
+        $("<a>", {href: "https://www.elidupree.com/"}).text ("Return to elidupree.com")
+      ).css({"background-color": "white"})
     );
     game_container.append (menu);
 
@@ -280,6 +297,12 @@ fn main() {
         event.preventDefault();
       });
     }
+  }
+  
+  {
+    let mut game = game.borrow_mut();
+    game.state.simulate (0.0001);
+    draw_game (& game);
   }
   
   web::window().request_animation_frame (move | time | main_loop (time, game));
