@@ -179,6 +179,7 @@ fn main() {
       }
     }
   };
+  js! {$("<style> .menu {text-align: center; font-size: 2em; font-size: 4vh; margin: 0.7em 2.3em; }.menu.bubble {background-color: white; padding: 0.7em; border-radius: 1.2em;} </style>").appendTo ("head");}
   js! {
     // If we happen to be able to lock the orientation to landscape, do it, otherwise, it's not vitally important
     screen.lockOrientation = screen.lockOrientation || screen.mozLockOrientation || screen.msLockOrientation;
@@ -205,11 +206,11 @@ fn main() {
       width: "100%",
       height: "100%"
     }).append (
-      $("<h1>").text ("The Path").css({color: "white", "font-size": "3em"}),
-      $("<div>").text ("placeholder for the game blurb").css({color: "white"}),
-      $("<div>").text ("Show content warnings").css({"background-color": "white"}),
-      $("<div>").text ("Start playing").css({"background-color": "white"}).click (function() {start_playing_callback();}),
-      $("<div>").append (
+      $("<h1>", {class: "menu"}).text ("The Path").css({color: "white", "font-size": "5em"}).css({color: "white", "font-size": "10vh"}),
+      $("<div>", {class: "menu"}).text ("placeholder for the game blurb").css({color: "white"}),
+      $("<div>", {class: "menu bubble"}).text ("Show content warnings").css({cursor: "pointer"}),
+      $("<div>", {class: "menu bubble"}).text ("Start playing").css({cursor: "pointer"}).click (function() {start_playing_callback();}),
+      $("<div>", {class: "menu bubble"}).append (
         $("<a>", {href: "https://www.elidupree.com/"}).text ("Return to elidupree.com")
       ).css({"background-color": "white"})
     );
