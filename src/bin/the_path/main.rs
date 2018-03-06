@@ -179,7 +179,7 @@ fn main() {
       }
     }
   };
-  js! {$("<style> .menu {text-align: center; margin: 0.7em 2.3em; } .menu.bubble {background-color: white; padding: 0.7em; border-radius: 1.2em;} .menu.bubble.clickable {cursor: pointer} .menu.bubble.clickable:hover {background-color: black; color: white;} </style>").appendTo ("head");}
+  js! {$("<style> .menu {text-align: center; margin: 0.7em 0; } .menu.bubble {background-color: white; padding: 0.7em; border-radius: 1.2em;} .menu.bubble.clickable {cursor: pointer} .menu.bubble.clickable:hover {background-color: black; color: white;} .button_box {margin: 1.4em 2.3em; } </style>").appendTo ("head");}
   js! {
     // If we happen to be able to lock the orientation to landscape, do it, otherwise, it's not vitally important
     screen.lockOrientation = screen.lockOrientation || screen.mozLockOrientation || screen.msLockOrientation;
@@ -212,14 +212,23 @@ fn main() {
     window.auto_constants = {};
   }
   js! {
-    var start_playing_callback = @{start_playing_callback};
     menu.append (
       $("<h1>", {class: "menu"}).text ("The Path").css({color: "white", "font-size": "250%"}),
       $("<div>", {class: "menu"}).text ("placeholder for the game blurb").css({color: "white"}),
+      window.button_box = $("<div>", {class: "button_box"})
+    );
+  }
+  js! {
+    var start_playing_callback = @{start_playing_callback};
+    button_box.append(
       window.content_warnings = $("<div>", {class: "menu bubble clickable"}).text ("Show content warnings").click (function() {
         content_warnings.text ("Content warning: a voice victim-blames you for stuff").removeClass("clickable").css({color: "white"}).css({color: "black", transition: "color 0.6s"});
       }),
-      $("<div>", {class: "menu bubble clickable"}).text ("Start playing").click (function() {start_playing_callback();}),
+      $("<div>", {class: "menu bubble clickable"}).text ("Start playing").css({"font-size": "150%", "font-weight": "bold"}).click (function() {start_playing_callback();})
+    );
+  }
+  js! {
+    button_box.append(
       $("<a>", {href: "https://www.patreon.com/EliDupree"}).append (
         $("<div>", {class: "menu bubble clickable"}).text ("Support my works on Patreon")
       ).css({"background-color": "white"}),
