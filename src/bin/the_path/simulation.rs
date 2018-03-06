@@ -408,7 +408,7 @@ impl State {
       if relative_velocity [1] < 0.0 && relative_location [1] > 0.0 {
         let time_to_collide = -relative_location [1] / relative_velocity [1];
         let horizontal_difference_when_aligned = relative_location[0] + relative_velocity[0]*time_to_collide;
-        if horizontal_difference_when_aligned.abs() < object.radius + self.player.radius {
+        if horizontal_difference_when_aligned.abs() < (object.radius + self.player.radius)*0.9 {
           if time_to_collide < time_moved {
             time_moved = time_to_collide - 0.0001;
             collision = Some(index);
