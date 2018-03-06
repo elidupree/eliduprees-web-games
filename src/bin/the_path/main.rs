@@ -47,9 +47,6 @@ struct Game {
 
 fn draw_game (game: & Game) {
   let radius: f64 = js! {
-    var size = Math.min (window.innerHeight, window.innerWidth);
-    canvas.setAttribute ("width", window.innerWidth);
-    canvas.setAttribute ("height", window.innerHeight);
     context.clearRect (0, 0, canvas.width, canvas.height);
     context.save();
     context.scale (canvas.height,canvas.height);
@@ -304,10 +301,25 @@ fn main() {
   }
   
   {
+    let game = game.clone();
+    let update_dimensions_callback = move || {
+      js! {
+        canvas.setAttribute ("width", window.innerWidth);
+        canvas.setAttribute ("height", window.innerHeight);
+      }
+      draw_game (& game.borrow());
+    };
+    js! {
+      window.update_dimensions = @{update_dimensions_callback};
+      $(window).resize (function() {update_dimensions() ;});
+    }
+  }
+  
+  {
     let mut game = game.borrow_mut();
     game.state.simulate (0.0001);
-    draw_game (& game);
   }
+  js!{update_dimensions();}
   
   web::window().request_animation_frame (move | time | main_loop (time, game));
 
