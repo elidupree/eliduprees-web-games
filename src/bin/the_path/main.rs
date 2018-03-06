@@ -31,17 +31,22 @@ pub use simulation::*;
 pub use misc::*;
 
 
+enum MenuState {
+  Shown,
+  Hidden,
+  Appearing (f64),
+  Disappearing (f64),
+}
+
 struct Game {
   state: State,
   last_ui_time: f64,
+  menu_state: MenuState,
 }
 
 
 fn draw_game (game: & Game) {
   let radius: f64 = js! {
-    var size = Math.min (window.innerHeight, window.innerWidth);
-    canvas.setAttribute ("width", window.innerWidth);
-    canvas.setAttribute ("height", window.innerHeight);
     context.clearRect (0, 0, canvas.width, canvas.height);
     context.save();
     context.scale (canvas.height,canvas.height);
@@ -63,10 +68,39 @@ fn main_loop (time: f64, game: Rc<RefCell<Game>>) {
     let observed_duration = time - game.last_ui_time;
     let duration_to_simulate = min(observed_duration, 50.0)/1000.0;
     game.last_ui_time = time;
-    if duration_to_simulate > 0.0 {
-      game.state.simulate (duration_to_simulate);
-      draw_game (& game);
-    }
+    let menu_game_opacity = 0.4;
+    if duration_to_simulate > 0.0 { match game.menu_state {
+      MenuState::Hidden => {
+        js! {
+          menu.css({display: "none"});
+          $(canvas).css({opacity: @{1.0}});
+        }
+        game.state.simulate (duration_to_simulate);
+        draw_game (& game);
+      },
+      MenuState::Appearing (progress) => {
+        js! {
+          menu.css({display: "block", opacity: @{progress}});
+          $(canvas).css({opacity: @{menu_game_opacity + (1.0 - menu_game_opacity)*(1.0 - progress)}});
+        }
+        let new_progress = progress + duration_to_simulate;
+        game.menu_state = if new_progress > 1.0 {MenuState::Shown} else {MenuState::Appearing (new_progress)};
+      },
+      MenuState::Disappearing (progress) => {
+        js! {
+          menu.css({display: "block", opacity: @{1.0 - progress}});
+          $(canvas).css({opacity: @{menu_game_opacity + (1.0 - menu_game_opacity)*progress}});
+        }
+        let new_progress = progress + duration_to_simulate;
+        game.menu_state = if new_progress > 1.0 {MenuState::Hidden} else {MenuState::Disappearing (new_progress)};
+      },
+      MenuState::Shown => {
+        js! {
+          menu.css({display: "block", opacity: 1.0});
+          $(canvas).css({opacity: @{menu_game_opacity} });
+        }
+      },
+    }}
   }
   web::window().request_animation_frame (move | time | main_loop (time, game));
 }
@@ -75,59 +109,8 @@ fn main_loop (time: f64, game: Rc<RefCell<Game>>) {
 #[cfg (target_os = "emscripten")]
 fn main() {
   stdweb::initialize();
-  js! {
-    var game_container = window.game_container = $("<div>");
-    var canvas = window.canvas = document.createElement ("canvas");
-    $(document.querySelector("main") || document.body).append (game_container[0]).css("background-color", "black");
-    game_container.append(canvas);
-    window.context = canvas.getContext ("2d");
-    window.turn = Math.PI*2;
-    
-    paper.setup ([640, 480]);
-    
-    window.constants = @{Constants::default()};
-    window.auto_constants = {};
-  }
   
-  {
-        let triangles = [
-          [[-0.3, 0.0], [0.3, 0.0], [0.0, 2.0]],
-          [[-1.0, 1.0], [1.0, 1.0], [0.0, 2.8]],
-          [[-0.8, 2.0], [0.8, 2.0], [0.0, 3.5]],
-        ];
-        js! { tree_shape = null; }
-        for triangle in triangles.iter() {
-          js! { segments = []; }
-          for vertex in triangle.iter() {
-            js! { segments.push([@{vertex [0]},@{-vertex [1]}]); }
-          }
-          js! {
-            var triangle = new paper.Path({ segments: segments, insert: false });
-            triangle.closed = true;
-            if (tree_shape) {tree_shape= tree_shape.unite (triangle);} else {tree_shape = triangle;}
-          }
-        }
-        
-        js! {
-    var points = [];
-    for (var index = 0; index <5;++index) {
-      points.push ([
-        Math.sin (turn*(index/5)),
-        -Math.cos (turn*(index/5))
-      ]);
-      points.push ([
-        Math.sin (turn*(0.1 + index/5))/Math.sqrt (5),
-        -Math.cos (turn*(0.1 + index/5))/Math.sqrt (5)
-      ]);
-    }
-    window.reward_shape = new paper.Path({ segments: points, insert: false });
-    reward_shape.closed = true;
-    reward_shape.scale (2.0/reward_shape.bounds.width, [0,0]);
-    
-    window.chest_shape = new paper.CompoundPath({ pathData: "m -6.093328e-4,-0.1882 c -0.0357946672,0 -0.0637591772,0.0186 -0.0637591772,0.0418 0,0.0232 0.02796451,0.0418 0.06264051,0.0418 0.03467602,0 0.06264052,-0.0185 0.06264052,-0.0418 0,-0.0225 -0.0279645,-0.0418 -0.0615218528,-0.0418 z M 0.01635534,-0.2729 c 0.0017368,-0.0463 0.0054063,-0.0799 0.04791269,-0.115 0.0682335,-0.05 0.0682335,-0.05 0.08613068,-0.068 0.0279646,-0.0276 0.0413875,-0.056 0.0413875,-0.0859 0,-0.0657 -0.0794191,-0.112 -0.19351448,-0.112 -0.10402801,0 -0.18904015,0.0463 -0.18904015,0.10462 0,0.0321 0.0268461,0.056 0.061522,0.056 0.026846,0 0.048099,-0.0135 0.048099,-0.0307 0,-0.008 -0.0044741,-0.0165 -0.01454213,-0.0253 -0.01901583,-0.0179 -0.01520472,-0.0153 -0.01520472,-0.0259 0,-0.0276 0.04441173,-0.0504 0.09810356,-0.0504 0.06711485,0 0.09831086,0.0309 0.09831086,0.087 0,0.0335 -0.0067111,0.0486 -0.05704766,0.11577 -0.04138751,0.056 -0.05394521,0.0762 -0.05638462,0.1501 -8.6346e-4,0.0263 0.04327445,0.0264 0.04426706,-9e-5 z M 0.5,0 h -1 V -0.55538 C -0.498967,-0.79887 -0.12639936,-0.79999 -2.2774707e-4,-0.8 0.12594386,-0.80001 0.50057754,-0.798 0.49977226,-0.55542 Z", insert: false });
-    window.chest_shape.scale(2.0, [0,0]);
-        }
-  }
+  
   
   let mut skies = Vec::new();
   for _ in 0..15 {
@@ -137,6 +120,7 @@ fn main() {
   let game = Rc::new (RefCell::new (
     Game {
       last_ui_time: 0.0,
+      menu_state: MenuState::Shown,
       state: State {
         path: Path {max_speed: 1.0, radius: 0.12, components: vec![Component {center: Vector2::new (0.0, - 0.5), velocity: 0.0, acceleration: 0.0}], .. Default::default()},
         player: Object {
@@ -184,6 +168,116 @@ fn main() {
     }
   ));
   
+  let start_playing_callback = {
+    let game = game.clone();
+    move | | {
+      let mut game = game.borrow_mut();
+      println!("a");
+      if let MenuState::Shown = game.menu_state {
+        println!("b");
+        game.menu_state = MenuState::Disappearing (0.0);
+      }
+    }
+  };
+  js! {$("<style> .menu {text-align: center; margin: 0.7em 0; } .menu.bubble {background-color: white; padding: 0.7em; border-radius: 1.2em;} .menu.bubble.clickable {cursor: pointer} .menu.bubble.clickable:hover {background-color: black; color: white;} .button_box {margin: 1.4em 2.3em; } </style>").appendTo ("head");}
+  js! {
+    // If we happen to be able to lock the orientation to landscape, do it, otherwise, it's not vitally important
+    screen.lockOrientation = screen.lockOrientation || screen.mozLockOrientation || screen.msLockOrientation;
+    if (screen.lockOrientation) { screen.lockOrientation("landscape"); }
+  
+    window.game_container = $("<div>").css({
+      position: "absolute",
+      width: "100%",
+      height: "100%"
+    });
+    window.canvas = document.createElement ("canvas");
+    $(document.querySelector("main") || document.body).append (game_container[0]).css("background-color", "black");
+    game_container.append(canvas);
+    window.context = canvas.getContext ("2d");
+    window.turn = Math.PI*2;
+    
+    paper.setup ([640, 480]);
+  }
+  js! {
+    window.menu = $("<div>").css({
+      position: "absolute",
+      top: 0,
+      width: "100%"
+    });
+    
+    game_container.append (menu);
+
+    
+    window.constants = @{Constants::default()};
+    window.auto_constants = {};
+  }
+  js! {
+    menu.append (
+      $("<h1>", {class: "menu"}).text ("The Path").css({color: "white", "font-size": "250%"}),
+      $("<div>", {class: "menu"}).text ("placeholder for the game blurb").css({color: "white"}),
+      window.button_box = $("<div>", {class: "button_box"})
+    );
+  }
+  js! {
+    var start_playing_callback = @{start_playing_callback};
+    button_box.append(
+      window.content_warnings = $("<div>", {class: "menu bubble clickable"}).text ("Show content warnings").click (function() {
+        content_warnings.text ("Content warning: a voice victim-blames you for stuff").removeClass("clickable").css({color: "white"}).css({color: "black", transition: "color 0.6s"});
+      }),
+      $("<div>", {class: "menu bubble clickable"}).text ("Start playing").css({"font-size": "150%", "font-weight": "bold"}).click (function() {start_playing_callback();})
+    );
+  }
+  js! {
+    button_box.append(
+      $("<a>", {href: "https://www.patreon.com/EliDupree"}).append (
+        $("<div>", {class: "menu bubble clickable"}).text ("Support my works on Patreon")
+      ).css({"background-color": "white"}),
+      $("<a>", {href: "https://www.elidupree.com/"}).append (
+        $("<div>", {class: "menu bubble clickable"}).text ("Return to elidupree.com")
+      ).css({"background-color": "white"})
+    );
+  }
+  
+  {
+        let triangles = [
+          [[-0.3, 0.0], [0.3, 0.0], [0.0, 2.0]],
+          [[-1.0, 1.0], [1.0, 1.0], [0.0, 2.8]],
+          [[-0.8, 2.0], [0.8, 2.0], [0.0, 3.5]],
+        ];
+        js! { tree_shape = null; }
+        for triangle in triangles.iter() {
+          js! { segments = []; }
+          for vertex in triangle.iter() {
+            js! { segments.push([@{vertex [0]},@{-vertex [1]}]); }
+          }
+          js! {
+            var triangle = new paper.Path({ segments: segments, insert: false });
+            triangle.closed = true;
+            if (tree_shape) {tree_shape= tree_shape.unite (triangle);} else {tree_shape = triangle;}
+          }
+        }
+        
+        js! {
+    var points = [];
+    for (var index = 0; index <5;++index) {
+      points.push ([
+        Math.sin (turn*(index/5)),
+        -Math.cos (turn*(index/5))
+      ]);
+      points.push ([
+        Math.sin (turn*(0.1 + index/5))/Math.sqrt (5),
+        -Math.cos (turn*(0.1 + index/5))/Math.sqrt (5)
+      ]);
+    }
+    window.reward_shape = new paper.Path({ segments: points, insert: false });
+    reward_shape.closed = true;
+    reward_shape.scale (2.0/reward_shape.bounds.width, [0,0]);
+    
+    window.chest_shape = new paper.CompoundPath({ pathData: "m -6.093328e-4,-0.1882 c -0.0357946672,0 -0.0637591772,0.0186 -0.0637591772,0.0418 0,0.0232 0.02796451,0.0418 0.06264051,0.0418 0.03467602,0 0.06264052,-0.0185 0.06264052,-0.0418 0,-0.0225 -0.0279645,-0.0418 -0.0615218528,-0.0418 z M 0.01635534,-0.2729 c 0.0017368,-0.0463 0.0054063,-0.0799 0.04791269,-0.115 0.0682335,-0.05 0.0682335,-0.05 0.08613068,-0.068 0.0279646,-0.0276 0.0413875,-0.056 0.0413875,-0.0859 0,-0.0657 -0.0794191,-0.112 -0.19351448,-0.112 -0.10402801,0 -0.18904015,0.0463 -0.18904015,0.10462 0,0.0321 0.0268461,0.056 0.061522,0.056 0.026846,0 0.048099,-0.0135 0.048099,-0.0307 0,-0.008 -0.0044741,-0.0165 -0.01454213,-0.0253 -0.01901583,-0.0179 -0.01520472,-0.0153 -0.01520472,-0.0259 0,-0.0276 0.04441173,-0.0504 0.09810356,-0.0504 0.06711485,0 0.09831086,0.0309 0.09831086,0.087 0,0.0335 -0.0067111,0.0486 -0.05704766,0.11577 -0.04138751,0.056 -0.05394521,0.0762 -0.05638462,0.1501 -8.6346e-4,0.0263 0.04327445,0.0264 0.04426706,-9e-5 z M 0.5,0 h -1 V -0.55538 C -0.498967,-0.79887 -0.12639936,-0.79999 -2.2774707e-4,-0.8 0.12594386,-0.80001 0.50057754,-0.798 0.49977226,-0.55542 Z", insert: false });
+    window.chest_shape.scale(2.0, [0,0]);
+        }
+  }
+  
   {
     let game = game.clone();
     let mousemove_callback = move |x: f64,y: f64 | {
@@ -223,6 +317,32 @@ fn main() {
       });
     }
   }
+  
+  {
+    let game = game.clone();
+    let update_dimensions_callback = move || {
+      js! {
+        canvas.setAttribute ("width", window.innerWidth);
+        canvas.setAttribute ("height", window.innerHeight);
+        var size = 4;
+        do {
+          menu.css({ "font-size": (size/2)+"em" }).css({ "font-size": size+"vh" });
+          size *= 0.9;
+        } while (size > 0.5 && menu.height() > window.innerHeight);
+      }
+      draw_game (& game.borrow());
+    };
+    js! {
+      window.update_dimensions = @{update_dimensions_callback};
+      $(window).resize (function() {update_dimensions() ;});
+    }
+  }
+  
+  {
+    let mut game = game.borrow_mut();
+    game.state.simulate (0.0001);
+  }
+  js!{update_dimensions();}
   
   web::window().request_animation_frame (move | time | main_loop (time, game));
 
