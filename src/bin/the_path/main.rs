@@ -214,7 +214,7 @@ fn main() {
   js! {
     menu.append (
       $("<h1>", {class: "menu"}).text ("The Path").css({color: "white", "font-size": "250%"}),
-      $("<div>", {class: "menu"}).text ("placeholder for the game blurb").css({color: "white"}),
+      $("<div>", {class: "menu"}).text ("a game about social expectations").css({color: "white"}),
       window.button_box = $("<div>", {class: "button_box"})
     );
   }
