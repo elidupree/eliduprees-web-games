@@ -205,22 +205,29 @@ fn main() {
       top: 0,
       width: "100%",
       height: "100%"
-    }).append (
+    });
+    
+    game_container.append (menu);
+
+    
+    window.constants = @{Constants::default()};
+    window.auto_constants = {};
+  }
+  js! {
+    menu.append (
       $("<h1>", {class: "menu"}).text ("The Path").css({color: "white", "font-size": "5em"}).css({color: "white", "font-size": "10vh"}),
       $("<div>", {class: "menu"}).text ("placeholder for the game blurb").css({color: "white"}),
       window.content_warnings = $("<div>", {class: "menu bubble clickable"}).text ("Show content warnings").click (function() {
         content_warnings.text ("Content warning: a voice victim-blames you for stuff").removeClass("clickable").css({color: "white"}).css({color: "black", transition: "color 0.6s"});
       }),
       $("<div>", {class: "menu bubble clickable"}).text ("Start playing").click (function() {start_playing_callback();}),
+      $("<a>", {href: "https://www.patreon.com/EliDupree"}).append (
+        $("<div>", {class: "menu bubble clickable"}).text ("Support my works on Patreon")
+      ).css({"background-color": "white"}),
       $("<a>", {href: "https://www.elidupree.com/"}).append (
         $("<div>", {class: "menu bubble clickable"}).text ("Return to elidupree.com")
       ).css({"background-color": "white"})
     );
-    game_container.append (menu);
-
-    
-    window.constants = @{Constants::default()};
-    window.auto_constants = {};
   }
   
   {
