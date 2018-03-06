@@ -179,7 +179,7 @@ fn main() {
       }
     }
   };
-  js! {$("<style> .menu {text-align: center; font-size: 2em; font-size: 4vh; margin: 0.7em 2.3em; }.menu.bubble {background-color: white; padding: 0.7em; border-radius: 1.2em;} </style>").appendTo ("head");}
+  js! {$("<style> .menu {text-align: center; font-size: 2em; font-size: 4vh; margin: 0.7em 2.3em; } .menu.bubble {background-color: white; padding: 0.7em; border-radius: 1.2em;} .menu.bubble.clickable {cursor: pointer} .menu.bubble.clickable:hover {background-color: black; color: white;} </style>").appendTo ("head");}
   js! {
     // If we happen to be able to lock the orientation to landscape, do it, otherwise, it's not vitally important
     screen.lockOrientation = screen.lockOrientation || screen.mozLockOrientation || screen.msLockOrientation;
@@ -208,10 +208,12 @@ fn main() {
     }).append (
       $("<h1>", {class: "menu"}).text ("The Path").css({color: "white", "font-size": "5em"}).css({color: "white", "font-size": "10vh"}),
       $("<div>", {class: "menu"}).text ("placeholder for the game blurb").css({color: "white"}),
-      $("<div>", {class: "menu bubble"}).text ("Show content warnings").css({cursor: "pointer"}),
-      $("<div>", {class: "menu bubble"}).text ("Start playing").css({cursor: "pointer"}).click (function() {start_playing_callback();}),
-      $("<div>", {class: "menu bubble"}).append (
-        $("<a>", {href: "https://www.elidupree.com/"}).text ("Return to elidupree.com")
+      window.content_warnings = $("<div>", {class: "menu bubble clickable"}).text ("Show content warnings").click (function() {
+        content_warnings.text ("Content warning: a voice victim-blames you for stuff").removeClass("clickable").css({color: "white"}).css({color: "black", transition: "color 0.6s"});
+      }),
+      $("<div>", {class: "menu bubble clickable"}).text ("Start playing").click (function() {start_playing_callback();}),
+      $("<a>", {href: "https://www.elidupree.com/"}).append (
+        $("<div>", {class: "menu bubble clickable"}).text ("Return to elidupree.com")
       ).css({"background-color": "white"})
     );
     game_container.append (menu);
