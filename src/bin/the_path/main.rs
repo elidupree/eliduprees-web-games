@@ -183,6 +183,10 @@ fn main() {
     }
   };
   js! {
+    // If we happen to be able to lock the orientation to landscape, do it, otherwise, it's not vitally important
+    screen.lockOrientation = screen.lockOrientation || screen.mozLockOrientation || screen.msLockOrientation;
+    if (screen.lockOrientation) { screen.lockOrientation("landscape"); }
+  
     window.game_container = $("<div>").css({
       position: "absolute",
       width: "100%",
