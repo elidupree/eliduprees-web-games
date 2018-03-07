@@ -61,6 +61,9 @@ impl State {
         let eyeball_height = object.radius*auto_constant ("monster_eyeball_height", 1.3);
         let eyeball_radius = object.radius*auto_constant ("monster_eyeball_radius", 0.27);
         let eyeball_pinching = object.radius*auto_constant ("monster_eyeball_pinching", 0.22);
+        let vertical_scale = (self.draw_position (raw_position + Vector3::new (0.0, 0.0001, 0.0)) [1] - position [1])/0.0001;
+        let both_scale = Vector2::new (scale, vertical_scale).norm();
+        
         let directions = [- 1.0, 1.0];
         for &direction in directions.iter() {
           let raw_eyeball_center = Vector3::new (object.center [0] + (object.radius - eyeball_radius - eyeball_pinching)*direction, object.center [1], eyeball_height);
@@ -68,12 +71,12 @@ impl State {
           js! {
             context.fillStyle = "rgb(255, 255, 255)";
             context.strokeStyle = "rgb(0, 0, 0)";
-            context.lineWidth = @{scaled_radius}*0.04;
+            context.lineWidth = @{scale*object.radius}*0.04;
             context.beginPath();
             context.arc (@{eyeball_center[0]}, @{eyeball_center[1]}, @{eyeball_radius*scale}, 0, turn, true);
             context.fill(); context.stroke();
           }
-          let pupil_offset = as_ground (monster.eye_direction*eyeball_radius);
+          let pupil_offset = as_ground (monster.eye_direction*eyeball_radius)*scale/both_scale;
           let pupil_center = self.draw_position(raw_eyeball_center + pupil_offset);
           let pupil_visual_offset = pupil_center - eyeball_center;
           let pupil_radius = eyeball_radius*auto_constant ("monster_pupil_radius", 1.0/3.0);
@@ -88,7 +91,7 @@ impl State {
             context.fill(path); context.stroke(path);
           }
         }
-        let vertical_scale = (self.draw_position (raw_position + Vector3::new (0.0, 0.0001, 0.0)) [1] - position [1])/0.0001;
+        
         js! {
           context.fillStyle = "rgba(100, 100, 100, 0.5)";
           var shape = new paper.Path.Ellipse ({center: [@{position [0]},@{position [1]}], radius: [@{scaled_radius},@{eyeball_radius*vertical_scale}], insert: false, });
