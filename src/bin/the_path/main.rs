@@ -201,14 +201,15 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
   
   js! {
     var css = { position: "fixed", width: "100%", height: "100%", overflow: "hidden" };
-    $(document).css(css);
+    $(document.documentElement).css(css);
     $(document.body).css(css);
   }
   js! {
     window.game_container = $("<div>").css({
       position: "absolute", top: 0, left: 0,
       width: "100%",
-      height: "100%"
+      height: "100%",
+      overflow: "hidden"
     });
     window.canvas = document.createElement ("canvas");
     $(document.querySelector("main") || document.body).append (game_container[0]).css("background-color", "black");
@@ -222,7 +223,8 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
     window.menu = $("<div>").css({
       position: "absolute",
       top: 0,
-      width: "100%"
+      width: "100%",
+      overflow: "hidden"
     });
     
     game_container.append (menu);
