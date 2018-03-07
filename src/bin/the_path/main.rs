@@ -168,6 +168,22 @@ fn main() {
     }
   ));
   
+  js! { window.orientation_hack = function() {
+var fullscreen = (
+    document.body.requestFullScreen ? { request: "requestFullScreen", change: "fullscreenchange" } :
+    document.body.webkitRequestFullScreen ? { request: "webkitRequestFullScreen", change: "webkitfullscreenchange" } :
+    document.body.mozRequestFullScreen ? { request: mozRequestFullScreen, change: "mozfullscreenchange" } :
+    document.body.msRequestFullScreen ? { request: "msRequestFullScreen", change: "MSFullscreenChange" } :
+    null);
+if (window.innerHeight > window.innerWidth && window.screen.height > window.screen.width &&
+  fullscreen && window.screen.orientation && window.screen.orientation.lock) {
+  document.addEventListener (fullscreen.change, function() {
+    window.screen.orientation.lock ("landscape");
+  });
+  document.body [fullscreen.request] ();
+}
+  };}
+  
   let start_playing_callback = {
     let game = game.clone();
     move | | {
@@ -179,12 +195,8 @@ fn main() {
   };
   js! {$("<style> .menu {text-align: center; margin: 0.7em 0; } .menu.bubble {background-color: white; padding: 0.7em; border-radius: 1.2em;} .menu.bubble.clickable {cursor: pointer} .menu.bubble.clickable:hover {background-color: black; color: white;} .button_box {margin: 1.4em 2.3em; } </style>").appendTo ("head");}
   js! {
-    // If we happen to be able to lock the orientation to landscape, do it, otherwise, it's not vitally important
-    screen.lockOrientation = screen.lockOrientation || screen.mozLockOrientation || screen.msLockOrientation;
-    if (screen.lockOrientation) { screen.lockOrientation("landscape"); }
-  
     window.game_container = $("<div>").css({
-      position: "absolute",
+      position: "absolute", top: 0, left: 0,
       width: "100%",
       height: "100%"
     });
@@ -222,7 +234,7 @@ fn main() {
       window.content_warnings = $("<div>", {class: "menu bubble clickable"}).text ("Show content warnings").click (function() {
         content_warnings.text ("Content warning: a voice victim-blames you for stuff").removeClass("clickable").css({color: "white"}).css({color: "black", transition: "color 0.6s"});
       }),
-      $("<div>", {class: "menu bubble clickable"}).text ("Start playing").css({"font-size": "150%", "font-weight": "bold"}).click (function() {start_playing_callback();})
+      $("<div>", {class: "menu bubble clickable"}).text ("Start playing").css({"font-size": "150%", "font-weight": "bold"}).click (function() {orientation_hack(); start_playing_callback();})
     );
   }
   js! {
