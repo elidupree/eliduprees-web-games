@@ -214,6 +214,7 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
     window.canvas = document.createElement ("canvas");
     $(document.querySelector("main") || document.body).append (game_container[0]).css("background-color", "black");
     game_container.append(canvas);
+    $(canvas).css ({"touch-action": "none"});
     window.context = canvas.getContext ("2d");
     window.turn = Math.PI*2;
     
@@ -338,14 +339,12 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
       };
       canvas.addEventListener ("mousemove", function (event) {
         handle_thing (event);
-        event.preventDefault();
       });
       var touch_callback = function (event) {
         var touches = event.changedTouches;
         for (var index = 0; index < touches.length; ++index) {
           handle_thing (touches [index]);
         }
-        event.preventDefault();
       };
       canvas.addEventListener ("touchstart", touch_callback);
       canvas.addEventListener ("touchmove", touch_callback);
