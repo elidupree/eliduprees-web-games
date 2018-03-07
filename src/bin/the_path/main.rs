@@ -327,14 +327,27 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
     };
     js! {
       var callback = @{mousemove_callback};
-      canvas.addEventListener ("mousemove", function (event) {
+      var handle_thing = function (thing) {
         var offset = canvas.getBoundingClientRect();
         callback (
-          ((event.clientX - offset.left)/offset.width-0.5)*offset.width/offset.height,
-          (event.clientY - offset.top)/offset.height
+          ((thing.clientX - offset.left)/offset.width-0.5)*offset.width/offset.height,
+          (thing.clientY - offset.top)/offset.height
         );
+      };
+      canvas.addEventListener ("mousemove", function (event) {
+        handle_thing (event);
         event.preventDefault();
       });
+      var touch_callback = function (event) {
+        var touches = event.changedTouches;
+        for (var index = 0; index < touches.length; ++index) {
+          handle_thing (touches [index]);
+        }
+        event.preventDefault();
+      };
+      canvas.addEventListener ("touchstart", touch_callback);
+      canvas.addEventListener ("touchmove", touch_callback);
+      canvas.addEventListener ("contextmenu", function(event) {event.preventDefault();});
     }
   }
   
