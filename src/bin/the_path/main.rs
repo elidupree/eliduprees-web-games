@@ -172,9 +172,7 @@ fn main() {
     let game = game.clone();
     move | | {
       let mut game = game.borrow_mut();
-      println!("a");
       if let MenuState::Shown = game.menu_state {
-        println!("b");
         game.menu_state = MenuState::Disappearing (0.0);
       }
     }
