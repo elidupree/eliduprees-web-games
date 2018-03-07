@@ -161,47 +161,6 @@ pub fn skyline (visible_radius: f64, mountains: & [ScreenMountain])->Vec<Vector2
   points
 }
 
-/*pub struct Skyline {
-  vertices: Vec<Vector2>
-}
-impl Skyline {
-  pub fn sample (horizontal: f64)->f64 {
-    let next = match self.vertices.binary_search_by_key (&horizontal, | vertex | OrderedFloat (vertex [0])) {
-      Ok (index) => return self.vertices [index] [1],
-      Err (index) => index,
-    };
-    match (self.vertices.get (next.wrapping_sub (1)), self.vertices.get (next)) {
-      (None, None) => 0.0,
-      (None, None) => 0.0,
-      (None, None) => 0.0,
-      (Some (previous), Some (next)) => {
-        let fraction = (horizontal - previous [0])/(next [0] - previous [0]);
-        previous [1]*(1.0 - fraction) + next [1]*fraction
-      },
-    }
-  }
-  pub fn sample_mountain (peak: Vector2, radius: f64, horizontal: f64)->Option <f64> {
-    let distance = (peak [0] - horizontal).abs();
-    if distance >radius {return None;}
-    let fraction = distance/radius;
-    Some(peak [1]*(1.0 - fraction)
-  }
-  pub fn mountain_points (peak: Vector2, radius: f64)->[Vector2; 3] {
-    [Vector2::new (peak [0] - radius, 0.0),
-    peak,
-    Vector2::new (peak [0] + radius, 0.0)]
-  }
-  pub fn add_mountain (peak: Vector2, radius: f64) {
-    let new_vertices = Vec::with_capacity (self.vertices.len() + 3);
-    let points = mountain_points (peak, radius);
-    for index in 0..self.vertices.len()+1 {
-      let previous = self.vertices.get (index.wrapping_sub (1);
-      let next = self.vertices.get(index);
-      
-      if let Some(sample) = sample_mountain (peak, radius, current [0]).map_or (true, | height |
-    }
-  }
-}*/
 
 
 pub fn move_to (location: Vector2) {

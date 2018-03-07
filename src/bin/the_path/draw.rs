@@ -324,22 +324,11 @@ impl State {
     let no_sky: bool = js! {return auto_constants.no_sky = auto_constants.no_sky || false}.try_into().unwrap();
     if !no_sky {
     js! {
-      //$(document.body).text(@{self.objects.len() as u32});
-      //window.visible_sky = new paper.Path.Rectangle ({point: [@{-visible_radius}, 0.0], size: [@{visible_radius*2.0},@{self.constants.perspective.horizon_drop}], insert: false, });
-      
       window.temporary_pain_ellipse = new paper.Path.Ellipse ({center: [0.0, 0.5], radius: [@{actually_visible_radius},@{temporary_pain_radius}], insert: false, });
       
       context.save();
-      //context.clip(new Path2D(temporary_pain_ellipse.pathData));
-      
-      //window.visible_sky = window.visible_sky.intersect (temporary_pain_ellipse);
+      context.clip(new Path2D(temporary_pain_ellipse.pathData));
     }
-    /*let mut visible_sky = vec![
-      [-actually_visible_radius, 0.0],
-      [-actually_visible_radius, self.constants.perspective.horizon_drop ],
-      [actually_visible_radius, self.constants.perspective.horizon_drop ],
-      [actually_visible_radius, 0.0],
-    ];*/
     let visible_sky = skyline (actually_visible_radius, &self.mountains.iter().filter_map (| mountain | {
       let screen_peak = self.mountain_screen_peak (& mountain);
       let visible_base_radius = mountain.base_screen_radius*(self.constants.perspective.horizon_drop - screen_peak [1])/mountain.fake_peak_location [2];
@@ -347,25 +336,6 @@ impl State {
          screen_peak [0] - visible_base_radius > actually_visible_radius {return None;}
       
       Some(ScreenMountain {peak: Vector2::new (screen_peak [0], self.constants.perspective.horizon_drop-screen_peak [1]), radius: visible_base_radius})
-      
-      /*visible_sky = difference (& visible_sky, & vec![
-        [screen_peak [0], screen_peak [1]],
-        [screen_peak [0] - visible_base_radius, self.constants.perspective.horizon_drop+0.0001],
-        [screen_peak [0] + visible_base_radius, self.constants.perspective.horizon_drop+0.0001],
-      ]).pop().unwrap();
-      js! {
-        var pos = [@{screen_peak[0]}, @{screen_peak[1]}];
-        var height =@{mountain.fake_peak_location [2]};
-        var radius =@{mountain.base_screen_radius};
-        var segments = [];
-        segments.push(pos);
-        segments.push([pos[0] + radius, pos[1] + height]);
-        segments.push([pos[0] - radius, pos[1] + height]);
-        var mountain = new paper.Path({ segments: segments, insert: false });
-        mountain.closed = true;
-
-        window.visible_sky = window.visible_sky.subtract (mountain);
-      }*/
     }).collect::<Vec<_>>());
     js! {window.segments = [[@{- actually_visible_radius},0]];}
     for vector in visible_sky { js! {segments.push ([@{vector [0]},@{self.constants.perspective.horizon_drop-vector [1]}]);}}
@@ -373,9 +343,9 @@ impl State {
       segments.push ([@{actually_visible_radius},0]);
       var visible_sky = new paper.Path ({segments: segments, insert: false});
       visible_sky.closed = true;
-      context.lineWidth = @{0.001};
+      /*context.lineWidth = @{0.001};
       context.strokeStyle = "rgb(255,255,255)";
-      context.stroke(new Path2D(visible_sky.pathData));
+      context.stroke(new Path2D(visible_sky.pathData));*/
       visible_sky = visible_sky.intersect (temporary_pain_ellipse);
       
       context.save();
