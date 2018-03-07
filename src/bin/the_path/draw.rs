@@ -2,7 +2,6 @@ use super::*;
 
 use stdweb::unstable::TryInto;
 use ordered_float::OrderedFloat;
-use polygon2::difference;
 
 
 impl State {
@@ -335,24 +334,26 @@ impl State {
       
       //window.visible_sky = window.visible_sky.intersect (temporary_pain_ellipse);
     }
-    let mut visible_sky = vec![
+    /*let mut visible_sky = vec![
       [-actually_visible_radius, 0.0],
       [-actually_visible_radius, self.constants.perspective.horizon_drop ],
       [actually_visible_radius, self.constants.perspective.horizon_drop ],
       [actually_visible_radius, 0.0],
-    ];
-    for mountain in self.mountains.iter() {
+    ];*/
+    let visible_sky = skyline (actually_visible_radius, &self.mountains.iter().filter_map (| mountain | {
       let screen_peak = self.mountain_screen_peak (& mountain);
       let visible_base_radius = mountain.base_screen_radius*(self.constants.perspective.horizon_drop - screen_peak [1])/mountain.fake_peak_location [2];
       if screen_peak [0] + visible_base_radius < -actually_visible_radius ||
-         screen_peak [0] - visible_base_radius > actually_visible_radius {continue;}
+         screen_peak [0] - visible_base_radius > actually_visible_radius {return None;}
       
-      visible_sky = difference (& visible_sky, & vec![
+      Some(ScreenMountain {peak: Vector2::new (screen_peak [0], self.constants.perspective.horizon_drop-screen_peak [1]), radius: visible_base_radius})
+      
+      /*visible_sky = difference (& visible_sky, & vec![
         [screen_peak [0], screen_peak [1]],
         [screen_peak [0] - visible_base_radius, self.constants.perspective.horizon_drop+0.0001],
         [screen_peak [0] + visible_base_radius, self.constants.perspective.horizon_drop+0.0001],
       ]).pop().unwrap();
-      /*js! {
+      js! {
         var pos = [@{screen_peak[0]}, @{screen_peak[1]}];
         var height =@{mountain.fake_peak_location [2]};
         var radius =@{mountain.base_screen_radius};
@@ -365,10 +366,11 @@ impl State {
 
         window.visible_sky = window.visible_sky.subtract (mountain);
       }*/
-    }
-    js! {window.segments = [];}
-    for vector in visible_sky { js! {segments.push ([@{vector [0]},@{vector [1]}]);}}
+    }).collect::<Vec<_>>());
+    js! {window.segments = [[@{- actually_visible_radius},0]];}
+    for vector in visible_sky { js! {segments.push ([@{vector [0]},@{self.constants.perspective.horizon_drop-vector [1]}]);}}
     js! {
+      segments.push ([@{actually_visible_radius},0]);
       var visible_sky = new paper.Path ({segments: segments, insert: false});
       visible_sky.closed = true;
       context.lineWidth = @{0.001};
