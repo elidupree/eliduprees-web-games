@@ -177,9 +177,11 @@ var fullscreen = (
     null);
 if (window.innerHeight > window.innerWidth && window.screen.height > window.screen.width &&
   fullscreen && window.screen.orientation && window.screen.orientation.lock) {
-  document.addEventListener (fullscreen.change, function() {
+  var handler = function() {
+    document.removeEventListener (fullscreen.change, handler);
     window.screen.orientation.lock ("landscape");
-  });
+  };
+  document.addEventListener (fullscreen.change, handler);
   document.body [fullscreen.request] ();
 }
   };}
