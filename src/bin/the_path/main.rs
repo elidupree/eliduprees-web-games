@@ -13,6 +13,8 @@ extern crate nalgebra;
 extern crate rand;
 extern crate ordered_float;
 extern crate boolinator;
+extern crate lyon;
+extern crate arrayvec;
 
 use rand::Rng;
 use stdweb::web;

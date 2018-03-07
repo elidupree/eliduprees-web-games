@@ -3,6 +3,7 @@ use super::*;
 use rand::Rng;
 use stdweb::unstable::TryInto;
 use ordered_float::OrderedFloat;
+use arrayvec::ArrayVec;
 
 pub type Vector3 = nalgebra::Vector3 <f64>;
 pub type Rotation3 = nalgebra::Rotation3 <f64>;
@@ -87,48 +88,79 @@ impl CylindricalPerspective {
   }
 }
 
-
-/*pub struct Skyline {
-  vertices: Vec<Vector2>
+pub fn segment_intersection (first: [Vector2; 2], second: [Vector2; 2])->Option <Vector2> {
+  type Point2D = ::lyon::geom::euclid::Point2D<f64>;
+  type LineSegment = ::lyon::geom::LineSegment<f64>;
+  fn convert (vector: Vector2)->Point2D {
+    ::lyon::math::point(vector[0], vector[1])
+  }
+  fn convert_back (vector: Point2D)->Vector2 {
+    Vector2::new (vector.x, vector.y)
+  }
+  fn convert_segment (segment: [Vector2; 2])->LineSegment {
+    LineSegment {from: convert (segment[0]), to: convert (segment[1])}
+  }
+  convert_segment (first).intersection (& convert_segment (second)).map (| vector | convert_back (vector))
 }
-impl Skyline {
-  pub fn sample (horizontal: f64)->f64 {
-    let next = match self.vertices.binary_search_by_key (&horizontal, | vertex | OrderedFloat (vertex [0])) {
-      Ok (index) => return self.vertices [index] [1],
-      Err (index) => index,
-    };
-    match (self.vertices.get (next.wrapping_sub (1)), self.vertices.get (next)) {
-      (None, None) => 0.0,
-      (None, None) => 0.0,
-      (None, None) => 0.0,
-      (Some (previous), Some (next)) => {
-        let fraction = (horizontal - previous [0])/(next [0] - previous [0]);
-        previous [1]*(1.0 - fraction) + next [1]*fraction
-      },
+
+pub struct ScreenMountain {
+  pub peak: Vector2,
+  pub radius: f64,
+}
+impl ScreenMountain {
+  pub fn sample (&self, horizontal: f64)->Option <f64> {
+    let distance = (self.peak [0] - horizontal).abs();
+    if distance > self.radius {return None;}
+    let fraction = distance/self.radius;
+    Some(self.peak [1]*(1.0 - fraction))
+  }
+  pub fn key_points (&self, visible_radius: f64)->[Vector2; 3] {
+    [
+      self.peak,
+      if self.peak [0] - self.radius < -visible_radius { Vector2::new (-visible_radius, self.sample (-visible_radius).unwrap_or (0.0))} else {Vector2::new (self.peak [0] - self.radius, 0.0)},
+      if self.peak [0] + self.radius >  visible_radius { Vector2::new ( visible_radius, self.sample ( visible_radius).unwrap_or (0.0))} else {Vector2::new (self.peak [0] + self.radius, 0.0)},
+    ]
+  }
+  pub fn intersection_points (&self, other: & ScreenMountain, visible_radius: f64)->ArrayVec<[Vector2; 4]> {
+    let mut result = ArrayVec::new();
+    let distance = (self.peak [0] - other.peak [0]).abs();
+    if distance > self.radius + other.radius {return result;}
+    let my_points = self.key_points(visible_radius);
+    let other_points = other.key_points(visible_radius);
+    if let Some(intersection) = segment_intersection ([self.peak, my_points [1]], [other.peak, other_points [1]]) {
+      result.push (intersection);
+    }
+    if let Some(intersection) = segment_intersection ([self.peak, my_points [2]], [other.peak, other_points [1]]) {
+      result.push (intersection);
+    }
+    if let Some(intersection) = segment_intersection ([self.peak, my_points [1]], [other.peak, other_points [2]]) {
+      result.push (intersection);
+    }
+    if let Some(intersection) = segment_intersection ([self.peak, my_points [2]], [other.peak, other_points [2]]) {
+      result.push (intersection);
+    }
+    result.retain (| intersection | intersection [0].abs() <= visible_radius);
+    result
+  }
+}
+
+pub fn skyline (visible_radius: f64, mountains: & [ScreenMountain])->Vec<Vector2> {
+  let mut points = Vec::with_capacity(mountains.len()*10);
+  points.push (Vector2::new (-visible_radius, 0.0));
+  points.push (Vector2::new (visible_radius, 0.0));
+  for (index, mountain) in mountains.iter().enumerate() {
+    points.extend (mountain.key_points(visible_radius).iter().cloned());
+    for other in mountains [index + 1..].iter() {
+      points.extend (mountain.intersection_points (other, visible_radius));
     }
   }
-  pub fn sample_mountain (peak: Vector2, radius: f64, horizontal: f64)->Option <f64> {
-    let distance = (peak [0] - horizontal).abs();
-    if distance >radius {return None;}
-    let fraction = distance/radius;
-    Some(peak [1]*(1.0 - fraction)
-  }
-  pub fn mountain_points (peak: Vector2, radius: f64)->[Vector2; 3] {
-    [Vector2::new (peak [0] - radius, 0.0),
-    peak,
-    Vector2::new (peak [0] + radius, 0.0)]
-  }
-  pub fn add_mountain (peak: Vector2, radius: f64) {
-    let new_vertices = Vec::with_capacity (self.vertices.len() + 3);
-    let points = mountain_points (peak, radius);
-    for index in 0..self.vertices.len()+1 {
-      let previous = self.vertices.get (index.wrapping_sub (1);
-      let next = self.vertices.get(index);
-      
-      if let Some(sample) = sample_mountain (peak, radius, current [0]).map_or (true, | height |
-    }
-  }
-}*/
+  points.retain (| point | point [0].abs() <= visible_radius && mountains.iter().all (| mountain | {
+    point [1] > mountain.sample (point [0]).unwrap_or (0.0) - 0.00001
+  }));
+  points.sort_by_key (| point | OrderedFloat (point [0]));
+  points
+}
+
 
 
 pub fn move_to (location: Vector2) {
