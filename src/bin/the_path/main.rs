@@ -172,7 +172,7 @@ fn main() {
 var fullscreen = (
     document.body.requestFullScreen ? { request: "requestFullScreen", change: "fullscreenchange" } :
     document.body.webkitRequestFullScreen ? { request: "webkitRequestFullScreen", change: "webkitfullscreenchange" } :
-    document.body.mozRequestFullScreen ? { request: mozRequestFullScreen, change: "mozfullscreenchange" } :
+    document.body.mozRequestFullScreen ? { request: "mozRequestFullScreen", change: "mozfullscreenchange" } :
     document.body.msRequestFullScreen ? { request: "msRequestFullScreen", change: "MSFullscreenChange" } :
     null);
 if (window.innerHeight > window.innerWidth && window.screen.height > window.screen.width &&
