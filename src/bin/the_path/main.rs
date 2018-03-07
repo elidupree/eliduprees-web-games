@@ -200,7 +200,7 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
   js! {$("<style> .menu {text-align: center; margin: 0.7em 0; } .menu.bubble {background-color: white; padding: 0.7em; border-radius: 1.2em;} .menu.bubble.clickable {cursor: pointer} .menu.bubble.clickable:hover {background-color: black; color: white;} .button_box {margin: 1.4em 2.3em; } </style>").appendTo ("head");}
   
   js! {
-    var css = { position: "fixed", width: "100%", height: "100%" };
+    var css = { position: "fixed", width: "100%", height: "100%", overflow: "hidden" };
     $(document).css(css);
     $(document.body).css(css);
   }
