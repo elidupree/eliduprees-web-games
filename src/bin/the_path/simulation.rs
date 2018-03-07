@@ -43,9 +43,9 @@ pub struct Constants {
   #[derivative (Default (value = "0.10"))]
   pub mountain_density: f64,
   
-  #[derivative (Default (value = "0.5"))]
+  #[derivative (Default (value = "0.47"))]
   pub monster_density: f64,
-  #[derivative (Default (value = "5.0"))]
+  #[derivative (Default (value = "9.0"))]
   pub tree_density: f64,
   #[derivative (Default (value = "1.5"))]
   pub chest_density: f64,
