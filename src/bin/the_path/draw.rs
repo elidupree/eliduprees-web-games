@@ -485,5 +485,18 @@ impl State {
     
     self.draw_object (& self.player, visible_radius, true);
     self.draw_object (& self.companion, visible_radius, true);
+    
+    
+      
+      /*js! {
+        context.save();
+        context.textBaseline = "middle";
+        context.scale(0.0001,0.0001);
+        context.font = 500+"px Arial, Helvetica, sans-serif";
+        context.fillStyle = "rgb(255, 255, 155)";
+        context.fillText ("resizes: " + window.resizes + " canvas: "+ canvas.width + "x" + canvas.height + " window: "+ window.innerWidth + "x" + window.innerHeight, -@{visible_radius*9500.0}, 500);
+        context.restore();
+      }*/
+        
   }
 }

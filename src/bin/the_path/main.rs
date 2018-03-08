@@ -368,7 +368,8 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
     };
     js! {
       window.update_dimensions = @{update_dimensions_callback};
-      $(window).resize (function() {update_dimensions() ;});
+      window.resizes = 0;
+      $(window).resize (function() {window.resizes++; update_dimensions();});
     }
   }
   
