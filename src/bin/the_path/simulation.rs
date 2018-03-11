@@ -400,9 +400,10 @@ impl State {
 
         
     let mut time_moved = duration;
-    let mut collision = None;
+    let mut collisions = Vec::new();
     for (index, object) in self.objects.iter().enumerate() {
       if match object.kind { Kind::Monster (Monster {attack_progress,..}) if attack_progress >0.0 => true,_=> false} {continue;}
+      if object.creation_progress > 0.0 {continue;}
       let relative_velocity = object.velocity - self.player.velocity;
       let relative_location = object.center - self.player.center;
       if relative_velocity [1] < 0.0 && relative_location [1] > 0.0 {
@@ -411,7 +412,9 @@ impl State {
         if horizontal_difference_when_aligned.abs() < (object.radius + self.player.radius)*0.9 {
           if time_to_collide < time_moved {
             time_moved = time_to_collide - 0.0001;
-            collision = Some(index);
+          }
+          if time_to_collide < duration {
+            collisions.push (index);
           }
         }
       }
@@ -508,6 +511,12 @@ impl State {
         } else {
           monster.attack_progress += duration/auto_constant ("monster_attack_duration", 0.12);
         },
+        Kind::Reward => if object.collect_progress > 0.0 {
+          object.collect_progress += duration*0.7;
+        },
+        Kind::Chest => if object.collect_progress > 0.0 {
+          object.collect_progress += duration/constants.chest_open_duration;
+        },
         _=>(),
       };
     }
@@ -530,8 +539,7 @@ impl State {
     let companion_center = self.companion.center;
     
     let mut created_objects = Vec::new() ;
-    if let Some(index) = collision {
-      {
+    for index in collisions {
       let object = &mut self.objects [index];
       let center_distance = self.player.center [0] - object.center [0];
       let direction = if center_distance <0.0 {- 1.0} else {1.0};
@@ -552,6 +560,7 @@ impl State {
         },
         Kind::Reward => {
           if object.collect_progress == 0.0 {
+            object.collect_progress = 0.000001;
             self.permanent_pain -= 0.10;
             self.player.statements.push (Statement {
               text: String::from_str ("Yay!").unwrap(),
@@ -560,10 +569,10 @@ impl State {
               direction: Cell::new (1.0),
             });
           }
-          object.collect_progress += duration*0.7;
         },
         Kind::Chest => {
           if object.collect_progress == 0.0 {
+            object.collect_progress = 0.000001;
             self.player.statements.push (Statement {
               text: String::from_str ("What's inside?").unwrap(),
               start_time: now,
@@ -581,34 +590,31 @@ impl State {
             new_object.center [1] += 0.0001;
             created_objects.push (new_object);
           }
-          object.collect_progress += duration/constants.chest_open_duration;
         },
         Kind::Monster(ref mut monster) => {
-          self.permanent_pain += 0.22;
-          self.temporary_pain += 1.4;
-          monster.attack_progress = 0.000001;
-          monster.attack_direction = direction;
-          object.velocity = Vector2::new (0.0, 0.0);
-          self.player.falling = Some(Fall {
-            distance: self.player.radius*0.25 *direction, // minimal_escape_distance + self.player.radius*2.25 *direction,
-            progress: 0.0,
-          });
-          self.player.statements.push (Statement {
-            text: String::from_str ("Ow, it hurts!").unwrap(),
-            start_time: now,
-            response: Some(String::from_str (if player_distance_from_path < 1.2 {"Liar, that would never happen on the path"} else {"It's your fault for straying"}).unwrap()),
-            direction: Cell::new (direction),
-          });
+          if monster.attack_progress == 0.0 {
+            monster.attack_progress = 0.000001;
+            self.permanent_pain += 0.22;
+            self.temporary_pain += 1.4;
+            monster.attack_direction = direction;
+            object.velocity = Vector2::new (0.0, 0.0);
+            self.player.falling = Some(Fall {
+              distance: self.player.radius*0.25 *direction, // minimal_escape_distance + self.player.radius*2.25 *direction,
+              progress: 0.0,
+            });
+            self.player.statements.push (Statement {
+              text: String::from_str ("Ow, it hurts!").unwrap(),
+              start_time: now,
+              response: Some(String::from_str (if player_distance_from_path < 1.2 {"Liar, that would never happen on the path"} else {"It's your fault for straying"}).unwrap()),
+              direction: Cell::new (direction),
+            });
+          }
         },
         Kind::Person(_) => unreachable!(),
       }
-      }
-      if self.objects [index].collect_progress >= 1.0 {
-        self.objects.remove (index);
-      }
     }
     self.objects.retain (| object | {
-      object.center [1] > player_center[1] - 0.5
+      object.center [1] > player_center[1] - 0.5 && object.collect_progress < 1.0
     });
     self.objects.extend (created_objects);
     
