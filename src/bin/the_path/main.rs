@@ -197,68 +197,26 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
       }
     }
   };
-  js! {$("<style> .menu {text-align: center; margin: 0.7em 0; } .menu.bubble {background-color: white; padding: 0.7em; border-radius: 1.2em;} .menu.bubble.clickable {cursor: pointer} .menu.bubble.clickable:hover {background-color: black; color: white;} .button_box {margin: 1.4em 2.3em; } </style>").appendTo ("head");}
-  
+
   js! {
-    var css = { position: "fixed", width: "100%", height: "100%", overflow: "hidden" };
-    $(document.documentElement).css(css);
-    $(document.body).css(css);
-  }
-  js! {
-    window.game_container = $("<div>").css({
-      position: "absolute", top: 0, left: 0,
-      width: "100%",
-      height: "100%",
-      overflow: "hidden"
-    });
-    window.canvas = document.createElement ("canvas");
-    $(document.querySelector("main") || document.body).append (game_container[0]).css("background-color", "black");
-    game_container.append(canvas);
-    $(canvas).css ({"touch-action": "none"});
+    window.game_container = $("#game_container");
+    window.canvas = document.getElementById ("game_canvas");
     window.context = canvas.getContext ("2d");
     window.turn = Math.PI*2;
     
     paper.setup ([640, 480]);
   }
   js! {
-    window.menu = $("<div>").css({
-      position: "absolute",
-      top: 0,
-      width: "100%",
-      overflow: "hidden"
-    });
-    
-    game_container.append (menu);
-
-    
+    window.menu = $("#menu");
     window.constants = @{Constants::default()};
     window.auto_constants = {};
   }
   js! {
-    menu.append (
-      $("<h1>", {class: "menu"}).text ("The Path").css({color: "white", "font-size": "250%"}),
-      $("<div>", {class: "menu"}).text ("a game about social expectations").css({color: "white"}),
-      window.button_box = $("<div>", {class: "button_box"})
-    );
-  }
-  js! {
     var start_playing_callback = @{start_playing_callback};
-    button_box.append(
-      window.content_warnings = $("<div>", {class: "menu bubble clickable"}).text ("Show content warnings").click (function() {
-        content_warnings.text ("Content warning: a voice victim-blames you for stuff").removeClass("clickable").css({color: "white"}).css({color: "black", transition: "color 0.6s"});
-      }),
-      $("<div>", {class: "menu bubble clickable"}).text ("Start playing").css({"font-size": "150%", "font-weight": "bold"}).click (function() {orientation_hack(); start_playing_callback();})
-    );
-  }
-  js! {
-    button_box.append(
-      $("<a>", {href: "https://www.patreon.com/EliDupree"}).append (
-        $("<div>", {class: "menu bubble clickable"}).text ("Support my works on Patreon")
-      ).css({"background-color": "white"}),
-      $("<a>", {href: "https://www.elidupree.com/"}).append (
-        $("<div>", {class: "menu bubble clickable"}).text ("Return to elidupree.com")
-      ).css({"background-color": "white"})
-    );
+    window.content_warnings = $("#content_warnings").text ("Show content warnings").click (function() {
+      content_warnings.text ("Content warning: a voice victim-blames you for stuff").removeClass("clickable").css({color: "white"}).css({color: "black", transition: "color 0.6s"});
+    });
+    $("#start_playing").css({"font-size": "150%", "font-weight": "bold"}).click (function() {orientation_hack(); start_playing_callback();});
   }
   
   {
