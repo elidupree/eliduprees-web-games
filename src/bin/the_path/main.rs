@@ -197,7 +197,7 @@ fn main() {
     }
   ));
   
-  js! { window.orientation_hack = function() {
+  /*js! { window.orientation_hack = function() {
 var fullscreen = (
     document.body.requestFullScreen ? { request: "requestFullScreen", change: "fullscreenchange" } :
     document.body.webkitRequestFullScreen ? { request: "webkitRequestFullScreen", change: "webkitfullscreenchange" } :
@@ -213,7 +213,7 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
   document.addEventListener (fullscreen.change, handler);
   document.body [fullscreen.request] ();
 }
-  };}
+  };}*/
   
   let start_playing_callback = {
     let game = game.clone();
@@ -254,7 +254,7 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
     window.content_warnings = $("#content_warnings").text ("Show content warnings").click (function() {
       content_warnings.text ("Content warning: a voice victim-blames you for stuff").removeClass("clickable").css({color: "white"}).css({color: "black", transition: "color 0.6s"});
     });
-    $("#start_playing").click (function() {orientation_hack(); start_playing_callback();});
+    $("#start_playing").click (function() {/*orientation_hack();*/ start_playing_callback();});
     $("#back_to_menu").click (function() {back_to_menu_callback();});
   }
   
