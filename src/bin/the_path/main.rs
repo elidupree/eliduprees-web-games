@@ -116,10 +116,11 @@ fn main_loop (time: f64, game: Rc<RefCell<Game>>) {
       },
       MenuState::GameOverAppearing (progress) => {
         js! {
-          game_over.css({display: "block", opacity: @{progress}});
+          game_over.css({display: "block", opacity: 1.0});
+          fade_children (game_over,@{progress});
           $(canvas).css({opacity: @{game_over_game_opacity}});
         }
-        let new_progress = progress + duration_to_simulate;
+        let new_progress = progress + duration_to_simulate/auto_constant ("game_over_screen_fade_in", 6.0);
         game.menu_state = if new_progress > 1.0 {MenuState::GameOver} else {MenuState::GameOverAppearing (new_progress)};
       },
       MenuState::GameOver => {
@@ -214,6 +215,19 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
   document.body [fullscreen.request] ();
 }
   };}*/
+  
+  js! {
+    window.fade_children = function (element, progress) {
+      var children = element.children();
+      var length = children.length ;;
+      for (var index = 0; index <length ;++index) {
+        var begin = index/length;
+        var end = (index + 1)/length;
+        var adjusted = Math.max (0, Math.min (1, (progress - begin)/(end - begin)));
+        children.eq(index).css ({opacity: adjusted});
+      }
+    }
+  }
   
   let start_playing_callback = {
     let game = game.clone();
