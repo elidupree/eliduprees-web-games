@@ -34,10 +34,11 @@ pub use misc::*;
 
 
 enum MenuState {
-  Shown,
-  Hidden,
-  Appearing (f64),
-  Disappearing (f64),
+  MainMenu,
+  MainMenuDisappearing (f64),
+  Playing,
+  GameOverAppearing (f64),
+  GameOver,
 }
 
 struct Game {
@@ -72,35 +73,51 @@ fn main_loop (time: f64, game: Rc<RefCell<Game>>) {
     let duration_to_simulate = min(observed_duration, 50.0)/1000.0;
     game.last_ui_time = time;
     let menu_game_opacity = 0.4;
-    if duration_to_simulate > 0.0 { match game.menu_state {
-      MenuState::Hidden => {
+    let game_over_game_opacity = 0.1;
+    if duration_to_simulate > 0.0 {
+    js! {
+      menu.css({display: "none"});
+      game_over.css({display: "none"});
+    }
+    match game.menu_state {
+      MenuState::MainMenu => {
         js! {
-          menu.css({display: "none"});
-          $(canvas).css({opacity: @{1.0}});
+          menu.css({display: "block", opacity: 1.0});
+          $(canvas).css({opacity: @{menu_game_opacity} });
         }
-        game.state.simulate (duration_to_simulate);
-        draw_game (& game);
       },
-      MenuState::Appearing (progress) => {
-        js! {
-          menu.css({display: "block", opacity: @{progress}});
-          $(canvas).css({opacity: @{menu_game_opacity + (1.0 - menu_game_opacity)*(1.0 - progress)}});
-        }
-        let new_progress = progress + duration_to_simulate;
-        game.menu_state = if new_progress > 1.0 {MenuState::Shown} else {MenuState::Appearing (new_progress)};
-      },
-      MenuState::Disappearing (progress) => {
+      MenuState::MainMenuDisappearing (progress) => {
         js! {
           menu.css({display: "block", opacity: @{1.0 - progress}});
           $(canvas).css({opacity: @{menu_game_opacity + (1.0 - menu_game_opacity)*progress}});
         }
         let new_progress = progress + duration_to_simulate;
-        game.menu_state = if new_progress > 1.0 {MenuState::Hidden} else {MenuState::Disappearing (new_progress)};
+        game.menu_state = if new_progress > 1.0 {MenuState::Playing} else {MenuState::MainMenuDisappearing (new_progress)};
+        game.state.simulate (duration_to_simulate * progress);
+        draw_game (& game);
       },
-      MenuState::Shown => {
+      MenuState::Playing => {
         js! {
-          menu.css({display: "block", opacity: 1.0});
-          $(canvas).css({opacity: @{menu_game_opacity} });
+          $(canvas).css({opacity: 1.0});
+        }
+        game.state.simulate (duration_to_simulate);
+        draw_game (& game);
+        if game.state.now > auto_constant ("game_duration", 10.0*60.0) { game.menu_state = MenuState::GameOverAppearing (0.0); }
+      },
+      MenuState::GameOverAppearing (progress) => {
+        js! {
+          game_over.css({display: "block", opacity: @{progress}});
+          $(canvas).css({opacity: @{game_over_game_opacity + (1.0 - game_over_game_opacity)*(1.0 - progress)}});
+        }
+        game.state.simulate (duration_to_simulate * (1.0 - progress));
+        draw_game (& game);
+        let new_progress = progress + duration_to_simulate/auto_constant ("game_state_out_duration", 3.0);
+        game.menu_state = if new_progress > 1.0 {MenuState::GameOver} else {MenuState::GameOverAppearing (new_progress)};
+      },
+      MenuState::GameOver => {
+        js! {
+          game_over.css({display: "block", opacity: 1.0});
+          $(canvas).css({opacity: @{game_over_game_opacity}});
         }
       },
     }}
@@ -123,7 +140,7 @@ fn main() {
   let game = Rc::new (RefCell::new (
     Game {
       last_ui_time: 0.0,
-      menu_state: MenuState::Shown,
+      menu_state: MenuState::MainMenu,
       most_recent_movement_direction: 1.0,
       state: State {
         path: Path {max_speed: 1.0, radius: 0.12, components: vec![Component {center: Vector2::new (0.0, - 0.5), velocity: 0.0, acceleration: 0.0}], .. Default::default()},
@@ -194,8 +211,8 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
     let game = game.clone();
     move | | {
       let mut game = game.borrow_mut();
-      if let MenuState::Shown = game.menu_state {
-        game.menu_state = MenuState::Disappearing (0.0);
+      if let MenuState::MainMenu = game.menu_state {
+        game.menu_state = MenuState::MainMenuDisappearing (0.0);
       }
     }
   };
@@ -210,6 +227,7 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
   }
   js! {
     window.menu = $("#menu");
+    window.game_over = $("#game_over");
     window.constants = @{Constants::default()};
     window.auto_constants = {};
   }

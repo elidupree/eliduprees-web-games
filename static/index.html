@@ -22,12 +22,15 @@ canvas {
   touch-action: none;
 }
 
-#menu {
+.menu.container {
   position: absolute;
   top: 0;
   width: 100%;
   overflow: hidden;
 }
+
+#game_over {display: none;}
+
 
 .menu {
   text-align: center;
@@ -73,7 +76,7 @@ window.Module = window.Module || {};
     <!-- eliduprees-website-source body -->
     <div id="game_container">
       <canvas id="game_canvas"></canvas>
-      <div id="menu" class="menu">
+      <div id="menu" class="menu container">
         <h1 class="menu">
           The Path
         </h1>
@@ -85,7 +88,7 @@ window.Module = window.Module || {};
             Show content warnings
           </div>
           <div id="start_playing" class="menu bubble clickable">
-            Start playing
+            Start playing (10 minutes)
           </div>
           <a href="https://www.patreon.com/EliDupree">
             <div class="menu bubble clickable">
@@ -97,6 +100,11 @@ window.Module = window.Module || {};
               return to elidupree.com
             </div>
           </a>
+        </div>
+      </div>
+      <div id="game_over" class="menu container">
+        <div class="menu subtitle">
+          Thank you for playing!
         </div>
       </div>
     </div>
