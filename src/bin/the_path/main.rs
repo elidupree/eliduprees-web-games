@@ -37,6 +37,7 @@ enum MenuState {
   MainMenu,
   MainMenuDisappearing (f64),
   Playing,
+  GameEnding (f64),
   GameOverAppearing (f64),
   GameOver,
 }
@@ -102,16 +103,23 @@ fn main_loop (time: f64, game: Rc<RefCell<Game>>) {
         }
         game.state.simulate (duration_to_simulate);
         draw_game (& game);
-        if game.state.now > auto_constant ("game_duration", 10.0*60.0) { game.menu_state = MenuState::GameOverAppearing (0.0); }
+        if game.state.now > auto_constant ("game_duration", 10.0*60.0) { game.menu_state = MenuState::GameEnding (0.0); }
       },
-      MenuState::GameOverAppearing (progress) => {
+      MenuState::GameEnding (progress) => {
         js! {
-          game_over.css({display: "block", opacity: @{progress}});
           $(canvas).css({opacity: @{game_over_game_opacity + (1.0 - game_over_game_opacity)*(1.0 - progress)}});
         }
         game.state.simulate (duration_to_simulate * (1.0 - progress));
         draw_game (& game);
-        let new_progress = progress + duration_to_simulate/auto_constant ("game_state_out_duration", 3.0);
+        let new_progress = progress + duration_to_simulate/auto_constant ("game_fade_out_duration", 3.0);
+        game.menu_state = if new_progress > 1.0 {MenuState::GameOverAppearing (0.0)} else {MenuState::GameEnding (new_progress)};
+      },
+      MenuState::GameOverAppearing (progress) => {
+        js! {
+          game_over.css({display: "block", opacity: @{progress}});
+          $(canvas).css({opacity: @{game_over_game_opacity}});
+        }
+        let new_progress = progress + duration_to_simulate;
         game.menu_state = if new_progress > 1.0 {MenuState::GameOver} else {MenuState::GameOverAppearing (new_progress)};
       },
       MenuState::GameOver => {
