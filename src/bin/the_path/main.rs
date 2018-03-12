@@ -224,6 +224,15 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
       }
     }
   };
+  let back_to_menu_callback = {
+    let game = game.clone();
+    move | | {
+      let mut game = game.borrow_mut();
+      if let MenuState::GameOver = game.menu_state {
+        game.menu_state = MenuState::MainMenu;
+      }
+    }
+  };
 
   js! {
     window.game_container = $("#game_container");
@@ -241,10 +250,12 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
   }
   js! {
     var start_playing_callback = @{start_playing_callback};
+    var back_to_menu_callback = @{back_to_menu_callback};
     window.content_warnings = $("#content_warnings").text ("Show content warnings").click (function() {
       content_warnings.text ("Content warning: a voice victim-blames you for stuff").removeClass("clickable").css({color: "white"}).css({color: "black", transition: "color 0.6s"});
     });
-    $("#start_playing").css({"font-size": "150%", "font-weight": "bold"}).click (function() {orientation_hack(); start_playing_callback();});
+    $("#start_playing").click (function() {orientation_hack(); start_playing_callback();});
+    $("#back_to_menu").click (function() {back_to_menu_callback();});
   }
   
   {
@@ -349,8 +360,14 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
         var size = 4;
         do {
           menu.css({ "font-size": (size/2)+"em" }).css({ "font-size": size+"vh" });
-          size *= 0.9;
+          size *= 0.96;
         } while (size > 0.5 && menu.height() > window.innerHeight);
+        
+        size = 4;
+        do {
+          game_over.css({ "font-size": (size/2)+"em" }).css({ "font-size": size+"vh" });
+          size *= 0.96;
+        } while (size > 0.5 && game_over.height() > window.innerHeight);
       }
       draw_game (& game.borrow());
     };

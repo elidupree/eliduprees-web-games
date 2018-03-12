@@ -68,10 +68,18 @@ h1 {
 .game_over_paragraph {
   color: white;
   font-size: 130%;
-  margin: 0.7em 2.6em;
+  margin: 2.7em 15%;
 }
 .game_over_paragraph a {
   color: #f60;
+}
+
+#game_over .menu.bubble {
+  background-color: #ddd;
+  font-size: 90%;
+}
+#game_over .menu.bubble.clickable:hover {
+  background-color: black;
 }
     </style>
     
@@ -122,6 +130,11 @@ window.Module = window.Module || {};
         <p class="menu game_over_paragraph">
           If you want to see more games like this one, consider <a href="https://www.patreon.com/EliDupree">supporting me on Patreon</a>.
         </p>
+        <div class="button_box">
+          <div id="back_to_menu" class="menu bubble clickable">
+            Return to main menu
+          </div>
+        </div>
       </div>
     </div>
   
