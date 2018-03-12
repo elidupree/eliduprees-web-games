@@ -43,6 +43,7 @@ enum MenuState {
 struct Game {
   state: State,
   last_ui_time: f64,
+  most_recent_movement_direction: f64,
   menu_state: MenuState,
 }
 
@@ -123,6 +124,7 @@ fn main() {
     Game {
       last_ui_time: 0.0,
       menu_state: MenuState::Shown,
+      most_recent_movement_direction: 1.0,
       state: State {
         path: Path {max_speed: 1.0, radius: 0.12, components: vec![Component {center: Vector2::new (0.0, - 0.5), velocity: 0.0, acceleration: 0.0}], .. Default::default()},
         player: Object {
@@ -265,18 +267,20 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
       let mut game = game.borrow_mut();
       let mut location = game.state.screen_to_ground (Vector2::new (x,y));
       let player_center = game.state.player.center;
-      let mut offset = location - player_center;
       let limit = auto_constant ("angle_limit", TURN/6.0);
-      if offset [1] < 0.0 {
-        //offset = Rotation2::new (-limit*2.0*x)*Vector2::new (0.0, 0.3);
-        offset [1] *= -1.0;
+      
+      let mut offset = location - player_center;
+      if offset.norm() < game.state.player.radius { return; }
+      let absolute_angle = (-offset [0]).atan2(offset[1]);
+      if offset [1] < 0.0 {offset *= -1.0;}
+      let limited_angle = (-offset [0]).atan2(offset[1]);
+      offset = location - player_center;
+      if limited_angle > limit || limited_angle < -limit { offset = Rotation2::new ( -limit*offset [0].signum()*game.most_recent_movement_direction - absolute_angle)*offset; }
+      else {
+        game.most_recent_movement_direction = if location[1] < player_center [1] {-1.0} else {1.0};
+        if offset [1] < 0.0 {offset *= -1.0;}
       }
-      if offset.norm() < game.state.player.radius {
-        return;
-      }
-      let angle = (-offset [0]).atan2(offset[1]);
-      if angle >  limit { offset = Rotation2::new ( limit - angle)*offset; }
-      if angle < -limit { offset = Rotation2::new (-limit - angle)*offset; }
+      
       location = player_center + offset;
       
       game.state.last_click = Some(Click {
