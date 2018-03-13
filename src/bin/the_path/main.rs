@@ -208,7 +208,7 @@ fn main() {
     return false;
   }
   else {
-    $(".loading").removeClass("loading").text ("(your browser doesn't support the graphics features this game uses; try Chrome?)");
+    $(".loading").removeClass("loading").text ("(This game does not work in your browser. It should work in current versions of Chrome, Edge, Firefox and Safari.  Technical details: Path2D not supported.)");
     return true;
   }}.try_into().unwrap() {return;}
 
