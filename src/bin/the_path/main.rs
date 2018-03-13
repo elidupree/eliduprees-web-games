@@ -147,23 +147,12 @@ fn main_loop (time: f64, game: Rc<RefCell<Game>>) {
 }
 
 
-#[cfg (target_os = "emscripten")]
-fn main() {
-  stdweb::initialize();
-  
-  
-  
+fn new_game()->State {
   let mut skies = Vec::new();
   for _ in 0..15 {
     skies.push (Sky {screen_position: Vector2::new (rand::thread_rng().gen_range(-0.5, 0.5), rand::thread_rng().gen::<f64>()*0.36), steepness: rand::thread_rng().gen_range(0.1,0.2)});
   }
-  
-  let game = Rc::new (RefCell::new (
-    Game {
-      last_ui_time: 0.0,
-      menu_state: MenuState::MainMenuAppearing (0.0),
-      most_recent_movement_direction: 1.0,
-      state: State {
+  let mut state = State {
         path: Path {max_speed: 1.0, radius: 0.12, components: vec![Component {center: Vector2::new (0.0, - 0.5), velocity: 0.0, acceleration: 0.0}], .. Default::default()},
         player: Object {
           center: Vector2::new (0.0, 0.0),
@@ -206,7 +195,36 @@ fn main() {
         generator: Box::new(rand::thread_rng()),
         
         .. Default::default()
-      }
+      };
+  state.simulate (0.0001);
+  state
+}
+
+#[cfg (target_os = "emscripten")]
+fn main() {
+  stdweb::initialize();
+
+  js! {
+    window.game_container = $("#game_container");
+    window.canvas = document.getElementById ("game_canvas");
+    window.context = canvas.getContext ("2d");
+    window.turn = Math.PI*2;
+    
+    paper.setup ([640, 480]);
+  }
+  js! {
+    window.menu = $("#menu");
+    window.game_over = $("#game_over");
+    window.constants = @{Constants::default()};
+    window.auto_constants = {};
+  }
+    
+  let game = Rc::new (RefCell::new (
+    Game {
+      last_ui_time: 0.0,
+      menu_state: MenuState::MainMenuAppearing (0.0),
+      most_recent_movement_direction: 1.0,
+      state: new_game(),
     }
   ));
   
@@ -256,24 +274,12 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
       let mut game = game.borrow_mut();
       if let MenuState::GameOver = game.menu_state {
         game.menu_state = MenuState::MainMenuAppearing (0.0);
+        game.state = new_game();
+        draw_game (&game) ;
       }
     }
   };
 
-  js! {
-    window.game_container = $("#game_container");
-    window.canvas = document.getElementById ("game_canvas");
-    window.context = canvas.getContext ("2d");
-    window.turn = Math.PI*2;
-    
-    paper.setup ([640, 480]);
-  }
-  js! {
-    window.menu = $("#menu");
-    window.game_over = $("#game_over");
-    window.constants = @{Constants::default()};
-    window.auto_constants = {};
-  }
   js! {
     var start_playing_callback = @{start_playing_callback};
     var back_to_menu_callback = @{back_to_menu_callback};
@@ -403,11 +409,7 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
       $(window).resize (function() {window.resizes++; update_dimensions();});
     }
   }
-  
-  {
-    let mut game = game.borrow_mut();
-    game.state.simulate (0.0001);
-  }
+
   js!{$(".loading").hide(); menu.children(".button_box").css({display: "block"});}
   js!{update_dimensions();}
   
