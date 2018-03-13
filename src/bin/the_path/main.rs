@@ -263,7 +263,7 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
     let game = game.clone();
     move | | {
       let mut game = game.borrow_mut();
-      if let MenuState::MainMenu = game.menu_state {
+      if match game.menu_state { MenuState::MainMenu | MenuState::MainMenuAppearing(_) => true,_=> false} {
         game.menu_state = MenuState::MainMenuDisappearing (0.0);
       }
     }
@@ -272,7 +272,7 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
     let game = game.clone();
     move | | {
       let mut game = game.borrow_mut();
-      if let MenuState::GameOver = game.menu_state {
+      if match game.menu_state { MenuState::GameOver | MenuState::GameOverAppearing(_) => true,_=> false} {
         game.menu_state = MenuState::MainMenuAppearing (0.0);
         game.state = new_game();
         draw_game (&game) ;
