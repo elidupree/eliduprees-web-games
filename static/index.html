@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <head>
     <meta charset="utf-8" />
-    <style> body {margin: 0; background-color: black;} canvas {display: block} </style>
+    <style> body {margin: 0; background-color: black;} canvas {display: block} .noscript {display: none;} </style>
     <!-- eliduprees-website-source head -->
     
     <style>
@@ -45,11 +45,13 @@ h1 {
   padding: 0;
 }
 .subtitle {color: white;}
-.loading {
+.game_availability {
   color: white;
-  animation: loading 1s infinite alternate;
+  margin: 1.7em 15%;
+}
+.loading {
   font-size: 150%;
-  margin: 1.7em 0;
+  animation: loading 1s infinite alternate;
 }
 @keyframes loading {
   0% {
@@ -117,7 +119,10 @@ window.Module = window.Module || {};
         <div class="menu subtitle">
           a game about social expectations
         </div>
-        <div class="menu loading">
+        <div class="menu noscript game_availability">
+          (enable JavaScript in order to play this game)
+        </div>
+        <div class="menu script_required loading game_availability">
           (loading...)
         </div>
         <div class="button_box" style="display: none">
@@ -144,7 +149,7 @@ window.Module = window.Module || {};
           Thank you for playing!
         </p>
         <p class="menu game_over_paragraph">
-          The words you've just seen are called emotional abuse. Let's make a world where caregivers do not do these things.
+          The words you've just seen are called emotional abuse. Caregiving can be something better than this.
         </p>
         <p class="menu game_over_paragraph">
           If you want to see more games like this one, consider <a href="https://www.patreon.com/EliDupree">supporting me on Patreon</a>.
