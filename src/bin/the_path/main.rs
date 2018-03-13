@@ -413,7 +413,7 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
   js!{$(".loading").hide(); menu.children(".button_box").css({display: "block"});}
   js!{update_dimensions();}
   
-  web::window().request_animation_frame (move | time | main_loop (time, game));
+  main_loop (0.0, game);
 
   stdweb::event_loop();
 }
