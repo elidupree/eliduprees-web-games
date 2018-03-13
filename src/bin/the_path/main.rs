@@ -34,6 +34,7 @@ pub use misc::*;
 
 
 enum MenuState {
+  MainMenuAppearing (f64),
   MainMenu,
   MainMenuDisappearing (f64),
   Playing,
@@ -81,9 +82,19 @@ fn main_loop (time: f64, game: Rc<RefCell<Game>>) {
       game_over.css({display: "none"});
     }
     match game.menu_state {
+      MenuState::MainMenuAppearing (progress) => {
+        js! {
+          menu.css({display: "block", opacity: 1.0});
+          fade_children (menu.children(".button_box").css({display: "block", opacity: 1.0}),@{progress});
+          $(canvas).css({opacity: @{menu_game_opacity}});
+        }
+        let new_progress = progress + duration_to_simulate/auto_constant ("main_menu_fade_in", 4.0);
+        game.menu_state = if new_progress > 1.0 {MenuState::MainMenu} else {MenuState::MainMenuAppearing (new_progress)};
+      },
       MenuState::MainMenu => {
         js! {
           menu.css({display: "block", opacity: 1.0});
+          fade_children (menu.children(".button_box").css({display: "block", opacity: 1.0}),1.0);
           $(canvas).css({opacity: @{menu_game_opacity} });
         }
       },
@@ -117,7 +128,7 @@ fn main_loop (time: f64, game: Rc<RefCell<Game>>) {
       MenuState::GameOverAppearing (progress) => {
         js! {
           game_over.css({display: "block", opacity: 1.0});
-          fade_children (game_over,@{progress});
+          fade_children (game_over, @{progress});
           $(canvas).css({opacity: @{game_over_game_opacity}});
         }
         let new_progress = progress + duration_to_simulate/auto_constant ("game_over_screen_fade_in", 6.0);
@@ -126,6 +137,7 @@ fn main_loop (time: f64, game: Rc<RefCell<Game>>) {
       MenuState::GameOver => {
         js! {
           game_over.css({display: "block", opacity: 1.0});
+          fade_children (game_over, 1.0);
           $(canvas).css({opacity: @{game_over_game_opacity}});
         }
       },
@@ -149,7 +161,7 @@ fn main() {
   let game = Rc::new (RefCell::new (
     Game {
       last_ui_time: 0.0,
-      menu_state: MenuState::MainMenu,
+      menu_state: MenuState::MainMenuAppearing (0.0),
       most_recent_movement_direction: 1.0,
       state: State {
         path: Path {max_speed: 1.0, radius: 0.12, components: vec![Component {center: Vector2::new (0.0, - 0.5), velocity: 0.0, acceleration: 0.0}], .. Default::default()},
@@ -243,7 +255,7 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
     move | | {
       let mut game = game.borrow_mut();
       if let MenuState::GameOver = game.menu_state {
-        game.menu_state = MenuState::MainMenu;
+        game.menu_state = MenuState::MainMenuAppearing (0.0);
       }
     }
   };
