@@ -284,7 +284,7 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
     var start_playing_callback = @{start_playing_callback};
     var back_to_menu_callback = @{back_to_menu_callback};
     window.content_warnings = $("#content_warnings").text ("Show content warnings").click (function() {
-      content_warnings.text ("Content warning: a voice victim-blames you for stuff").removeClass("clickable").css({color: "white"}).css({color: "black", transition: "color 0.6s"});
+      content_warnings.text ("Content warning: emotional abuse by a caregiver").removeClass("clickable").css({color: "white"}).css({color: "black", transition: "color 0.6s"});
     });
     $("#start_playing").click (function() {/*orientation_hack();*/ start_playing_callback();});
     $("#back_to_menu").click (function() {back_to_menu_callback();});
