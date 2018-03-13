@@ -203,6 +203,14 @@ fn new_game()->State {
 #[cfg (target_os = "emscripten")]
 fn main() {
   stdweb::initialize();
+  
+  if js! {if (Path2D) {
+    return false;
+  }
+  else {
+    $(".loading").removeClass("loading").text ("(your browser doesn't support the graphics features this game uses; try Chrome?)");
+    return true;
+  }}.try_into().unwrap() {return;}
 
   js! {
     window.game_container = $("#game_container");
