@@ -262,7 +262,9 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
         var begin = index/length;
         var end = (index + 1)/length;
         var adjusted = Math.max (0, Math.min (1, (progress - begin)/(end - begin)));
-        children.eq(index).css ({opacity: adjusted});
+        var pointer_events = "auto";
+        if (adjusted < 0.1) { pointer_events = "none"; }
+        children.eq(index).css ({opacity: adjusted, "pointer-events": pointer_events });
       }
     }
   }
