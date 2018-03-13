@@ -85,7 +85,7 @@ fn main_loop (time: f64, game: Rc<RefCell<Game>>) {
       MenuState::MainMenuAppearing (progress) => {
         js! {
           menu.css({display: "block", opacity: 1.0});
-          fade_children (menu.children(".button_box").css({display: "block", opacity: 1.0}),@{progress});
+          fade_children (menu.children(".button_box"), @{progress});
           $(canvas).css({opacity: @{menu_game_opacity}});
         }
         let new_progress = progress + duration_to_simulate/auto_constant ("main_menu_fade_in", 4.0);
@@ -94,7 +94,7 @@ fn main_loop (time: f64, game: Rc<RefCell<Game>>) {
       MenuState::MainMenu => {
         js! {
           menu.css({display: "block", opacity: 1.0});
-          fade_children (menu.children(".button_box").css({display: "block", opacity: 1.0}),1.0);
+          fade_children (menu.children(".button_box"), 1.0);
           $(canvas).css({opacity: @{menu_game_opacity} });
         }
       },
@@ -114,7 +114,7 @@ fn main_loop (time: f64, game: Rc<RefCell<Game>>) {
         }
         game.state.simulate (duration_to_simulate);
         draw_game (& game);
-        if game.state.now > auto_constant ("game_duration", 10.0*60.0) { game.menu_state = MenuState::GameEnding (0.0); }
+        if game.state.now > auto_constant ("game_duration", 2.0) { game.menu_state = MenuState::GameEnding (0.0); }
       },
       MenuState::GameEnding (progress) => {
         js! {
@@ -408,8 +408,8 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
     let mut game = game.borrow_mut();
     game.state.simulate (0.0001);
   }
+  js!{$(".loading").hide(); menu.children(".button_box").css({display: "block"});}
   js!{update_dimensions();}
-  js!{$(".loading").hide();}
   
   web::window().request_animation_frame (move | time | main_loop (time, game));
 
