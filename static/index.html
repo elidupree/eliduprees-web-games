@@ -43,6 +43,20 @@ h1 {
   font-size: 250%;
 }
 .subtitle {color: white;}
+.loading {
+  color: white;
+  animation: loading 1s infinite alternate;
+  font-size: 150%;
+  margin: 1.7em 0;
+}
+@keyframes loading {
+  0% {
+    color: #fff;
+  }
+  100% {
+    color: #999;
+  }
+}
   
 .menu.bubble {
   background-color: white;
@@ -101,7 +115,10 @@ window.Module = window.Module || {};
         <div class="menu subtitle">
           a game about social expectations
         </div>
-        <div class="button_box">
+        <div class="menu loading">
+          (loading...)
+        </div>
+        <div class="button_box" style="display: none">
           <div id="content_warnings" class="menu bubble clickable">
             Show content warnings
           </div>

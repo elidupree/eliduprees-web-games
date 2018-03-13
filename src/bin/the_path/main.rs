@@ -409,6 +409,7 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
     game.state.simulate (0.0001);
   }
   js!{update_dimensions();}
+  js!{$(".loading").hide();}
   
   web::window().request_animation_frame (move | time | main_loop (time, game));
 
