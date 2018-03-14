@@ -119,8 +119,8 @@ fn main_loop (time: f64, game: Rc<RefCell<Game>>) {
           $(canvas).css({opacity: 1.0});
         }
         game.state.simulate (duration_to_simulate);
-        if game.state.now > auto_constant ("game_duration", 2.0) { game.menu_state = MenuState::GameEnding (0.0); }
         draw = true;
+        if game.state.now > auto_constant ("game_duration", 10.0*60.0) { game.menu_state = MenuState::GameEnding (0.0); }
       },
       MenuState::GameEnding (progress) => {
         js! {
