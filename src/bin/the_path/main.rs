@@ -233,7 +233,7 @@ fn new_game()->State {
 fn main() {
   stdweb::initialize();
   
-  if js! {if (Path2D) {
+  if js! {if (window.Path2D) {
     return false;
   }
   else {
