@@ -585,7 +585,8 @@ impl State {
             else {
               Object {kind: Kind::Reward, radius: 0.03, .. Default::default()}
             };
-            new_object.creation_progress = 1.0;
+            // note: make the creation progress be further along than the collection progress, because when this was just 1.0, there was a tiny leeway where the chest could disappear before the contents finished being created. And 50-milliseconds frames just HAPPENED to exactly hit that leeway
+            new_object.creation_progress = 1.0 - 0.00001;
             new_object.center = object.center;
             new_object.center [1] += 0.0001;
             created_objects.push (new_object);
