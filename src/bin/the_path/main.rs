@@ -431,33 +431,6 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
       window.scrollTo (0,0);
     }
   }
-  
-  /*{
-    let game = game.clone();
-    let update_dimensions_callback = move || {
-      js! {
-        canvas.setAttribute ("width", window.innerWidth);
-        canvas.setAttribute ("height", window.innerHeight);
-        var size = 4;
-        do {
-          menu.css({ "font-size": (size/2)+"em" }).css({ "font-size": size+"vh" });
-          size *= 0.96;
-        } while (size > 0.5 && menu.height() > window.innerHeight);
-        
-        size = 4;
-        do {
-          game_over.css({ "font-size": (size/2)+"em" }).css({ "font-size": size+"vh" });
-          size *= 0.96;
-        } while (size > 0.5 && game_over.height() > window.innerHeight);
-      }
-      draw_game (& game.borrow());
-    };
-    js! {
-      window.update_dimensions = @{update_dimensions_callback};
-      //window.resizes = 0;
-      //$(window).resize (function() {window.resizes++; update_dimensions();});
-    }
-  }*/
 
   js!{$(".loading").hide(); menu.children(".button_box").css({display: "block"});}
   //js!{update_dimensions();}
