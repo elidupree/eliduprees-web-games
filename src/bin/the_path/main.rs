@@ -48,6 +48,7 @@ struct Game {
   last_ui_time: f64,
   most_recent_movement_direction: f64,
   menu_state: MenuState,
+  last_window_dimensions: Vector2,
 }
 
 
@@ -70,6 +71,11 @@ fn main_loop (time: f64, game: Rc<RefCell<Game>>) {
   {
     //js! {console.clear();}
     let mut game = game.borrow_mut();
+    let current_window_dimensions = Vector2::new (
+      js! {return window.innerWidth;}.try_into().unwrap(),
+      js! {return window.innerHeight;}.try_into().unwrap(),
+    );
+    let mut draw = false;
     game.state.constants = Rc::new (js! {return window.constants;}.try_into().unwrap());
     let observed_duration = time - game.last_ui_time;
     let duration_to_simulate = min(observed_duration, 50.0)/1000.0;
@@ -106,22 +112,22 @@ fn main_loop (time: f64, game: Rc<RefCell<Game>>) {
         let new_progress = progress + duration_to_simulate;
         game.menu_state = if new_progress > 1.0 {MenuState::Playing} else {MenuState::MainMenuDisappearing (new_progress)};
         game.state.simulate (duration_to_simulate * progress);
-        draw_game (& game);
+        draw = true;
       },
       MenuState::Playing => {
         js! {
           $(canvas).css({opacity: 1.0});
         }
         game.state.simulate (duration_to_simulate);
-        draw_game (& game);
         if game.state.now > auto_constant ("game_duration", 2.0) { game.menu_state = MenuState::GameEnding (0.0); }
+        draw = true;
       },
       MenuState::GameEnding (progress) => {
         js! {
           $(canvas).css({opacity: @{game_over_game_opacity + (1.0 - game_over_game_opacity)*(1.0 - progress)}});
         }
         game.state.simulate (duration_to_simulate * (1.0 - progress));
-        draw_game (& game);
+        draw = true;
         let new_progress = progress + duration_to_simulate/auto_constant ("game_fade_out_duration", 3.0);
         game.menu_state = if new_progress > 1.0 {MenuState::GameOverAppearing (0.0)} else {MenuState::GameEnding (new_progress)};
       },
@@ -141,7 +147,30 @@ fn main_loop (time: f64, game: Rc<RefCell<Game>>) {
           $(canvas).css({opacity: @{game_over_game_opacity}});
         }
       },
-    }}
+    }
+    }
+    if current_window_dimensions != game.last_window_dimensions {
+      draw = true;
+      js! {
+        canvas.setAttribute ("width", window.innerWidth);
+        canvas.setAttribute ("height", window.innerHeight);
+        var size = 4;
+        do {
+          menu.css({ "font-size": (size/2)+"em" }).css({ "font-size": size+"vh" });
+          size *= 0.96;
+        } while (size > 0.5 && menu.height() > window.innerHeight);
+        
+        size = 4;
+        do {
+          game_over.css({ "font-size": (size/2)+"em" }).css({ "font-size": size+"vh" });
+          size *= 0.96;
+        } while (size > 0.5 && game_over.height() > window.innerHeight);
+        
+        if (window.scrollY !== 0) { window.scrollTo (0,0); }
+      }
+    }
+    game.last_window_dimensions = current_window_dimensions;
+    if draw {draw_game (& game);}
   }
   web::window().request_animation_frame (move | time | main_loop (time, game));
 }
@@ -233,6 +262,7 @@ fn main() {
       menu_state: MenuState::MainMenuAppearing (0.0),
       most_recent_movement_direction: 1.0,
       state: new_game(),
+      last_window_dimensions: Vector2::new (-1.0, -1.0),
     }
   ));
   
@@ -402,7 +432,7 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
     }
   }
   
-  {
+  /*{
     let game = game.clone();
     let update_dimensions_callback = move || {
       js! {
@@ -424,13 +454,13 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
     };
     js! {
       window.update_dimensions = @{update_dimensions_callback};
-      window.resizes = 0;
-      $(window).resize (function() {window.resizes++; update_dimensions();});
+      //window.resizes = 0;
+      //$(window).resize (function() {window.resizes++; update_dimensions();});
     }
-  }
+  }*/
 
   js!{$(".loading").hide(); menu.children(".button_box").css({display: "block"});}
-  js!{update_dimensions();}
+  //js!{update_dimensions();}
   
   main_loop (0.0, game);
 
