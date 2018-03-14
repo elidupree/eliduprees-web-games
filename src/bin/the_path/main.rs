@@ -393,6 +393,15 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
     }
   }
   
+  js! {
+    // Work around a platform-dependent issue
+    // https://stackoverflow.com/questions/39000273/iphone-landscape-scrolls-even-on-empty-page
+    if (/iPhone|iPod/.test(navigator.userAgent)) {
+      document.body.addEventListener ("touchmove", function(event) {event.preventDefault();});
+      window.scrollTo (0,0);
+    }
+  }
+  
   {
     let game = game.clone();
     let update_dimensions_callback = move || {
