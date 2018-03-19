@@ -1,0 +1,10 @@
+body {
+  margin: 0;
+  background-color: black;
+}
+canvas {
+  display: block
+}
+.noscript {
+  display: none;
+}
