@@ -122,14 +122,6 @@ fn new_game()->State {
 #[cfg (target_os = "emscripten")]
 fn main() {
   stdweb::initialize();
-  
-  if js! {if (window.Path2D) {
-    return false;
-  }
-  else {
-    $(".loading").removeClass("loading").text ("(This game does not work in your browser. It should work in current versions of Chrome, Edge, Firefox and Safari.  Technical details: Path2D not supported.)");
-    return true;
-  }}.try_into().unwrap() {return;}
 
   js! {
     window.game_container = $("#game_container");
@@ -171,21 +163,6 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
   document.body [fullscreen.request] ();
 }
   };}*/
-  
-  js! {
-    window.fade_children = function (element, progress) {
-      var children = element.children();
-      var length = children.length ;;
-      for (var index = 0; index <length ;++index) {
-        var begin = index/length;
-        var end = (index + 1)/length;
-        var adjusted = Math.max (0, Math.min (1, (progress - begin)/(end - begin)));
-        var pointer_events = "auto";
-        if (adjusted < 0.1) { pointer_events = "none"; }
-        children.eq(index).css ({opacity: adjusted, "pointer-events": pointer_events });
-      }
-    }
-  }
   
   let start_playing_callback = {
     let game = game.clone();
@@ -310,15 +287,6 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
       canvas.addEventListener ("contextmenu", function(event) {event.preventDefault();});
     }
   }
-  
-  js! {
-    // Work around a platform-dependent issue
-    // https://stackoverflow.com/questions/39000273/iphone-landscape-scrolls-even-on-empty-page
-    if (/iPhone|iPod/.test(navigator.userAgent)) {
-      document.body.addEventListener ("touchmove", function(event) {event.preventDefault();});
-      window.scrollTo (0,0);
-    }
-  }
 
   js!{$(".loading").hide(); menu.children(".button_box").css({display: "block"});}
   //js!{update_dimensions();}
@@ -339,7 +307,7 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
       MenuState::MainMenuAppearing (progress) => {
         js! {
           menu.css({display: "block", opacity: 1.0});
-          fade_children (menu.children(".button_box"), @{progress});
+          eliduprees_web_games.fade_children (menu.children(".button_box"), @{progress});
           $(canvas).css({opacity: @{menu_game_opacity}});
         }
         let new_progress = progress + duration_to_simulate/auto_constant ("main_menu_fade_in", 4.0);
@@ -348,7 +316,7 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
       MenuState::MainMenu => {
         js! {
           menu.css({display: "block", opacity: 1.0});
-          fade_children (menu.children(".button_box"), 1.0);
+          eliduprees_web_games.fade_children (menu.children(".button_box"), 1.0);
           $(canvas).css({opacity: @{menu_game_opacity} });
         }
       },
@@ -382,7 +350,7 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
       MenuState::GameOverAppearing (progress) => {
         js! {
           game_over.css({display: "block", opacity: 1.0});
-          fade_children (game_over, @{progress});
+          eliduprees_web_games.fade_children (game_over, @{progress});
           $(canvas).css({opacity: @{game_over_game_opacity}});
         }
         let new_progress = progress + duration_to_simulate/auto_constant ("game_over_screen_fade_in", 6.0);
@@ -391,7 +359,7 @@ if (window.innerHeight > window.innerWidth && window.screen.height > window.scre
       MenuState::GameOver => {
         js! {
           game_over.css({display: "block", opacity: 1.0});
-          fade_children (game_over, 1.0);
+          eliduprees_web_games.fade_children (game_over, 1.0);
           $(canvas).css({opacity: @{game_over_game_opacity}});
         }
       },
