@@ -31,6 +31,7 @@ mod misc;
 pub use draw::*;
 pub use simulation::*;
 pub use misc::*;
+pub use eliduprees_web_games::*;
 
 
 enum MenuState {

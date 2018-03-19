@@ -1,7 +1,5 @@
 use super::*;
 
-use rand::Rng;
-use stdweb::unstable::TryInto;
 use ordered_float::OrderedFloat;
 use arrayvec::ArrayVec;
 
@@ -11,39 +9,6 @@ pub type Vector2 = nalgebra::Vector2 <f64>;
 pub type Rotation2 = nalgebra::Rotation2 <f64>;
 
 pub const TURN: f64 = ::std::f64::consts::PI*2.0;
-
-pub fn random_vector_exact_length <G: Rng> (generator: &mut G, length: f64)->Vector2 {
-  loop {
-    let vector = Vector2::new (
-      generator.gen_range (- length, length),
-      generator.gen_range (- length, length),);
-    let test_length = vector.norm();
-    if test_length <= length && test_length*2.0 >= length {
-      return vector*length/vector.norm();
-    }
-  }
-}
-pub fn random_vector_within_length <G: Rng> (generator: &mut G, length: f64)->Vector2 {
-  loop {
-    let vector = Vector2::new (
-      generator.gen_range (- length, length),
-      generator.gen_range (- length, length),);
-    let test_length = vector.norm();
-    if test_length <= length && test_length != 0.0 {
-      return vector;
-    }
-  }
-}
-pub fn auto_constant (name: & str, default: f64)->f64 {
-  (js!{
-    var value = window.auto_constants [@{name}];
-    if (value === undefined) {
-      return window.auto_constants [@{name}] = @{default};
-    }
-    return value;
-  }).try_into().unwrap()
-}
-
 #[derive (Debug, Default, Serialize, Deserialize)]
 pub struct CylindricalPerspective {
   pub width_at_closest: f64,
@@ -73,7 +38,7 @@ impl CylindricalPerspective {
   }
   
   pub fn screen_drop_to_fraction_of_visible (&self, screen_drop: f64)->f64 {
-    let coordinates0 = self.coordinates_on_circle_relative_to_camera (0.0);
+    //let coordinates0 = self.coordinates_on_circle_relative_to_camera (0.0);
     if screen_drop < self.horizon_drop {return 1.0;}
     //let camera_angle = (screen_drop - self.horizon_drop)/(1.0 - self.horizon_drop)*coordinates0 [1].atan2(coordinates0 [0]);
     //eh, forget figuring out the formulas, this is an infrequent operation
