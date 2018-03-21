@@ -17,6 +17,7 @@ use stdweb::JsSerialize;
 
 use nalgebra::Vector2;
 
+pub const TURN: f64 = ::std::f64::consts::PI*2.0;
 
 pub fn random_vector_exact_length <G: Rng> (generator: &mut G, length: f64)->Vector2<f64> {
   loop {

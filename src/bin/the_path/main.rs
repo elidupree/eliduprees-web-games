@@ -127,7 +127,6 @@ fn main() {
     window.game_container = $("#game_container");
     window.canvas = document.getElementById ("game_canvas");
     window.context = canvas.getContext ("2d");
-    window.turn = Math.PI*2;
     
     paper.setup ([640, 480]);
   }
@@ -135,7 +134,6 @@ fn main() {
     window.menu = $("#menu");
     window.game_over = $("#game_over");
     window.constants = @{Constants::default()};
-    window.auto_constants = {};
   }
     
   let game = Rc::new (RefCell::new (

@@ -8,7 +8,6 @@ pub type Rotation3 = nalgebra::Rotation3 <f64>;
 pub type Vector2 = nalgebra::Vector2 <f64>;
 pub type Rotation2 = nalgebra::Rotation2 <f64>;
 
-pub const TURN: f64 = ::std::f64::consts::PI*2.0;
 #[derive (Debug, Default, Serialize, Deserialize)]
 pub struct CylindricalPerspective {
   pub width_at_closest: f64,

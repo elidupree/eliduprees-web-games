@@ -4,6 +4,7 @@ window.eliduprees_web_games = {
   cancel_starting: false,
 };
 window.auto_constants = {};
+window.turn = Math.PI*2;
 
 // Work around a platform-dependent issue
 // https://stackoverflow.com/questions/39000273/iphone-landscape-scrolls-even-on-empty-page
