@@ -3,7 +3,7 @@ use super::*;
 use rand::Rng;
 use boolinator::Boolinator;
 use nalgebra::Vector2;
-use std::collections::HashMap;
+use std::collections::{HashMap, BTreeMap};
 
 use std::rc::Rc;
 use std::cell::Cell;
@@ -18,8 +18,6 @@ pub struct Constants {
 }
 js_serializable! (Constants);
 js_deserializable! (Constants);
-
-pub type InventorySlot = Option <Index>;
 
 #[derive (Debug)]
 pub struct Entity {
@@ -48,7 +46,7 @@ pub enum EntityPosition {
 #[derive (Debug)]
 pub struct Inventory {
   pub size: Vector2 <i32>,
-  pub slots: HashMap <Vector2 <i32>, InventorySlot>,
+  pub slots: HashMap <Vector2 <i32>, Index>,
 }
 
 #[derive (Debug)]
@@ -75,10 +73,15 @@ pub enum PointerState {
 #[derive (Derivative)]
 #[derivative (Default)]
 pub struct State {
-  pub entities: HashMap <Index, Entity>,
+  pub entities: BTreeMap <Index, Entity>,
   pub map: HashMap <Vector2 <i32>, Tile>,
   #[derivative (Default (value = "PointerState::Nowhere"))]
   pub pointer_state: PointerState,
+  
+  #[derivative (Default (value = "16.0"))]
+  pub map_scale: f64,
+  #[derivative (Default (value = "Vector2::new (0.0, 0.0)"))]
+  pub map_offset: Vector2 <f64>,
   
   #[derivative (Default (value = "Box::new(::rand::ChaChaRng::new_unseeded())"))]
   pub generator: Box <Rng>,
@@ -90,11 +93,60 @@ pub struct State {
 impl Entity {
 }
 
+pub fn grid_location (location: Vector2 <f64>)->Vector2 <i32> {
+  Vector2::new (location [0].trunc() as i32, location [1].trunc() as i32)
+}
+
 impl State {
   pub fn simulate (&mut self, duration: f64) {
     let tick_start = self.now;
     self.now += duration;
     let now = self.now;
     let constants = self.constants.clone();
+    
+    for entity in self.entities.iter_mut() {
+    
+    }
+  }
+  
+  pub fn screen_to_physical (&self, location: Vector2 <f64>)->EntityPhysicalPosition {
+    // TODO: inventories
+    EntityPhysicalPosition::Map {center: location/self.map_scale, velocity: Vector2::new (0.0, 0.0)}
+  }
+  
+  
+  
+  pub fn entity_at_screen_location (&self, location: Vector2 <f64>)->Option <Index> {
+    match self.screen_to_physical (location) {
+      EntityPhysicalPosition::Map {center, ..} => {
+        self.map.get (& grid_location (center)).and_then (| tile | tile.entities.iter().min().cloned())
+      },
+      EntityPhysicalPosition::Inventory {owner, position} => {
+        self.entities.get (& owner).and_then (
+          | entity | entity.inventory.as_ref().and_then (
+            | inventory | inventory.slots.get (&position).cloned()
+          )
+        )
+      },
+    }
+  }
+  
+  pub fn cancel_gesture(&mut self) {
+    self.pointer_state = PointerState::Nowhere;
+  }
+  pub fn finish_gesture(&mut self) {
+    match self.pointer_state {
+      PointerState::Nowhere => (),
+      PointerState::PossibleClick {start, entity} => {
+      
+      },
+      PointerState::DragEntity {entity, current} => {
+        
+      },
+      PointerState::DragSelect {start, current} => {
+      
+      },
+    }
+    self.pointer_state = PointerState::Nowhere;
   }
 }

@@ -105,9 +105,9 @@ fn main() {
     match game.state.pointer_state {
       PointerState::Nowhere => (),
       PointerState::PossibleClick {start, entity} => {
-        let new_entity = game.state.entity_at (location);
+        let new_entity = game.state.entity_at_screen_location (location);
         if let Some(entity) = entity {
-          if new_entity != entity {
+          if new_entity != Some(entity) {
             game.state.pointer_state = PointerState::DragEntity {entity: entity, current: location};
           }
         }
@@ -115,21 +115,26 @@ fn main() {
           game.state.pointer_state = PointerState::DragSelect {start: start, current: location};
         }
       },
+      PointerState::DragEntity {..} => (),
+      PointerState::DragSelect {..} => (),
+    }
+    match game.state.pointer_state {
       PointerState::DragEntity {entity, ref mut current} => {
-        current = location;
+        *current = location;
       },
       PointerState::DragSelect {start, ref mut current} => {
-        current = location;
+        *current = location;
       },
+      _=>()
     }
   });
   let mouseup_callback = mouse_callback!([ game, location, button: u16 ] {
     game.state.finish_gesture();
   });
   js! {
-    var mousedown_callback = @{mousemove_callback};
+    var mousedown_callback = @{mousedown_callback};
     var mousemove_callback = @{mousemove_callback};
-    var mouseup_callback = @{mousemove_callback};
+    var mouseup_callback = @{mouseup_callback};
     canvas.addEventListener ("mousedown", function (event) {
       mousedown_callback (event.clientX, event.clientY, event.button) ;
     });
