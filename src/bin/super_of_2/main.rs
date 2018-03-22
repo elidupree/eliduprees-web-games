@@ -22,6 +22,7 @@ use stdweb::unstable::TryInto;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::str::FromStr;
+use nalgebra::Vector2;
 
 
 mod draw;
@@ -84,6 +85,61 @@ fn main() {
       state: new_game(),
     }
   ));
+  
+  macro_rules! mouse_callback {
+    ([$game: ident, $location: ident $($args: tt)*] $contents: expr) => {{ let game = game.clone(); move |x: f64, y: f64 $($args)*| {
+      let $location = Vector2::new (x,y);
+      let mut $game = game.borrow_mut();
+      $contents
+    }}}
+  }
+  
+  let mousedown_callback = mouse_callback!([ game, location, button: u16 ] {
+    game.state.cancel_gesture();
+    if button == 0 {
+      let entity = game.state.entity_at_screen_location (location);
+      game.state.pointer_state = PointerState::PossibleClick {start: location, entity: entity};
+    }
+  });
+  let mousemove_callback = mouse_callback!([ game, location ] {
+    match game.state.pointer_state {
+      PointerState::Nowhere => (),
+      PointerState::PossibleClick {start, entity} => {
+        let new_entity = game.state.entity_at (location);
+        if let Some(entity) = entity {
+          if new_entity != entity {
+            game.state.pointer_state = PointerState::DragEntity {entity: entity, current: location};
+          }
+        }
+        else if entity.is_none() && (location - start).norm() > auto_constant ("drag_distance_threshold", 4.0) {
+          game.state.pointer_state = PointerState::DragSelect {start: start, current: location};
+        }
+      },
+      PointerState::DragEntity {entity, ref mut current} => {
+        current = location;
+      },
+      PointerState::DragSelect {start, ref mut current} => {
+        current = location;
+      },
+    }
+  });
+  let mouseup_callback = mouse_callback!([ game, location, button: u16 ] {
+    game.state.finish_gesture();
+  });
+  js! {
+    var mousedown_callback = @{mousemove_callback};
+    var mousemove_callback = @{mousemove_callback};
+    var mouseup_callback = @{mousemove_callback};
+    canvas.addEventListener ("mousedown", function (event) {
+      mousedown_callback (event.clientX, event.clientY, event.button) ;
+    });
+    canvas.addEventListener ("mousemove", function (event) {
+      mousemove_callback (event.clientX, event.clientY) ;
+    });
+    canvas.addEventListener ("mouseup", function (event) {
+      mouseup_callback (event.clientX, event.clientY, event.button) ;
+    });
+  }
   
   run(move |inputs| {
     let mut game = game.borrow_mut();

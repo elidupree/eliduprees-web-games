@@ -42,7 +42,7 @@ pub enum EntityPhysicalPosition {
 #[derive (Debug)]
 pub enum EntityPosition {
   Physical (EntityPhysicalPosition),
-  BeingDragged (EntityPhysicalPosition, Vector2 <f64>),
+  BeingDragged {physical: EntityPhysicalPosition, hovering_at: Vector2 <f64>},
 }
 
 #[derive (Debug)]
@@ -63,12 +63,22 @@ pub enum Terrain {
   Wall,
 }
 
+#[derive (Debug)]
+pub enum PointerState {
+  Nowhere,
+  //Hovering (Vector2 <f64>),
+  PossibleClick {start: Vector2 <f64>, entity: Option <Index>},
+  DragEntity {entity: Index, current: Vector2 <f64>},
+  DragSelect {start: Vector2 <f64>, current: Vector2 <f64>},
+}
+
 #[derive (Derivative)]
 #[derivative (Default)]
 pub struct State {
   pub entities: HashMap <Index, Entity>,
   pub map: HashMap <Vector2 <i32>, Tile>,
-  
+  #[derivative (Default (value = "PointerState::Nowhere"))]
+  pub pointer_state: PointerState,
   
   #[derivative (Default (value = "Box::new(::rand::ChaChaRng::new_unseeded())"))]
   pub generator: Box <Rng>,
