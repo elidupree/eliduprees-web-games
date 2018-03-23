@@ -74,6 +74,7 @@ pub enum PointerState {
 #[derivative (Default)]
 pub struct State {
   pub entities: BTreeMap <Index, Entity>,
+  pub next_index: Index,
   pub map: HashMap <Vector2 <i32>, Tile>,
   #[derivative (Default (value = "PointerState::Nowhere"))]
   pub pointer_state: PointerState,
@@ -98,6 +99,12 @@ pub fn grid_location (location: Vector2 <f64>)->Vector2 <i32> {
 }
 
 impl State {
+  pub fn create_entity (&mut self, entity: Entity)->Index {
+    let index = self.next_index;
+    self.next_index += 1;
+    self.entities.insert (index, entity) ;
+    index
+  }
   pub fn simulate (&mut self, duration: f64) {
     let tick_start = self.now;
     self.now += duration;
@@ -105,7 +112,12 @@ impl State {
     let constants = self.constants.clone();
     
     for entity in self.entities.iter_mut() {
-    
+      match entity.position {
+        EntityPosition::Physical (EntityPhysicalPosition {ref mut center, velocity}) => {
+          *center += velocity*duration;
+        },
+        _=>(),
+      }
     }
   }
   
@@ -114,6 +126,17 @@ impl State {
     EntityPhysicalPosition::Map {center: location/self.map_scale, velocity: Vector2::new (0.0, 0.0)}
   }
   
+  pub fn physical_to_screen (&self, location: EntityPhysicalPosition)->Option<Vector2 <f64>> {
+    // TODO: inventories
+    match location {
+      EntityPhysicalPosition::Map {center, ..} => {
+        Some (center*self.map_scale)
+      },
+      EntityPhysicalPosition::Inventory {owner, position} => {
+        None
+      },
+    }
+  }
   
   
   pub fn entity_at_screen_location (&self, location: Vector2 <f64>)->Option <Index> {
