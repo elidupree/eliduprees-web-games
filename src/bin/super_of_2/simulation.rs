@@ -28,13 +28,14 @@ pub struct Entity {
   
   pub size: Vector2 <f64>,
   pub position: EntityPosition,
+  pub velocity: Vector2 <f64>,
   
   pub inventory: Option <Inventory>,
 }
 
 #[derive (Debug)]
 pub enum EntityPhysicalPosition {
-  Map {center: Vector2 <f64>, velocity: Vector2 <f64>,},
+  Map {center: Vector2 <f64>},
   Inventory {owner: Index, position: Vector2 <i32>,},
 }
 #[derive (Debug)]
@@ -49,14 +50,16 @@ pub struct Inventory {
   pub slots: HashMap <Vector2 <i32>, Index>,
 }
 
-#[derive (Debug)]
+#[derive (Debug, Default)]
 pub struct Tile {
   pub entities: Vec<Index>,
   pub terrain: Terrain,
 }
 
-#[derive (Debug)]
+#[derive (Debug, Derivative)]
+#[derivative (Default)]
 pub enum Terrain {
+  #[derivative (Default)]
   Nothing,
   Wall,
 }
@@ -97,24 +100,57 @@ impl Entity {
 pub fn grid_location (location: Vector2 <f64>)->Vector2 <i32> {
   Vector2::new (location [0].trunc() as i32, location [1].trunc() as i32)
 }
+pub fn overlapping_tiles (center: Vector2 <f64>, size: Vector2 <f64>)->Vec<Vector2 <i32>> {
+  panic!()//Vector2::new (location [0].trunc() as i32, location [1].trunc() as i32)
+}
 
 impl State {
   pub fn create_entity (&mut self, entity: Entity)->Index {
     let index = self.next_index;
     self.next_index += 1;
     self.entities.insert (index, entity) ;
+    self.insert_position_records (index);
     index
   }
+  
+  fn insert_position_records (&mut self, index: Index) {
+    match self.entities [& index].position {
+      EntityPosition::Physical (physical) => match physical {
+        EntityPhysicalPosition::Map {center} => {
+          
+          for tile_location in overlapping_tiles (center, self.entities [& index].size) {
+            let tile = self.map.entry (tile_location).or_insert (Default::default());
+            if !tile.entities.contains (& index) {tile.entities.push (index);}
+          }
+        },
+        EntityPhysicalPosition::Inventory {owner, position} => {
+          if let Some(&mut Entity {inventory: Some(ref mut inventory), ..}) = self.entities.get_mut (& owner) {
+            inventory.slots.insert (position, index);
+          }
+        },
+      },
+      _=>(),
+    }
+  }
+  fn remove_position_records (&mut self, index: Index) {
+    
+  }
+  pub fn move_entity (&mut self, index: Index, new_position: EntityPosition) {
+    self.remove_position_records (index);
+    self.entities [& index].position = new_position;
+    self.insert_position_records (index);
+  }
+  
   pub fn simulate (&mut self, duration: f64) {
     let tick_start = self.now;
     self.now += duration;
     let now = self.now;
     let constants = self.constants.clone();
     
-    for entity in self.entities.iter_mut() {
+    for (_index, entity) in self.entities.iter_mut() {
       match entity.position {
-        EntityPosition::Physical (EntityPhysicalPosition {ref mut center, velocity}) => {
-          *center += velocity*duration;
+        EntityPosition::Physical (EntityPhysicalPosition::Map {ref mut center}) => {
+          *center += entity.velocity*duration;
         },
         _=>(),
       }
@@ -123,13 +159,13 @@ impl State {
   
   pub fn screen_to_physical (&self, location: Vector2 <f64>)->EntityPhysicalPosition {
     // TODO: inventories
-    EntityPhysicalPosition::Map {center: location/self.map_scale, velocity: Vector2::new (0.0, 0.0)}
+    EntityPhysicalPosition::Map {center: location/self.map_scale}
   }
   
   pub fn physical_to_screen (&self, location: EntityPhysicalPosition)->Option<Vector2 <f64>> {
     // TODO: inventories
     match location {
-      EntityPhysicalPosition::Map {center, ..} => {
+      EntityPhysicalPosition::Map {center} => {
         Some (center*self.map_scale)
       },
       EntityPhysicalPosition::Inventory {owner, position} => {
@@ -141,7 +177,7 @@ impl State {
   
   pub fn entity_at_screen_location (&self, location: Vector2 <f64>)->Option <Index> {
     match self.screen_to_physical (location) {
-      EntityPhysicalPosition::Map {center, ..} => {
+      EntityPhysicalPosition::Map {center} => {
         self.map.get (& grid_location (center)).and_then (| tile | tile.entities.iter().min().cloned())
       },
       EntityPhysicalPosition::Inventory {owner, position} => {
