@@ -33,12 +33,12 @@ pub struct Entity {
   pub inventory: Option <Inventory>,
 }
 
-#[derive (Debug)]
+#[derive (Copy, Clone, Debug)]
 pub enum EntityPhysicalPosition {
   Map {center: Vector2 <f64>},
   Inventory {owner: Index, position: Vector2 <i32>,},
 }
-#[derive (Debug)]
+#[derive (Copy, Clone, Debug)]
 pub enum EntityPosition {
   Physical (EntityPhysicalPosition),
   BeingDragged {physical: EntityPhysicalPosition, hovering_at: Vector2 <f64>},
@@ -50,13 +50,13 @@ pub struct Inventory {
   pub slots: HashMap <Vector2 <i32>, Index>,
 }
 
-#[derive (Debug, Default)]
+#[derive (PartialEq, Eq, Debug, Default)]
 pub struct Tile {
   pub entities: Vec<Index>,
   pub terrain: Terrain,
 }
 
-#[derive (Debug, Derivative)]
+#[derive (PartialEq, Eq, Debug, Derivative)]
 #[derivative (Default)]
 pub enum Terrain {
   #[derivative (Default)]
@@ -117,7 +117,6 @@ impl State {
     match self.entities [& index].position {
       EntityPosition::Physical (physical) => match physical {
         EntityPhysicalPosition::Map {center} => {
-          
           for tile_location in overlapping_tiles (center, self.entities [& index].size) {
             let tile = self.map.entry (tile_location).or_insert (Default::default());
             if !tile.entities.contains (& index) {tile.entities.push (index);}
@@ -133,11 +132,31 @@ impl State {
     }
   }
   fn remove_position_records (&mut self, index: Index) {
-    
+    match self.entities [& index].position {
+      EntityPosition::Physical (physical) => match physical {
+        EntityPhysicalPosition::Map {center} => {
+          for tile_location in overlapping_tiles (center, self.entities [& index].size) {
+            if {
+              let tile = self.map.get_mut (& tile_location).expect ("position records should have existed for entity");
+              tile.entities.retain (| whatever | 1 != index);
+              tile.entities.is_empty()
+            } {
+              self.map.remove (&tile_location) ;
+            }
+          }
+        },
+        EntityPhysicalPosition::Inventory {owner, position} => {
+          if let Some(&mut Entity {inventory: Some(ref mut inventory), ..}) = self.entities.get_mut (& owner) {
+            inventory.slots.insert (position, index);
+          }
+        },
+      },
+      _=>(),
+    }
   }
   pub fn move_entity (&mut self, index: Index, new_position: EntityPosition) {
     self.remove_position_records (index);
-    self.entities [& index].position = new_position;
+    self.entities.get_mut (& index).unwrap().position = new_position;
     self.insert_position_records (index);
   }
   
@@ -162,13 +181,13 @@ impl State {
     EntityPhysicalPosition::Map {center: location/self.map_scale}
   }
   
-  pub fn physical_to_screen (&self, location: EntityPhysicalPosition)->Option<Vector2 <f64>> {
+  pub fn physical_to_screen (&self, location: EntityPhysicalPosition)->Option<(Vector2 <f64>, f64)> {
     // TODO: inventories
     match location {
       EntityPhysicalPosition::Map {center} => {
-        Some (center*self.map_scale)
+        Some ((center*self.map_scale, self.map_scale))
       },
-      EntityPhysicalPosition::Inventory {owner, position} => {
+      EntityPhysicalPosition::Inventory {owner:_, position:_} => {
         None
       },
     }
@@ -194,7 +213,7 @@ impl State {
     self.pointer_state = PointerState::Nowhere;
   }
   pub fn finish_gesture(&mut self) {
-    match self.pointer_state {
+    /*match self.pointer_state {
       PointerState::Nowhere => (),
       PointerState::PossibleClick {start, entity} => {
       
@@ -205,7 +224,7 @@ impl State {
       PointerState::DragSelect {start, current} => {
       
       },
-    }
+    }*/
     self.pointer_state = PointerState::Nowhere;
   }
 }
