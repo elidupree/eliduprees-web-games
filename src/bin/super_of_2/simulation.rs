@@ -162,7 +162,14 @@ impl State {
   }
   pub fn move_entity (&mut self, index: Index, new_position: EntityPosition) {
     self.remove_position_records (index);
-    self.entities.get_mut (& index).unwrap().position = new_position;
+    {
+      let entity = self.entities.get_mut (& index).unwrap();
+      entity.position = new_position;
+      match new_position {
+        EntityPosition::Physical(EntityPhysicalPosition::Inventory {..}) => entity.velocity = Vector2::new (0.0, 0.0),
+        _=>(),
+      }
+    }
     self.insert_position_records (index);
   }
   
@@ -225,18 +232,19 @@ impl State {
     self.pointer_state = PointerState::Nowhere;
   }
   pub fn finish_gesture(&mut self) {
-    /*match self.pointer_state {
+    match self.pointer_state {
       PointerState::Nowhere => (),
-      PointerState::PossibleClick {start, entity} => {
+      PointerState::PossibleClick {start:_, entity:_} => {
       
       },
       PointerState::DragEntity {entity, current} => {
-        
+        let new_position = EntityPosition::Physical(self.screen_to_physical (current));
+        self.move_entity (entity, new_position);
       },
-      PointerState::DragSelect {start, current} => {
+      PointerState::DragSelect {start:_, current:_} => {
       
       },
-    }*/
+    }
     self.pointer_state = PointerState::Nowhere;
   }
 }
