@@ -45,14 +45,10 @@ struct Game {
 
 
 fn draw_game (game: & Game) {
-  let radius: f64 = js! {
+  js! {
     context.clearRect (0, 0, canvas.width, canvas.height);
     context.save();
-    context.scale (canvas.height,canvas.height);
-    var visible_radius = canvas.width / canvas.height / 2.0;
-    context.translate (visible_radius, 0);
-    return visible_radius;
-  }.try_into().unwrap();
+  }
   game.state.draw();
   js! {
     context.restore();
@@ -86,8 +82,20 @@ fn main() {
     }
   ));
   
+  {
+    let mut game = game.borrow_mut();
+    game.state.create_entity (Entity {
+      is_object: true, is_unit: true,
+      size: Vector2::new (1.2, 2.0),
+      position: EntityPosition::Physical (EntityPhysicalPosition::Map {center: Vector2::new (3.0, 3.0)}),
+      velocity: Vector2::new (0.1, 0.0),
+      inventory: None,
+    });
+  }
+  
   macro_rules! mouse_callback {
     ([$game: ident, $location: ident $($args: tt)*] $contents: expr) => {{ let game = game.clone(); move |x: f64, y: f64 $($args)*| {
+      #[allow (unused_variables)]
       let $location = Vector2::new (x,y);
       let mut $game = game.borrow_mut();
       $contents
@@ -119,16 +127,16 @@ fn main() {
       PointerState::DragSelect {..} => (),
     }
     match game.state.pointer_state {
-      PointerState::DragEntity {entity, ref mut current} => {
+      PointerState::DragEntity {ref mut current,..} => {
         *current = location;
       },
-      PointerState::DragSelect {start, ref mut current} => {
+      PointerState::DragSelect {ref mut current,..} => {
         *current = location;
       },
       _=>()
     }
   });
-  let mouseup_callback = mouse_callback!([ game, location, button: u16 ] {
+  let mouseup_callback = mouse_callback!([ game, location, _button: u16 ] {
     game.state.finish_gesture();
   });
   js! {

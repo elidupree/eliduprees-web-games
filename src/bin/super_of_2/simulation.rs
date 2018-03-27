@@ -98,10 +98,16 @@ impl Entity {
 }
 
 pub fn grid_location (location: Vector2 <f64>)->Vector2 <i32> {
-  Vector2::new (location [0].trunc() as i32, location [1].trunc() as i32)
+  Vector2::new (location [0].floor() as i32, location [1].floor() as i32)
 }
 pub fn overlapping_tiles (center: Vector2 <f64>, size: Vector2 <f64>)->Vec<Vector2 <i32>> {
-  panic!()//Vector2::new (location [0].trunc() as i32, location [1].trunc() as i32)
+  let min = center - size/2.0;
+  let max = center + size/2.0;
+  (min [0].floor() as i32..max [0].ceil() as i32).flat_map(|x| {
+    (min [1].floor() as i32..max [1].ceil() as i32).map(move |y| {
+      Vector2::new (x,y)
+    })
+  }).collect()
 }
 
 impl State {
@@ -138,7 +144,7 @@ impl State {
           for tile_location in overlapping_tiles (center, self.entities [& index].size) {
             if {
               let tile = self.map.get_mut (& tile_location).expect ("position records should have existed for entity");
-              tile.entities.retain (| whatever | 1 != index);
+              tile.entities.retain (| &whatever | whatever != index);
               tile.entities.is_empty()
             } {
               self.map.remove (&tile_location) ;
@@ -181,13 +187,19 @@ impl State {
     EntityPhysicalPosition::Map {center: location/self.map_scale}
   }
   
-  pub fn physical_to_screen (&self, location: EntityPhysicalPosition)->Option<(Vector2 <f64>, f64)> {
+  pub fn position_to_screen (&self, position: EntityPosition)->Option<(Vector2 <f64>, f64)> {
     // TODO: inventories
-    match location {
-      EntityPhysicalPosition::Map {center} => {
+    match position {
+      EntityPosition::Physical (EntityPhysicalPosition::Map {center}) => {
         Some ((center*self.map_scale, self.map_scale))
       },
-      EntityPhysicalPosition::Inventory {owner:_, position:_} => {
+      EntityPosition::BeingDragged {physical: EntityPhysicalPosition::Map {..}, hovering_at} => {
+        Some ((hovering_at*self.map_scale, self.map_scale))
+      },
+      EntityPosition::Physical (EntityPhysicalPosition::Inventory {owner:_, position:_}) => {
+        None
+      },
+      EntityPosition::BeingDragged {physical: EntityPhysicalPosition::Inventory {owner:_, ..}, hovering_at:_} => {
         None
       },
     }
