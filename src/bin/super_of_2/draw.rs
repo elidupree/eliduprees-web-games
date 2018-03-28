@@ -12,6 +12,7 @@ impl State {
     for (_location, tile) in self.map.iter() {
       drawn_entities.extend (tile.entities.iter().cloned());
     }
+    drawn_entities.extend (self.dragged_entity.iter().cloned());
     for index in drawn_entities {
       let entity = & self.entities [&index];
       let (position, scale) = self.position_to_screen (entity.position).expect ("entities without screen-relative positions shouldn't have been considered by the draw code");

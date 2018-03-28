@@ -77,6 +77,7 @@ pub enum PointerState {
 #[derivative (Default)]
 pub struct State {
   pub entities: BTreeMap <Index, Entity>,
+  pub dragged_entity: Option <Index>,
   pub next_index: Index,
   pub map: HashMap <Vector2 <i32>, Tile>,
   #[derivative (Default (value = "PointerState::Nowhere"))]
@@ -93,9 +94,6 @@ pub struct State {
   pub now: f64,
 }
 
-
-impl Entity {
-}
 
 pub fn grid_location (location: Vector2 <f64>)->Vector2 <i32> {
   Vector2::new (location [0].floor() as i32, location [1].floor() as i32)
@@ -134,7 +132,10 @@ impl State {
           }
         },
       },
-      _=>(),
+      EntityPosition::BeingDragged {..} => {
+        assert!(self.dragged_entity == None);
+        self.dragged_entity = Some (index);
+      },
     }
   }
   fn remove_position_records (&mut self, index: Index) {
@@ -157,7 +158,10 @@ impl State {
           }
         },
       },
-      _=>(),
+      EntityPosition::BeingDragged {..} => {
+        assert!(self.dragged_entity == Some (index));
+        self.dragged_entity = None;
+      },
     }
   }
   pub fn move_entity (&mut self, index: Index, new_position: EntityPosition) {
@@ -179,10 +183,20 @@ impl State {
     let now = self.now;
     let constants = self.constants.clone();
     
-    for (_index, entity) in self.entities.iter_mut() {
-      match entity.position {
-        EntityPosition::Physical (EntityPhysicalPosition::Map {ref mut center}) => {
-          *center += entity.velocity*duration;
+    match self.pointer_state {
+      PointerState::DragEntity {entity, current} => {
+        let new_position = self.hover_to (self.entities [& entity].position, current);
+        self.move_entity (entity, new_position);
+      },
+      _=>(),
+    }
+    
+    let entities: Vec<_> = self.entities.keys().cloned().collect();
+    for index in entities {
+      match self.entities [& index].position {
+        EntityPosition::Physical (EntityPhysicalPosition::Map {center}) => {
+          let new_center = center + self.entities [& index].velocity*duration;
+          self.move_entity (index, EntityPosition::Physical (EntityPhysicalPosition::Map {center: new_center}));
         },
         _=>(),
       }
@@ -192,6 +206,18 @@ impl State {
   pub fn screen_to_physical (&self, location: Vector2 <f64>)->EntityPhysicalPosition {
     // TODO: inventories
     EntityPhysicalPosition::Map {center: location/self.map_scale}
+  }
+  pub fn hover_to (&self, original: EntityPosition, screen: Vector2 <f64>)->EntityPosition {
+    // TODO: inventories
+    let physical = match original {
+      EntityPosition::Physical (physical) => physical,
+      EntityPosition::BeingDragged {physical, ..} => physical,
+    };
+    let hover = match physical {
+      EntityPhysicalPosition::Map {..} => screen/self.map_scale,
+      _=> unimplemented!(),
+    };
+    EntityPosition::BeingDragged {physical: physical, hovering_at: hover}
   }
   
   pub fn position_to_screen (&self, position: EntityPosition)->Option<(Vector2 <f64>, f64)> {
