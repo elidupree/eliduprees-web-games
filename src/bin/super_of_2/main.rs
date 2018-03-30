@@ -105,7 +105,7 @@ fn main() {
   let mousedown_callback = mouse_callback!([ game, location, button: u16 ] {
     game.state.cancel_gesture();
     if button == 0 {
-      let entity = game.state.entity_at_screen_location (location);
+      let entity = game.state.entities_at_screen_location (location).first().cloned();
       game.state.pointer_state = PointerState::PossibleClick {start: location, entity: entity};
     }
   });
@@ -113,7 +113,7 @@ fn main() {
     match game.state.pointer_state {
       PointerState::Nowhere => (),
       PointerState::PossibleClick {start, entity} => {
-        let new_entity = game.state.entity_at_screen_location (location);
+        let new_entity = game.state.entities_at_screen_location (location).first().cloned();
         if let Some(entity) = entity {
           if new_entity != Some(entity) {
             game.state.pointer_state = PointerState::DragEntity {entity: entity, current: location};

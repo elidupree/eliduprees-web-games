@@ -238,6 +238,15 @@ impl State {
     }
   }
   
+  pub fn visual_depth (&self, index: Index)->u64 {
+    if self.dragged_entity == Some(index) {
+      0
+    }
+    else {
+      index + 1
+    }
+  }
+  
   pub fn entity_overlaps_screen_location (&self, index: Index, location: Vector2 <f64>)->bool {
     let entity = & self.entities [& index];
     if let Some((position, scale)) = self.position_to_screen (entity.position) {
@@ -249,19 +258,32 @@ impl State {
     }
     else {false}
   }
-  pub fn entity_at_screen_location (&self, location: Vector2 <f64>)->Option <Index> {
-    match self.screen_to_physical (location) {
+  pub fn entities_at_screen_location (&self, location: Vector2 <f64>)->Vec<Index> {
+    let mut result = Vec::new();
+    /*match self.screen_to_physical (location) {
       EntityPhysicalPosition::Map {center} => {
-        self.map.get (& grid_location (center)).and_then (| tile | tile.entities.iter().filter (| &&index | self.entity_overlaps_screen_location (index, location)).min().cloned())
+        if let Some(title) = self.map.get (& grid_location (center)) {
+          result.extend (tile.entities.iter().filter (| &&index | self.entity_overlaps_screen_location (index, location)).min().cloned())
+        }
       },
       EntityPhysicalPosition::Inventory {owner, position} => {
-        self.entities.get (& owner).and_then (
-          | entity | entity.inventory.as_ref().and_then (
-            | inventory | inventory.slots.get (&position).cloned()
-          )
-        )
+        if let Some(entity) = self.entities.get (& owner) {
+          if let Some(inventory) = entity.inventory.as_ref() {
+            if let Some(&index) = inventory.slots.get (&position) {
+              assert!(self.entity_overlaps_screen_location (index, location), "screen_to_physical() and entity_overlaps_screen_location() are inconsistent");
+              result.push (index);
+            }
+          }
+        }
       },
-    }
+    }*/
+    
+    // maybe someday we can do the above filtering, but as long as hovering entities aren't recorded in the tiles OR in a separate list of hovering entities, we have to check them all
+    
+    result.extend (self.entities.keys().filter (| &&index | self.entity_overlaps_screen_location (index, location)).min().cloned());
+    
+    result.sort_by_key (| & index | self.visual_depth (index));
+    result
   }
   
   pub fn cancel_gesture(&mut self) {
