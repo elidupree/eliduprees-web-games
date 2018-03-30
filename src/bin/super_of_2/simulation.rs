@@ -238,11 +238,21 @@ impl State {
     }
   }
   
-  
+  pub fn entity_overlaps_screen_location (&self, index: Index, location: Vector2 <f64>)->bool {
+    let entity = & self.entities [& index];
+    if let Some((position, scale)) = self.position_to_screen (entity.position) {
+      let half_size = entity.size*scale/2.0;
+      location[0] >= position[0] - half_size[0] &&
+      location[0] <= position[0] + half_size[0] &&
+      location[1] >= position[1] - half_size[1] &&
+      location[1] <= position[1] + half_size[1]
+    }
+    else {false}
+  }
   pub fn entity_at_screen_location (&self, location: Vector2 <f64>)->Option <Index> {
     match self.screen_to_physical (location) {
       EntityPhysicalPosition::Map {center} => {
-        self.map.get (& grid_location (center)).and_then (| tile | tile.entities.iter().min().cloned())
+        self.map.get (& grid_location (center)).and_then (| tile | tile.entities.iter().filter (| &&index | self.entity_overlaps_screen_location (index, location)).min().cloned())
       },
       EntityPhysicalPosition::Inventory {owner, position} => {
         self.entities.get (& owner).and_then (
