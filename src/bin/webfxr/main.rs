@@ -13,6 +13,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use stdweb::unstable::TryInto;
 use stdweb::web::TypedArray;
+use ordered_float::OrderedFloat;
 
 
 pub const TURN: f32 = ::std::f32::consts::PI*2.0;
@@ -132,6 +133,48 @@ fn add_signal_editor <'b, F: 'static + for <'a> Fn (& 'a mut State)->& 'a mut Si
   let container = js!{ return $("<div>", {id:@{id}, class: "panel"});};
   js!{ $("#panels").append (@{& container});}
   for (index, control_point) in signal.control_points.iter().enumerate() {
+    let mut sampler = signal.sampler();
+    let mut samples = Vec::new();
+    let num_samples = 1000;
+    for index in 0..num_samples {
+      let time = index as f32/100.0;
+      samples.push (sampler.sample (time)) ;
+    }
+    let min = samples.iter().min_by_key (| value | OrderedFloat (**value)).unwrap() - 0.0001;
+    let max = samples.iter().max_by_key (| value | OrderedFloat (**value)).unwrap() + 0.0001;
+    let range = max - min;
+    let canvas_height = 100.0;
+    for sample in samples.iter_mut() {*sample = (*sample - min)/range;}
+    
+    let context = js!{ var canvas = document.createElement ("canvas");
+    var height =@{canvas_height};
+    canvas.width =@{num_samples};
+    canvas.height = height;
+    @{& container}.append (canvas);
+    var context = canvas.getContext ("2d") ;
+    return context;
+    };
+    
+    for (index, sample) in samples.iter().skip (1).enumerate() {
+      js!{
+        var context =@{&context};
+        var first = @{index as f32 + 0.5};
+        var second = @{(1.0 - sample)*canvas_height};
+        if (@{index == 0}) {
+          context.moveTo (first, second);
+        } else {
+          context.lineTo (first, second);
+        }
+      }
+    }
+    
+    js!{
+      var context =@{&context};
+      context.stroke();
+    }
+    
+    
+  
     macro_rules! control_field_editor {
       ($field: ident) => {{
       let get_signal = get_signal.clone();
@@ -143,6 +186,8 @@ fn add_signal_editor <'b, F: 'static + for <'a> Fn (& 'a mut State)->& 'a mut Si
   })
       }}
     }
+    
+    
     js!{
       const control_editor = $("<div>");
       @{& container}.append (control_editor);
