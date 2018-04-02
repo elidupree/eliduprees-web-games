@@ -9,6 +9,8 @@ extern crate serde_derive;
 extern crate nalgebra;
 extern crate ordered_float;
 
+use std::rc::Rc;
+use std::cell::RefCell;
 use stdweb::unstable::TryInto;
 
 
@@ -21,6 +23,9 @@ pub enum Waveform {
   Triangle,
   Sawtooth,
 }
+
+js_serializable! (Waveform) ;
+js_deserializable! (Waveform) ;
 
 pub struct ControlPoint {
   pub time: f32,
@@ -39,6 +44,10 @@ pub struct SoundDefinition {
   pub waveform: Waveform,
   pub frequency: Signal,
   
+}
+
+pub struct AppState {
+  sound: SoundDefinition,
 }
 
 
@@ -106,13 +115,80 @@ impl SoundDefinition {
   }
 }
 
+  macro_rules! input_callback {
+    ([$state: ident, $($args: tt)*] $contents: expr) => {{
+      let $state = $state.clone();
+      move |$($args)*| {
+        #[allow (unused_variables)]
+        $contents
+      }
+    }}
+  }
+
+fn redraw(state: & Rc<RefCell<AppState>>) {
+  let guard = state.borrow();
+  let sound = & guard.sound;
+  js! {
+$("#panels").empty();
+
+$("#panels").append ($("<div>", {class: "panel"}).append (numerical_input ({
+  id: "frequency",
+  field: "frequency",
+  text: "Frequency (Hz)",
+  min: 20,
+  max: 22050,
+  current:@{sound.frequency.control_points [0].value},
+  logarithmic: true,
+  step: 1,
+  default: 220,
+}, 
+  @{input_callback! ([state, value: f64] {
+    state.borrow_mut().sound.frequency.control_points [0].value = value as f32;
+    redraw (& state);
+  })}
+)));
+
+
+$("#panels").append ($("<div>", {class: "panel"}).append (radio_input ({
+  id: "waveform",
+  field: "waveform",
+  text: "Waveform",
+  current:@{&sound.waveform},
+  options: [
+    {value: "Sine", text: "Sine"},
+    {value: "Square", text: "Square"},
+    {value: "Triangle", text: "Triangle"},
+    {value: "Sawtooth", text: "Sawtooth"},
+  ]
+}, 
+  @{input_callback! ([state, value: Waveform] {
+    state.borrow_mut().sound.waveform = value;
+    redraw (& state);
+  })}
+)));
+
+
+  }
+}
+
 
 #[cfg (target_os = "emscripten")]
 fn main() {
   stdweb::initialize();
   
+  let state = Rc::new (RefCell::new (AppState {
+    sound: SoundDefinition {
+      waveform: Waveform::Sine,
+      frequency: Signal {
+        control_points: vec![ControlPoint {time: 0.0, value: 220.0, slope: 0.0, jump: 0.0}]
+      }
+    }
+  }));
   
+
   
+  redraw(&state);
+    
   stdweb::event_loop();
 }
 
