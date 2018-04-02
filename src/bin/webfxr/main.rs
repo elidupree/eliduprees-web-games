@@ -13,6 +13,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use stdweb::unstable::TryInto;
 use stdweb::web::TypedArray;
+use stdweb::Value;
 use ordered_float::OrderedFloat;
 
 
@@ -163,37 +164,10 @@ fn add_signal_editor <'b, F: 'static + for <'a> Fn (& 'a mut State)->& 'a mut Si
     let min = samples.iter().min_by_key (| value | OrderedFloat (**value)).unwrap() - 0.0001;
     let max = samples.iter().max_by_key (| value | OrderedFloat (**value)).unwrap() + 0.0001;
     let range = max - min;
-    let canvas_height = 100.0;
+    
     for sample in samples.iter_mut() {*sample = (*sample - min)/range;}
     
-    let context = js!{ var canvas = document.createElement ("canvas");
-    var height =@{canvas_height};
-    canvas.width =@{num_samples};
-    canvas.height = height;
-    @{& container}.append (canvas);
-    var context = canvas.getContext ("2d") ;
-    return context;
-    };
-    
-    for (index, sample) in samples.iter().enumerate() {
-      js!{
-        var context =@{&context};
-        var first = @{index as f32 + 0.5};
-        var second = @{(1.0 - sample)*canvas_height};
-        if (@{index == 0}) {
-          context.moveTo (first, second);
-        } else {
-          context.lineTo (first, second);
-        }
-      }
-    }
-    
-    js!{
-      var context =@{&context};
-      context.stroke();
-    }
-    
-    
+    js!{@{& container}.append (@{canvas_of_samples (& samples)});}
   
     macro_rules! control_field_editor {
       ($field: ident) => {{
@@ -243,6 +217,38 @@ control_editor.append (numerical_input ({
       )) ;
     }
   }
+}
+
+fn canvas_of_samples (samples: & [f32])->Value {
+  let canvas = js!{ return document.createElement ("canvas") ;};
+  let canvas_height = 100.0;
+  let context = js!{
+    var canvas = @{& canvas};
+    canvas.width = @{samples.len() as f64};
+    canvas.height = @{canvas_height};
+    var context = canvas.getContext ("2d") ;
+    return context;
+  };
+    
+    for (index, sample) in samples.iter().enumerate() {
+      js!{
+        var context =@{&context};
+        var first = @{index as f32 + 0.5};
+        var second = @{(1.0 - sample)*canvas_height};
+        if (@{index == 0}) {
+          context.moveTo (first, second);
+        } else {
+          context.lineTo (first, second);
+        }
+      }
+    }
+    
+  js!{
+    var context =@{&context};
+    context.stroke();
+  }
+  
+  canvas
 }
 
 fn redraw(state: & Rc<RefCell<State>>) {
