@@ -35,6 +35,7 @@ pub struct ControlPoint {
   pub slope: f32,
   pub jump: f32,
 }
+
 pub struct Signal {
   pub control_points: Vec<ControlPoint>,
 }
@@ -42,8 +43,16 @@ pub struct SignalSampler <'a> {
   signal: & 'a Signal,
   next_control_index: usize,
 }
+
+pub struct Envelope {
+  pub attack: f32,
+  pub sustain: f32,
+  pub decay: f32,
+}
+
 pub struct SoundDefinition {
   pub waveform: Waveform,
+  pub envelope: Envelope,
   pub frequency: Signal,
   
 }
@@ -96,8 +105,18 @@ impl<'a> SignalSampler<'a> {
   }
 }
 
+impl Envelope {
+  pub fn duration (&self)->f32 {self.attack + self.sustain + self.decay}
+  pub fn sample (&self, time: f32)->f32 {
+    if time <self.attack {return time/self.attack;}
+    if time <self.attack + self.sustain {return 1.0;}
+    if time <self.attack + self.sustain + self.decay {return (self.attack + self.sustain + self.decay - time)/self.decay;}
+    0.0
+  }
+}
+
 impl SoundDefinition {
-  pub fn duration(&self)->f32 {2.0}
+  pub fn duration(&self)->f32 {self.envelope.duration()}
   pub fn render (&self, sample_rate: u32)-> Vec<f32> {
     let num_frames = (self.duration()*sample_rate as f32).ceil() as u32;
     let mut wave_phase = 0.0;
@@ -109,7 +128,7 @@ impl SoundDefinition {
       let time = index as f32/sample_rate as f32;
       let frequency = frequency_sampler.sample(time);
       wave_phase += frequency*frame_duration;
-      let sample = self.waveform.sample (wave_phase)/25.0;
+      let sample = self.waveform.sample (wave_phase)*self.envelope.sample (time)/25.0;
       frames.push (sample) ;
     }
     
@@ -121,8 +140,8 @@ impl SoundDefinition {
     ([$state: ident, $($args: tt)*] $contents: expr) => {{
       let $state = $state.clone();
       move |$($args)*| {
-        #[allow (unused_variables)]
-        $contents
+        { $contents }
+        redraw (& $state);
       }
     }}
   }
@@ -182,7 +201,6 @@ fn add_signal_editor <'b, F: 'static + for <'a> Fn (& 'a mut State)->& 'a mut Si
     {let mut guard = state.borrow_mut();
     let signal = get_signal (&mut guard) ;
     signal.control_points [index].$field = value as f32;}
-    redraw (& state);
   })
       }}
     }
@@ -248,9 +266,41 @@ $("#panels").append ($("<div>", {class: "panel"}).append (radio_input ({
 }, 
   @{input_callback! ([state, value: Waveform] {
     state.borrow_mut().sound.waveform = value;
-    redraw (& state);
   })}
 )));
+  
+      const envelope_editor = $("<div>", {class: "panel"});
+      $("#panels").append (envelope_editor);
+      envelope_editor.append (numerical_input ({
+  id: "attack",
+  text: "Attack (s)",
+  min: 0.0,
+  max: 3.0,
+  current:@{sound.envelope.attack},
+  step: 0.01,
+}, @{input_callback! ([state, value: f64] {
+    state.borrow_mut().sound.envelope.attack = value as f32;
+  })}));
+  envelope_editor.append (numerical_input ({
+  id: "sustain",
+  text: "Sustain (s)",
+  min: 0.0,
+  max: 3.0,
+  current:@{sound.envelope.sustain},
+  step: 0.01,
+}, @{input_callback! ([state, value: f64] {
+    state.borrow_mut().sound.envelope.sustain= value as f32;
+  })}));
+  envelope_editor.append (numerical_input ({
+  id: "decay",
+  text: "Decay (s)",
+  min: 0.0,
+  max: 3.0,
+  current:@{sound.envelope.decay},
+  step: 0.01,
+}, @{input_callback! ([state, value: f64] {
+    state.borrow_mut().sound.envelope.decay= value as f32;
+  })}));
   
   }
 
@@ -276,6 +326,7 @@ fn main() {
   let state = Rc::new (RefCell::new (State {
     sound: SoundDefinition {
       waveform: Waveform::Sine,
+      envelope: Envelope {attack: 0.1, sustain: 0.5, decay: 0.5},
       frequency: Signal {
         control_points: vec![ControlPoint {time: 0.0, value: 220.0, slope: 0.0, jump: 0.0}]
       }
