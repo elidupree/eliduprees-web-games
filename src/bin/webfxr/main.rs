@@ -47,7 +47,7 @@ pub struct SoundDefinition {
   
 }
 
-pub struct AppState {
+pub struct State {
   sound: SoundDefinition,
 }
 
@@ -126,28 +126,67 @@ impl SoundDefinition {
     }}
   }
 
-fn redraw(state: & Rc<RefCell<AppState>>) {
+fn add_signal_editor <'b, F: 'static + for <'a> Fn (& 'a mut State)->& 'a mut Signal> (state: & 'b Rc<RefCell<State>>, id: & 'static str, get_signal: Rc<F>) {
+  let mut guard = state.borrow_mut();
+  let signal = get_signal (&mut guard) ;
+  let container = js!{ return $("<div>", {id:@{id}, class: "panel"});};
+  js!{ $("#panels").append (@{& container});}
+  for (index, control_point) in signal.control_points.iter().enumerate() {
+    macro_rules! control_field_editor {
+      ($field: ident) => {{
+      let get_signal = get_signal.clone();
+  input_callback! ([state, value: f64] {
+    {let mut guard = state.borrow_mut();
+    let signal = get_signal (&mut guard) ;
+    signal.control_points [index].$field = value as f32;}
+    redraw (& state);
+  })
+      }}
+    }
+    js!{
+      const control_editor = $("<div>");
+      @{& container}.append (control_editor);
+      control_editor.append (numerical_input ({
+  id: @{id} + "time",
+  text: "Time (seconds)",
+  min: 0.0,
+  max: 10.0,
+  current:@{control_point.time},
+  step: 0.01,
+}, 
+  @{control_field_editor! (time)}
+      )) ;
+      control_editor.append (numerical_input ({
+  id: @{id} + "frequency",
+  text: "Frequency (Hz)",
+  min: 20,
+  max: 22050,
+  current:@{control_point.value},
+  logarithmic: true,
+  step: 1,
+}, 
+  @{control_field_editor! (value)}
+      )) ;
+control_editor.append (numerical_input ({
+  id: @{id} + "slope",
+  text: "Slope (Octaves/second)",
+  min: - 100.0,
+  max: 100.0,
+  current:@{control_point. slope},
+  step: 1,
+}, 
+  @{control_field_editor! (slope)}
+      )) ;
+    }
+  }
+}
+
+fn redraw(state: & Rc<RefCell<State>>) {
+  {
   let guard = state.borrow();
   let sound = & guard.sound;
   js! {
 $("#panels").empty();
-
-$("#panels").append ($("<div>", {class: "panel"}).append (numerical_input ({
-  id: "frequency",
-  field: "frequency",
-  text: "Frequency (Hz)",
-  min: 20,
-  max: 22050,
-  current:@{sound.frequency.control_points [0].value},
-  logarithmic: true,
-  step: 1,
-  default: 220,
-}, 
-  @{input_callback! ([state, value: f64] {
-    state.borrow_mut().sound.frequency.control_points [0].value = value as f32;
-    redraw (& state);
-  })}
-)));
 
 
 $("#panels").append ($("<div>", {class: "panel"}).append (radio_input ({
@@ -169,7 +208,7 @@ $("#panels").append ($("<div>", {class: "panel"}).append (radio_input ({
 )));
   
   }
-  
+
   let rendered: TypedArray <f32> = sound.render (44100).as_slice().into();
   
   js! {
@@ -179,6 +218,9 @@ const sample_rate = 44100;
   buffer.copyToChannel (rendered, 0);
   play_buffer (buffer);
   }
+  
+  }fn extract_frequency (state: &mut State)->&mut Signal {&mut state.sound.frequency}
+add_signal_editor (state, "frequency", Rc::new (extract_frequency));
 }
 
 
@@ -186,7 +228,7 @@ const sample_rate = 44100;
 fn main() {
   stdweb::initialize();
   
-  let state = Rc::new (RefCell::new (AppState {
+  let state = Rc::new (RefCell::new (State {
     sound: SoundDefinition {
       waveform: Waveform::Sine,
       frequency: Signal {
