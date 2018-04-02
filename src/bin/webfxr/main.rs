@@ -161,11 +161,6 @@ fn add_signal_editor <'b, F: 'static + for <'a> Fn (& 'a mut State)->& 'a mut Si
       let time = index as f32/100.0;
       samples.push (sampler.sample (time)) ;
     }
-    let min = samples.iter().min_by_key (| value | OrderedFloat (**value)).unwrap() - 0.0001;
-    let max = samples.iter().max_by_key (| value | OrderedFloat (**value)).unwrap() + 0.0001;
-    let range = max - min;
-    
-    for sample in samples.iter_mut() {*sample = (*sample - min)/range;}
     
     js!{@{& container}.append (@{canvas_of_samples (& samples)});}
   
@@ -229,12 +224,16 @@ fn canvas_of_samples (samples: & [f32])->Value {
     var context = canvas.getContext ("2d") ;
     return context;
   };
+  
+    let min = samples.iter().min_by_key (| value | OrderedFloat (**value)).unwrap() - 0.0001;
+    let max = samples.iter().max_by_key (| value | OrderedFloat (**value)).unwrap() + 0.0001;
+    let range = max - min;
     
     for (index, sample) in samples.iter().enumerate() {
       js!{
         var context =@{&context};
         var first = @{index as f32 + 0.5};
-        var second = @{(1.0 - sample)*canvas_height};
+        var second = @{(max - sample)/range*canvas_height};
         if (@{index == 0}) {
           context.moveTo (first, second);
         } else {
