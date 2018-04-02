@@ -316,7 +316,7 @@ const sample_rate = 44100;
   }
   
   }
-add_signal_editor (state, "frequency", |state: &mut State| &mut state.sound.frequency);
+add_signal_editor (state, "frequency", |state| &mut state.sound.frequency);
 }
 
 
