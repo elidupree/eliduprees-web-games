@@ -19,6 +19,8 @@ use ordered_float::OrderedFloat;
 
 pub const TURN: f32 = ::std::f32::consts::PI*2.0;
 
+pub const DISPLAY_SAMPLE_RATE: f32 = 50.0;
+
 #[derive (Serialize, Deserialize)]
 pub enum Waveform {
   Sine,
@@ -147,29 +149,30 @@ impl SoundDefinition {
     }}
   }
 
-fn add_signal_editor <'b, F: 'static + for <'a> Fn (& 'a mut State)->& 'a mut Signal> (state: & 'b Rc<RefCell<State>>, id: & 'static str, get_signal: F) {
+fn add_signal_editor <
+  F: 'static + Fn (&State)->&Signal,
+  FMut: 'static + Fn (&mut State)->&mut Signal
+> (state: &Rc<RefCell<State>>, id: & 'static str, get_signal: F, get_signal_mut: FMut) {
   let get_signal = Rc::new (get_signal);
-  let mut guard = state.borrow_mut();
-  let signal = get_signal (&mut guard) ;
+  let get_signal_mut = Rc::new (get_signal_mut);
+  let guard = state.borrow();
+  let sound = & guard.sound;
+  let signal = get_signal (&guard) ;
   let container = js!{ return $("<div>", {id:@{id}, class: "panel"});};
   js!{ $("#panels").append (@{& container});}
   for (index, control_point) in signal.control_points.iter().enumerate() {
     let mut sampler = signal.sampler();
-    let mut samples = Vec::new();
-    let num_samples = 1000;
-    for index in 0..num_samples {
-      let time = index as f32/100.0;
-      samples.push (sampler.sample (time)) ;
-    }
     
-    js!{@{& container}.append (@{canvas_of_samples (& samples)});}
+    js!{@{& container}.append (@{
+      canvas_of_samples (& display_samples (sound, | time | sampler.sample (time)))
+    });}
   
     macro_rules! control_field_editor {
       ($field: ident) => {{
-      let get_signal = get_signal.clone();
+      let get_signal_mut = get_signal_mut.clone();
   input_callback! ([state, value: f64] {
     {let mut guard = state.borrow_mut();
-    let signal = get_signal (&mut guard) ;
+    let signal = get_signal_mut (&mut guard) ;
     signal.control_points [index].$field = value as f32;}
   })
       }}
@@ -214,6 +217,11 @@ control_editor.append (numerical_input ({
   }
 }
 
+fn display_samples <F: FnMut(f32)->f32> (sound: & SoundDefinition, mut sampler: F)->Vec<f32> {
+  let num_samples = (sound.duration()*DISPLAY_SAMPLE_RATE).ceil() as usize + 1;
+  (0..num_samples).map (| sample | sampler (sample as f32/DISPLAY_SAMPLE_RATE)).collect()
+}
+
 fn canvas_of_samples (samples: & [f32])->Value {
   let canvas = js!{ return document.createElement ("canvas") ;};
   let canvas_height = 100.0;
@@ -254,6 +262,9 @@ fn redraw(state: & Rc<RefCell<State>>) {
   {
   let guard = state.borrow();
   let sound = & guard.sound;
+  
+  let envelope_samples = display_samples (sound, | time | sound.envelope.sample (time));
+  
   js! {
 $("#panels").empty();
 
@@ -277,6 +288,7 @@ $("#panels").append ($("<div>", {class: "panel"}).append (radio_input ({
   
       const envelope_editor = $("<div>", {class: "panel"});
       $("#panels").append (envelope_editor);
+      envelope_editor.append (@{canvas_of_samples (&envelope_samples)});
       envelope_editor.append (numerical_input ({
   id: "attack",
   text: "Attack (s)",
@@ -321,7 +333,7 @@ const sample_rate = 44100;
   }
   
   }
-add_signal_editor (state, "frequency", |state| &mut state.sound.frequency);
+add_signal_editor (state, "frequency", |state| &state.sound.frequency, |state| &mut state.sound.frequency);
 }
 
 
