@@ -12,6 +12,7 @@ extern crate ordered_float;
 use std::rc::Rc;
 use std::cell::RefCell;
 use stdweb::unstable::TryInto;
+use stdweb::web::TypedArray;
 
 
 pub const TURN: f32 = ::std::f32::consts::PI*2.0;
@@ -107,7 +108,7 @@ impl SoundDefinition {
       let time = index as f32/sample_rate as f32;
       let frequency = frequency_sampler.sample(time);
       wave_phase += frequency*frame_duration;
-      let sample = self.waveform.sample (wave_phase);
+      let sample = self.waveform.sample (wave_phase)/25.0;
       frames.push (sample) ;
     }
     
@@ -166,8 +167,17 @@ $("#panels").append ($("<div>", {class: "panel"}).append (radio_input ({
     redraw (& state);
   })}
 )));
-
-
+  
+  }
+  
+  let rendered: TypedArray <f32> = sound.render (44100).as_slice().into();
+  
+  js! {
+  const rendered = @{rendered};
+const sample_rate = 44100;
+  const buffer = audio.createBuffer (1, rendered.length, sample_rate);
+  buffer.copyToChannel (rendered, 0);
+  play_buffer (buffer);
   }
 }
 
