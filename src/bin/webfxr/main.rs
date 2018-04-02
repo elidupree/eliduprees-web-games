@@ -155,7 +155,7 @@ fn add_signal_editor <'b, F: 'static + for <'a> Fn (& 'a mut State)->& 'a mut Si
     return context;
     };
     
-    for (index, sample) in samples.iter().skip (1).enumerate() {
+    for (index, sample) in samples.iter().enumerate() {
       js!{
         var context =@{&context};
         var first = @{index as f32 + 0.5};
