@@ -146,7 +146,8 @@ impl SoundDefinition {
     }}
   }
 
-fn add_signal_editor <'b, F: 'static + for <'a> Fn (& 'a mut State)->& 'a mut Signal> (state: & 'b Rc<RefCell<State>>, id: & 'static str, get_signal: Rc<F>) {
+fn add_signal_editor <'b, F: 'static + for <'a> Fn (& 'a mut State)->& 'a mut Signal> (state: & 'b Rc<RefCell<State>>, id: & 'static str, get_signal: F) {
+  let get_signal = Rc::new (get_signal);
   let mut guard = state.borrow_mut();
   let signal = get_signal (&mut guard) ;
   let container = js!{ return $("<div>", {id:@{id}, class: "panel"});};
@@ -314,8 +315,8 @@ const sample_rate = 44100;
   play_buffer (buffer);
   }
   
-  }fn extract_frequency (state: &mut State)->&mut Signal {&mut state.sound.frequency}
-add_signal_editor (state, "frequency", Rc::new (extract_frequency));
+  }
+add_signal_editor (state, "frequency", |state: &mut State| &mut state.sound.frequency);
 }
 
 
