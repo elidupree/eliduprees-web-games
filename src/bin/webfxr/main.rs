@@ -37,7 +37,8 @@ pub struct ControlPoint {
   pub time: f32,
   pub value: f32,
   pub slope: f32,
-  pub jump: f32,
+  pub jump: bool,
+  pub value_after_jump: f32,
 }
 
 pub struct Signal {
@@ -78,6 +79,10 @@ impl Waveform {
   }
 }
 
+impl ControlPoint {
+  fn value_after (&self)->f32 {if self.jump {self.value_after_jump} else {self.value}}
+}
+
 impl Signal {
   pub fn sampler (&self)->SignalSampler {
     SignalSampler {signal: self, next_control_index: 0}
@@ -99,11 +104,14 @@ impl<'a> SignalSampler<'a> {
     let next_control = self.signal.control_points.get (self.next_control_index);
     match (previous_control, next_control) {
       (None, None)=>0.0,
-      (None, Some (control)) | (Some (control), None) => {
+      (None, Some (control)) => {
         control.value + control.slope*(time - control.time)
       },
+      (Some (control), None) => {
+        control.value_after () + control.slope*(time - control.time)
+      },
       (Some (first), Some (second)) => {
-        let first_value = first.value + first.slope*(time - first.time);
+        let first_value = first.value_after() + first.slope*(time - first.time);
         let second_value = second.value + second.slope*(time - second.time);
         let fraction = (time - first.time)/(second.time - first.time);
         let adjusted_fraction = fraction*fraction*(3.0 - 2.0*fraction);
@@ -266,6 +274,20 @@ fn add_signal_editor <
       }
     }
     if !signal.constant {js!{
+      if (@{index >0}) {
+        var jump_editor = @{
+          frequency_editor (& guard, & format! ("{}_jump", &id), "Jump to", control_point.value_after_jump, control_input! ([control, value: f32] control.value_after_jump = value))
+        };
+        @{& control_editor}.append (jump_editor) ;
+        var jump_toggle = @{
+          control_input! ([control] control.jump = !control.jump)
+        };
+        jump_editor.prepend (
+          $("<input>", {type: "checkbox", checked:@{control_point.jump}}).on ("input", function(event) {
+            jump_toggle ();
+          })
+        );
+      }
 @{& control_editor}.append (numerical_input ({
   id: @{&id} + "slope",
   text: "Slope (Octaves/second)",
@@ -433,7 +455,7 @@ fn main() {
       envelope: Envelope {attack: 0.1, sustain: 0.5, decay: 0.5},
       log_frequency: Signal {
         constant: true,
-        control_points: vec![ControlPoint {time: 0.0, value: 220.0_f32.log2(), slope: 0.0, jump: 0.0}]
+        control_points: vec![ControlPoint {time: 0.0, value: 220.0_f32.log2(), slope: 0.0, jump: false, value_after_jump: 0.0}]
       }
     }
   }));
