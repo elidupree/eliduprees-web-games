@@ -309,13 +309,20 @@ fn add_signal_editor <
       }   
 
       var callback = @{signal_input! ([signal] {
-        let mut new_point = signal.control_points [index].clone();
+        let previous = signal.control_points [index].clone();
         let next = signal.control_points.get (index + 1).cloned();
-        new_point.time = match next {
-          None => new_point.time + 0.5,
-          Some (thingy) => (new_point.time + thingy.time)/2.0,
+        let time = match next {
+          None => previous.time + 0.5,
+          Some (thingy) => (previous.time + thingy.time)/2.0,
         };
-        signal.control_points.insert (index + 1, new_point);
+        let value = signal.sampler().sample(time);
+        let offset = 0.000001;
+        let offset_value = signal.sampler().sample (time + offset) ;
+        let slope = (offset_value - value)/offset;
+        signal.control_points.insert (index + 1, ControlPoint {
+          time: time, value: value, slope: slope,
+          jump: false, value_after_jump: value,
+        });
       })};
       @{& container}.append ($("<input>", {
         type: "button",
