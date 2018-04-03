@@ -56,7 +56,7 @@ pub struct Envelope {
 pub struct SoundDefinition {
   pub waveform: Waveform,
   pub envelope: Envelope,
-  pub frequency: Signal,
+  pub log_frequency: Signal,
   
 }
 
@@ -123,13 +123,13 @@ impl SoundDefinition {
   pub fn render (&self, sample_rate: u32)-> Vec<f32> {
     let num_frames = (self.duration()*sample_rate as f32).ceil() as u32;
     let mut wave_phase = 0.0;
-    let mut frequency_sampler = self.frequency.sampler();
+    let mut log_frequency_sampler = self.log_frequency.sampler();
     let frame_duration = 1.0/sample_rate as f32;
     let mut frames = Vec::with_capacity (num_frames as usize);
     
     for index in 0..num_frames {
       let time = index as f32/sample_rate as f32;
-      let frequency = frequency_sampler.sample(time);
+      let frequency = log_frequency_sampler.sample(time).exp2();
       wave_phase += frequency*frame_duration;
       let sample = self.waveform.sample (wave_phase)*self.envelope.sample (time)/25.0;
       frames.push (sample) ;
@@ -149,6 +149,22 @@ impl SoundDefinition {
     }}
   }
 
+
+fn frequency_editor <F: 'static + FnMut (f32)> (state: & State, id: & str, current: f32, mut callback: F)->Value {
+  let editor = js!{
+  return numerical_input ({
+    id: @{id},
+    text: "Frequency (Hz)",
+    min: 20,
+    max: 22050,
+    current:@{(current.exp2()*100.0).round()/100.0},
+    step: 1,
+  }, @{move | value: f64 | callback (value.log2() as f32)}
+  );
+  };
+  editor
+}
+
 fn add_signal_editor <
   F: 'static + Fn (&State)->&Signal,
   FMut: 'static + Fn (&mut State)->&mut Signal
@@ -160,20 +176,23 @@ fn add_signal_editor <
   let signal = get_signal (&guard) ;
   let container = js!{ return $("<div>", {id:@{id}, class: "panel"});};
   js!{ $("#panels").append (@{& container});}
-  for (index, control_point) in signal.control_points.iter().enumerate() {
-    let mut sampler = signal.sampler();
-    
-    js!{@{& container}.append (@{
-      canvas_of_samples (& display_samples (sound, | time | sampler.sample (time)))
-    });}
   
-    macro_rules! control_field_editor {
-      ($field: ident) => {{
+  let mut sampler = signal.sampler();
+    
+  js!{@{& container}.append (@{
+    canvas_of_samples (& display_samples (sound, | time | sampler.sample (time)))
+  });}
+  
+  for (index, control_point) in signal.control_points.iter().enumerate() {
+    let id = format! ("{}_{}", id, index);
+    macro_rules! control_input {
+      ([$control: ident, $($args: tt)*] $effect: expr) => {{
       let get_signal_mut = get_signal_mut.clone();
-  input_callback! ([state, value: f64] {
-    {let mut guard = state.borrow_mut();
+  input_callback! ([state, $($args)*] {
+    let mut guard = state.borrow_mut();
     let signal = get_signal_mut (&mut guard) ;
-    signal.control_points [index].$field = value as f32;}
+    let $control = &mut signal.control_points [index];
+    $effect
   })
       }}
     }
@@ -183,35 +202,27 @@ fn add_signal_editor <
       const control_editor = $("<div>");
       @{& container}.append (control_editor);
       control_editor.append (numerical_input ({
-  id: @{id} + "time",
+  id: @{&id} + "time",
   text: "Time (seconds)",
   min: 0.0,
   max: 10.0,
   current:@{control_point.time},
   step: 0.01,
 }, 
-  @{control_field_editor! (time)}
+  @{control_input! ([control, value: f64] control.time = value as f32)}
       )) ;
-      control_editor.append (numerical_input ({
-  id: @{id} + "frequency",
-  text: "Frequency (Hz)",
-  min: 20,
-  max: 22050,
-  current:@{control_point.value},
-  logarithmic: true,
-  step: 1,
-}, 
-  @{control_field_editor! (value)}
-      )) ;
+      control_editor.append (@{
+        frequency_editor (& guard, & format! ("{}_frequency", &id), control_point.value, control_input! ([control, value: f32] control.value = value))
+      }) ;
 control_editor.append (numerical_input ({
-  id: @{id} + "slope",
+  id: @{&id} + "slope",
   text: "Slope (Octaves/second)",
   min: - 100.0,
   max: 100.0,
   current:@{control_point. slope},
   step: 1,
 }, 
-  @{control_field_editor! (slope)}
+  @{control_input! ([control, value: f64] control.slope = value as f32)}
       )) ;
     }
   }
@@ -333,7 +344,7 @@ const sample_rate = 44100;
   }
   
   }
-add_signal_editor (state, "frequency", |state| &state.sound.frequency, |state| &mut state.sound.frequency);
+add_signal_editor (state, "frequency", |state| &state.sound.log_frequency, |state| &mut state.sound.log_frequency);
 }
 
 
@@ -345,8 +356,8 @@ fn main() {
     sound: SoundDefinition {
       waveform: Waveform::Sine,
       envelope: Envelope {attack: 0.1, sustain: 0.5, decay: 0.5},
-      frequency: Signal {
-        control_points: vec![ControlPoint {time: 0.0, value: 220.0, slope: 0.0, jump: 0.0}]
+      log_frequency: Signal {
+        control_points: vec![ControlPoint {time: 0.0, value: 220.0_f32.log2(), slope: 0.0, jump: 0.0}]
       }
     }
   }));
