@@ -106,7 +106,8 @@ impl<'a> SignalSampler<'a> {
         let first_value = first.value + first.slope*(time - first.time);
         let second_value = second.value + second.slope*(time - second.time);
         let fraction = (time - first.time)/(second.time - first.time);
-        first_value * (1.0 - fraction) + second_value * fraction
+        let adjusted_fraction = (((fraction - 0.5)*TURN/2.0).sin() + 1.0)/2.0;
+        first_value * (1.0 - adjusted_fraction) + second_value * adjusted_fraction
       },
     }
   }
