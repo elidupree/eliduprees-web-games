@@ -160,6 +160,8 @@ impl SoundDefinition {
   }
 
 
+fn round_step (input: f32, step: f32)->f32 {(input*step).round()/step}
+
 fn frequency_editor <F: 'static + FnMut (f32)> (state: & State, id: & str, text: & str, current: f32, mut callback: F)->Value {
   let editor = js!{
   return numerical_input ({
@@ -167,10 +169,25 @@ fn frequency_editor <F: 'static + FnMut (f32)> (state: & State, id: & str, text:
     text: @{text} + " (Hz)",
     min: 20,
     max: 22050,
-    current:@{(current.exp2()*100.0).round()/100.0},
+    current:@{round_step (current.exp2(), 100.0)},
     step: 1,
     logarithmic: true,
   }, @{move | value: f64 | callback (value.log2() as f32)}
+  );
+  };
+  editor
+}
+
+fn time_editor <F: 'static + FnMut (f32)> (state: & State, id: & str, text: & str, current: f32, mut callback: F)->Value {
+  let editor = js!{
+  return numerical_input ({
+    id: @{id},
+    text: @{text} + " (s)",
+    min: 0.0,
+    max: 10.0,
+    current:@{round_step (current, 1000.0)},
+    step: 0.1,
+  }, @{move | value: f64 | callback (value as f32)}
   );
   };
   editor
@@ -228,16 +245,11 @@ fn add_signal_editor <
     };
     
     if index >0 {js!{
-      @{& control_editor}.append (numerical_input ({
-  id: @{&id} + "time",
-  text: "Time (seconds)",
-  min: 0.0,
-  max: 10.0,
-  current:@{control_point.time},
-  step: 0.01,
-}, 
-  @{control_input! ([control, value: f64] control.time = value as f32)}
-      )) ;
+      @{& control_editor}.append (@{
+        time_editor (& guard, & format! ("{}_time", &id), "Time", control_point.time,
+          control_input! ([control, value: f32] control.time = value)
+        )
+      })
     }}
     
     js!{
@@ -256,7 +268,7 @@ fn add_signal_editor <
   text: "Slope (Octaves/second)",
   min: - 100.0,
   max: 100.0,
-  current:@{control_point. slope},
+  current:@{round_step (control_point.slope, 1000.0)},
   step: 1,
 }, 
   @{control_input! ([control, value: f64] control.slope = value as f32)}
@@ -349,37 +361,21 @@ $("#panels").append ($("<div>", {class: "panel"}).append (radio_input ({
       const envelope_editor = $("<div>", {class: "panel"});
       $("#panels").append (envelope_editor);
       envelope_editor.append (@{canvas_of_samples (&envelope_samples)});
-      envelope_editor.append (numerical_input ({
-  id: "attack",
-  text: "Attack (s)",
-  min: 0.0,
-  max: 3.0,
-  current:@{sound.envelope.attack},
-  step: 0.01,
-}, @{input_callback! ([state, value: f64] {
-    state.borrow_mut().sound.envelope.attack = value as f32;
-  })}));
-  envelope_editor.append (numerical_input ({
-  id: "sustain",
-  text: "Sustain (s)",
-  min: 0.0,
-  max: 3.0,
-  current:@{sound.envelope.sustain},
-  step: 0.01,
-}, @{input_callback! ([state, value: f64] {
-    state.borrow_mut().sound.envelope.sustain= value as f32;
-  })}));
-  envelope_editor.append (numerical_input ({
-  id: "decay",
-  text: "Decay (s)",
-  min: 0.0,
-  max: 3.0,
-  current:@{sound.envelope.decay},
-  step: 0.01,
-}, @{input_callback! ([state, value: f64] {
-    state.borrow_mut().sound.envelope.decay= value as f32;
-  })}));
-  
+      envelope_editor.append (@{
+        time_editor (& guard, "attack", "Attack", sound.envelope.attack,
+          input_callback! ([state, value: f32] {state.borrow_mut().sound.envelope.attack = value;})
+        )
+      });
+      envelope_editor.append (@{
+        time_editor (& guard, "sustain", "Sustain", sound.envelope.sustain,
+          input_callback! ([state, value: f32] {state.borrow_mut().sound.envelope.sustain = value;})
+        )
+      });
+      envelope_editor.append (@{
+        time_editor (& guard, "decay", "Decay", sound.envelope.decay,
+          input_callback! ([state, value: f32] {state.borrow_mut().sound.envelope.decay = value;})
+        )
+      });  
   }
 
   let rendered: TypedArray <f32> = sound.render (44100).as_slice().into();
