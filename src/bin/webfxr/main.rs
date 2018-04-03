@@ -150,11 +150,11 @@ impl SoundDefinition {
   }
 
 
-fn frequency_editor <F: 'static + FnMut (f32)> (state: & State, id: & str, current: f32, mut callback: F)->Value {
+fn frequency_editor <F: 'static + FnMut (f32)> (state: & State, id: & str, text: & str, current: f32, mut callback: F)->Value {
   let editor = js!{
   return numerical_input ({
     id: @{id},
-    text: "Frequency (Hz)",
+    text: @{text} + " (Hz)",
     min: 20,
     max: 22050,
     current:@{(current.exp2()*100.0).round()/100.0},
@@ -213,7 +213,7 @@ fn add_signal_editor <
   @{control_input! ([control, value: f64] control.time = value as f32)}
       )) ;
       control_editor.append (@{
-        frequency_editor (& guard, & format! ("{}_frequency", &id), control_point.value, control_input! ([control, value: f32] control.value = value))
+        frequency_editor (& guard, & format! ("{}_frequency", &id), "Frequency", control_point.value, control_input! ([control, value: f32] control.value = value))
       }) ;
 control_editor.append (numerical_input ({
   id: @{&id} + "slope",
