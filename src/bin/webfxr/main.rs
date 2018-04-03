@@ -60,7 +60,7 @@ pub struct SoundDefinition {
   pub waveform: Waveform,
   pub envelope: Envelope,
   pub log_frequency: Signal,
-  
+  pub log_bitcrush_frequency: Signal,
 }
 
 pub struct State {
@@ -84,6 +84,12 @@ impl ControlPoint {
 }
 
 impl Signal {
+  pub fn constant(value: f32)->Signal {
+    Signal {
+      constant: true,
+      control_points: vec![ControlPoint {time: 0.0, value: value, slope: 0.0, jump: false, value_after_jump: 0.0}]
+    }
+  }
   pub fn sampler (&self)->SignalSampler {
     SignalSampler {signal: self, next_control_index: 0}
   }
@@ -137,16 +143,28 @@ impl SoundDefinition {
   pub fn render (&self, sample_rate: u32)-> Vec<f32> {
     let num_frames = (self.duration()*sample_rate as f32).ceil() as u32;
     let mut wave_phase = 0.0;
+    let mut bitcrush_phase = 1.0;
+    let mut last_used_sample = 0.0;
     let mut log_frequency_sampler = self.log_frequency.sampler();
+    let mut log_bitcrush_frequency_sampler = self.log_bitcrush_frequency.sampler();
     let frame_duration = 1.0/sample_rate as f32;
     let mut frames = Vec::with_capacity (num_frames as usize);
     
     for index in 0..num_frames {
       let time = index as f32/sample_rate as f32;
-      let frequency = log_frequency_sampler.sample(time).exp2();
-      wave_phase += frequency*frame_duration;
+      
       let sample = self.waveform.sample (wave_phase)*self.envelope.sample (time)/25.0;
-      frames.push (sample) ;
+      if bitcrush_phase >= 1.0 {
+        bitcrush_phase -= 1.0;
+        if bitcrush_phase >1.0 {bitcrush_phase = 1.0;}
+        last_used_sample = sample; 
+      }
+      frames.push (last_used_sample) ;
+      
+      let frequency = log_frequency_sampler.sample(time).exp2();
+      let bitcrush_frequency = log_bitcrush_frequency_sampler.sample(time).exp2();
+      wave_phase += frequency*frame_duration;
+      bitcrush_phase += bitcrush_frequency*frame_duration;
     }
     
     frames
@@ -445,7 +463,8 @@ const sample_rate = 44100;
   }
   
   }
-add_signal_editor (state, "frequency", "Frequency", |state| &state.sound.log_frequency, |state| &mut state.sound.log_frequency);
+  add_signal_editor (state, "frequency", "Frequency", |state| &state.sound.log_frequency, |state| &mut state.sound.log_frequency);
+  add_signal_editor (state, "bitcrush_frequency", "Bitcrush frequency", |state| &state.sound.log_bitcrush_frequency, |state| &mut state.sound.log_bitcrush_frequency);
 }
 
 
@@ -457,10 +476,8 @@ fn main() {
     sound: SoundDefinition {
       waveform: Waveform::Sine,
       envelope: Envelope {attack: 0.1, sustain: 0.5, decay: 0.5},
-      log_frequency: Signal {
-        constant: true,
-        control_points: vec![ControlPoint {time: 0.0, value: 220.0_f32.log2(), slope: 0.0, jump: false, value_after_jump: 0.0}]
-      }
+      log_frequency: Signal::constant (220.0_f32.log2()),
+      log_bitcrush_frequency: Signal::constant (44100.0_f32.log2()),
     }
   }));
   
