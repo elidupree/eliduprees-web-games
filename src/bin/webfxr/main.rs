@@ -32,6 +32,7 @@ pub enum Waveform {
 js_serializable! (Waveform) ;
 js_deserializable! (Waveform) ;
 
+#[derive (Clone)]
 pub struct ControlPoint {
   pub time: f32,
   pub value: f32,
@@ -273,6 +274,35 @@ fn add_signal_editor <
 }, 
   @{control_input! ([control, value: f64] control.slope = value as f32)}
       )) ;
+      
+      if (@{index >0}) {
+      var delete_callback = @{signal_input! ([signal] {
+        signal.control_points.remove (index);
+      })};
+      @{& control_editor}.append ($("<input>", {
+        type: "button",
+        id: @{&id} + "delete_control",
+        value: "Delete control point"
+      }).click (function() {delete_callback()})
+      );   
+      }   
+
+      var callback = @{signal_input! ([signal] {
+        let mut new_point = signal.control_points [index].clone();
+        let next = signal.control_points.get (index + 1).cloned();
+        new_point.time = match next {
+          None => new_point.time + 0.5,
+          Some (thingy) => (new_point.time + thingy.time)/2.0,
+        };
+        signal.control_points.insert (index + 1, new_point);
+      })};
+      @{& container}.append ($("<input>", {
+        type: "button",
+        id: @{&id} + "add_control",
+        value: "Add control point"
+      }).click (function() {callback()})
+      );
+      
     }}
   }
   
@@ -283,9 +313,7 @@ fn add_signal_editor <
       type: "button",
       id: @{&id} + "constant",
       value: @{signal.constant} ? "Complicate" : "Simplify"
-    }).click (
-      function() {callback()}
-    )
+    }).click (function() {callback()})
   );}
 }
 
