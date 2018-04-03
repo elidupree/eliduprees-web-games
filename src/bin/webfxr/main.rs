@@ -40,6 +40,7 @@ pub struct ControlPoint {
 }
 
 pub struct Signal {
+  pub constant: bool,
   pub control_points: Vec<ControlPoint>,
 }
 pub struct SignalSampler <'a> {
@@ -84,6 +85,8 @@ impl Signal {
 
 impl<'a> SignalSampler<'a> {
   pub fn sample (&mut self, time: f32)->f32 {
+    if self.signal.constant {return self.signal.control_points [0].value;}
+    
     while let Some(control) = self.signal.control_points.get (self.next_control_index) {
       if time >= control.time {
         self.next_control_index += 1;
@@ -146,6 +149,13 @@ impl SoundDefinition {
         { $contents }
         redraw (& $state);
       }
+    }};
+    ([$state: ident] $contents: expr) => {{
+      let $state = $state.clone();
+      move || {
+        { $contents }
+        redraw (& $state);
+      }
     }}
   }
 
@@ -169,7 +179,7 @@ fn frequency_editor <F: 'static + FnMut (f32)> (state: & State, id: & str, text:
 fn add_signal_editor <
   F: 'static + Fn (&State)->&Signal,
   FMut: 'static + Fn (&mut State)->&mut Signal
-> (state: &Rc<RefCell<State>>, id: & 'static str, get_signal: F, get_signal_mut: FMut) {
+> (state: &Rc<RefCell<State>>, id: & 'static str, name: & 'static str, get_signal: F, get_signal_mut: FMut) {
   let get_signal = Rc::new (get_signal);
   let get_signal_mut = Rc::new (get_signal_mut);
   let guard = state.borrow();
@@ -179,17 +189,30 @@ fn add_signal_editor <
   js!{ $("#panels").append (@{& container});}
   
   let mut sampler = signal.sampler();
-    
-  js!{@{& container}.append (@{
+  
+  js!{@{& container}.append (@{name} + ": ");}
+  if !signal.constant {js!{@{& container}.append (@{
     canvas_of_samples (& display_samples (sound, | time | sampler.sample (time)))
-  });}
+  });}}
+  
+   macro_rules! signal_input {
+      ([$signal: ident $($args: tt)*] $effect: expr) => {{
+      let get_signal_mut = get_signal_mut.clone();
+  input_callback! ([state $($args)*] {
+    let mut guard = state.borrow_mut();
+    let $signal = get_signal_mut (&mut guard) ;
+    $effect
+  })
+      }}
+    }
   
   for (index, control_point) in signal.control_points.iter().enumerate() {
+    if signal.constant && index >0 {break;}
     let id = format! ("{}_{}", id, index);
     macro_rules! control_input {
-      ([$control: ident, $($args: tt)*] $effect: expr) => {{
+      ([$control: ident $($args: tt)*] $effect: expr) => {{
       let get_signal_mut = get_signal_mut.clone();
-  input_callback! ([state, $($args)*] {
+  input_callback! ([state $($args)*] {
     let mut guard = state.borrow_mut();
     let signal = get_signal_mut (&mut guard) ;
     let $control = &mut signal.control_points [index];
@@ -198,11 +221,14 @@ fn add_signal_editor <
       }}
     }
     
-    
-    js!{
+    let control_editor = js!{
       const control_editor = $("<div>");
       @{& container}.append (control_editor);
-      control_editor.append (numerical_input ({
+      return control_editor;
+    };
+    
+    if index >0 {js!{
+      @{& control_editor}.append (numerical_input ({
   id: @{&id} + "time",
   text: "Time (seconds)",
   min: 0.0,
@@ -212,10 +238,20 @@ fn add_signal_editor <
 }, 
   @{control_input! ([control, value: f64] control.time = value as f32)}
       )) ;
-      control_editor.append (@{
+    }}
+    
+    js!{
+      var frequency_editor = @{
         frequency_editor (& guard, & format! ("{}_frequency", &id), "Frequency", control_point.value, control_input! ([control, value: f32] control.value = value))
-      }) ;
-control_editor.append (numerical_input ({
+      };
+      @{& control_editor}.append (frequency_editor) ;
+      if (@{signal.constant}) {
+        @{& control_editor}.css ("display", "inline");
+        frequency_editor.css ("display", "inline");
+      }
+    }
+    if !signal.constant {js!{
+@{& control_editor}.append (numerical_input ({
   id: @{&id} + "slope",
   text: "Slope (Octaves/second)",
   min: - 100.0,
@@ -225,8 +261,20 @@ control_editor.append (numerical_input ({
 }, 
   @{control_input! ([control, value: f64] control.slope = value as f32)}
       )) ;
-    }
+    }}
   }
+  
+  js!{
+    var callback = @{signal_input! ([signal] signal.constant = !signal.constant)};
+  @{& container}.append (
+    $("<input>", {
+      type: "button",
+      id: @{&id} + "constant",
+      value: @{signal.constant} ? "Complicate" : "Simplify"
+    }).click (
+      function() {callback()}
+    )
+  );}
 }
 
 fn display_samples <F: FnMut(f32)->f32> (sound: & SoundDefinition, mut sampler: F)->Vec<f32> {
@@ -345,7 +393,7 @@ const sample_rate = 44100;
   }
   
   }
-add_signal_editor (state, "frequency", |state| &state.sound.log_frequency, |state| &mut state.sound.log_frequency);
+add_signal_editor (state, "frequency", "Frequency", |state| &state.sound.log_frequency, |state| &mut state.sound.log_frequency);
 }
 
 
@@ -358,6 +406,7 @@ fn main() {
       waveform: Waveform::Sine,
       envelope: Envelope {attack: 0.1, sustain: 0.5, decay: 0.5},
       log_frequency: Signal {
+        constant: true,
         control_points: vec![ControlPoint {time: 0.0, value: 220.0_f32.log2(), slope: 0.0, jump: 0.0}]
       }
     }
