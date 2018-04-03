@@ -90,6 +90,7 @@ window.numerical_input = function (data, update_callback) {
     value += (Math.sign(event.originalEvent.deltaY) || Math.sign(event.originalEvent.deltaX) || 0)*data.step;
     number_input.val (value);
     number_overrides ();
+    event.preventDefault();
   });
   
   return result;
