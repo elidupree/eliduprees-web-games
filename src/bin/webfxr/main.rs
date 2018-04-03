@@ -279,22 +279,19 @@ fn add_signal_editor <
           frequency_editor (& guard, & format! ("{}_jump", &id), "Jump to", control_point.value_after_jump, control_input! ([control, value: f32] control.value_after_jump = value))
         };
         @{& control_editor}.append (jump_editor) ;
-        var jump_toggle = @{
-          control_input! ([control] control.jump = !control.jump)
-        };
         jump_editor.prepend (
           $("<input>", {type: "checkbox", checked:@{control_point.jump}}).on ("input", function(event) {
-            jump_toggle ();
+            @{control_input! ([control] control.jump = !control.jump)}();
           })
         );
       }
 @{& control_editor}.append (numerical_input ({
   id: @{&id} + "slope",
   text: "Slope (Octaves/second)",
-  min: - 100.0,
-  max: 100.0,
+  min: - 10.0,
+  max: 10.0,
   current:@{round_step (control_point.slope, 1000.0)},
-  step: 1,
+  step: 0.01,
 }, 
   @{control_input! ([control, value: f64] control.slope = value as f32)}
       )) ;
