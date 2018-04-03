@@ -159,6 +159,7 @@ fn frequency_editor <F: 'static + FnMut (f32)> (state: & State, id: & str, curre
     max: 22050,
     current:@{(current.exp2()*100.0).round()/100.0},
     step: 1,
+    logarithmic: true,
   }, @{move | value: f64 | callback (value.log2() as f32)}
   );
   };
