@@ -31,6 +31,8 @@ pub enum TimeType {
 }
 pub trait UserNumberType: Eq {
   fn render (&self, value: & str)->Option<f32>;
+  fn approximate_from_rendered (&self, rendered: f32)->String;
+  fn unit_name (&self)->'static str;
 }
 #[derive (Clone)]
 pub struct UserNumber <T: UserNumberType> {
@@ -41,7 +43,10 @@ pub struct UserNumber <T: UserNumberType> {
 impl UserNumberType for FrequencyType {
   fn render (&self, value: & str)->Option <f32> {
     match *self {
-      FrequencyType::Frequency => f32::from_str (value).ok().map(| value | value.log2())
+      FrequencyType::Frequency => f32::from_str (value).ok().and_then(| value | {
+        let value = value.log2();
+        if value.is_finite() {Some (value)} else {None}
+      })
     }
   }
   fn approximate_from_rendered (&self, rendered: f32)->String {
@@ -49,16 +54,26 @@ impl UserNumberType for FrequencyType {
       FrequencyType::Frequency => format!("{.1}", rendered)
     }
   }
+  fn unit_name (&self)->'static str {
+    match *self {
+      FrequencyType::Frequency => "Hz"
+    }
+  }
 }
 impl UserNumberType for TimeType {
   fn render (&self, value: & str)->Option <f32> {
     match *self {
-      TimeType::Seconds => f32::from_str (value).ok()
+      TimeType::Seconds => f32::from_str (value).ok().filter (| value | value.is_finite())
     }
   }
   fn approximate_from_rendered (&self, rendered: f32)->String {
     match *self {
       TimeType::Seconds => format!("{.3}", rendered)
+    }
+  }
+  fn unit_name (&self)->'static str {
+    match *self {
+      TimeType::Seconds => "s"
     }
   }
 }
@@ -234,33 +249,59 @@ pub struct NumericalInputSpecification <'a, T: UserNumberType> {
   id: & 'a str,
   name: & 'a str,
   slider_range: [f32; 2],
+  slider_step: f32,
   hard_range: Option <[f32; 2]>,
   value_type: T,
   current_value: UserNumber <T>,
 }
 
 impl <'a, T: UserNumberType> NumericalInputSpecification<'a, T> {
-  pub fn render (&self)->Value {
+  pub fn render (self)->Value {
     let displayed_value = if self.value_type == current_value.value_type {current_value.source.clone()} else {self.value_type.approximate_from_rendered (current_value.rendered)};
-    let (range_range, range_value, range_step) = if self.slider_logarithmic {
-      ([0.0, 1.0], current_value.rendered
-    }
+
     js!{
+      var range_input = $("<input>", {type: "range", id: @{self.id}+"_numerical_range", value:@{self.current_value.rendered}, min:@{self.slider_range [0]}, max:@{self.slider_range [1]}, step:@{self.slider_step} });
+      var number_input = $("<input>", {type: "number", id: data.id+"_numerical_number", value:@{displayed_value}});
       
-      range_input = $("<input>", {type: "range", id: @{self.id}+"_numerical_range", value:@{self.current_value.rendered}, min:@{self.slider_range [0]}, max:@{self.slider_range [1]}, step: data.step });
-      number_input = $("<input>", {type: "number", id: data.id+"_numerical_number", value:@{displayed_value}, step: data.step });
-      
+      function range_overrides() {
+        var value = range_input[0].valueAsNumber;
+        var source = @{| value: f64 | self.value_type.approximate_from_rendered (value as f32)} (value)
+        // immediately update the number input with the range input, even though the actual data editing is debounced.
+        number_input.val(source);
+        update(source);
+      }
+      function number_overrides() {
+        update(number_input.val());
+      }
+      var update = _.debounce(function(value) {
+        var success = @{| value: String |{
+          if let Some(value) = UserNumber::new (value) {
+          
+            true
+          }
+          else {
+            false
+          }
+        }} (value);
+        if (!success) {
+          // TODO display some sort of error message
+        }
+      }, 200);
       var result = $("<div>", {class: "labeled_input"}).append (
         range_input.on ("input", range_overrides),
         number_input.on ("input", number_overrides),
-        $("<label>", {"for": data.id+"_numerical_number", text:@{}})
-  ).on("wheel", function (event) {
-    let value = number_input[0].valueAsNumber;
-    value += (Math.sign(event.originalEvent.deltaY) || Math.sign(event.originalEvent.deltaX) || 0)*data.step;
-    number_input.val (value);
-    number_overrides ();
-    event.preventDefault();
-  });
+        $("<label>", {"for": data.id+"_numerical_number", text:@{
+          format! ("{} ({})", self.name, self.value_type.unit_name())
+        }})
+      );
+      
+      result.on("wheel", function (event) {
+        var value = range_input[0].valueAsNumber;
+        value += (Math.sign(event.originalEvent.deltaY) || Math.sign(event.originalEvent.deltaX) || 0)*@{self.slider_step};
+        range_input.val (value);
+        range_overrides ();
+        event.preventDefault();
+      });
       return result;
     }
   }
