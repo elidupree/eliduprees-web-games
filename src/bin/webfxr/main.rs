@@ -21,6 +21,58 @@ pub const TURN: f32 = ::std::f32::consts::PI*2.0;
 
 pub const DISPLAY_SAMPLE_RATE: f32 = 50.0;
 
+#[derive (PartialEq, Eq)]
+pub enum FrequencyType {
+  Frequency,
+}
+#[derive (PartialEq, Eq)]
+pub enum TimeType {
+  Seconds,
+}
+pub trait UserNumberType: Eq {
+  fn render (&self, value: & str)->Option<f32>;
+}
+#[derive (Clone)]
+pub struct UserNumber <T: UserNumberType> {
+  pub source: String,
+  pub rendered: f32,
+  pub value_type: T,
+}
+impl UserNumberType for FrequencyType {
+  fn render (&self, value: & str)->Option <f32> {
+    match *self {
+      FrequencyType::Frequency => f32::from_str (value).ok().map(| value | value.log2())
+    }
+  }
+  fn approximate_from_rendered (&self, rendered: f32)->String {
+    match *self {
+      FrequencyType::Frequency => format!("{.1}", rendered)
+    }
+  }
+}
+impl UserNumberType for TimeType {
+  fn render (&self, value: & str)->Option <f32> {
+    match *self {
+      TimeType::Seconds => f32::from_str (value).ok()
+    }
+  }
+  fn approximate_from_rendered (&self, rendered: f32)->String {
+    match *self {
+      TimeType::Seconds => format!("{.3}", rendered)
+    }
+  }
+}
+impl<T: UserNumberType> UserNumber <T> {
+  pub fn new (value_type: T, source: String)->Option <Self> {
+    value_type.render (source).map (| rendered | UserNumber {
+      source: source, rendered: rendered, value_type: value_type,
+    });
+  }
+}
+
+type UserFrequency = UserNumber <FrequencyType>;
+type UserTime = UserNumber <TimeType>;
+
 #[derive (Serialize, Deserialize)]
 pub enum Waveform {
   Sine,
@@ -32,28 +84,23 @@ pub enum Waveform {
 js_serializable! (Waveform) ;
 js_deserializable! (Waveform) ;
 
-#[derive (Clone)]
-pub struct ControlPoint {
-  pub time: f32,
-  pub value: f32,
-  pub slope: f32,
-  pub jump: bool,
-  pub value_after_jump: f32,
+
+pub enum SignalEffect <T: UserNumberType> {
+  Jump {time: UserTime, size: UserNumber<T>},
+  Slide {start: UserTime, duration: UserTime, size: UserNumber<T>, smooth_start: bool, smooth_stop: bool},
+  Oscillation {size: UserNumber<T>, frequency: UserFrequency, waveform: Waveform},
 }
 
-pub struct Signal {
+pub struct Signal <T: UserNumberType> {
+  pub initial_value: UserNumber<T>,
   pub constant: bool,
-  pub control_points: Vec<ControlPoint>,
-}
-pub struct SignalSampler <'a> {
-  signal: & 'a Signal,
-  next_control_index: usize,
+  pub effects: Vec<SignalEffect <Value>>,
 }
 
 pub struct Envelope {
-  pub attack: f32,
-  pub sustain: f32,
-  pub decay: f32,
+  pub attack: UserTime,
+  pub sustain: UserTime,
+  pub decay: UserTime,
 }
 
 pub struct SoundDefinition {
@@ -79,61 +126,55 @@ impl Waveform {
   }
 }
 
-impl ControlPoint {
-  fn value_after (&self)->f32 {if self.jump {self.value_after_jump} else {self.value}}
+impl<T: UserNumberType> SignalEffect <T> {
+  pub fn sample (&mut self, sample_time: f32)->f32 {
+    match *self {
+      SignalEffect::Jump {time, size} => if sample_time > time {size.rendered} else {0.0},
+      SignalEffect::Slide {start, duration, size, smooth_start, smooth_stop} => {
+        if sample_time <start.rendered {0.0}
+        else if sample_time >start.rendered + duration.rendered {size.rendered}
+        else {
+          let fraction = (sample_time - start.rendered)/duration.rendered;
+          let adjusted_fraction = match (smooth_start, smooth_stop) {
+            (false, false) => fraction,
+            (true, false) => fraction*fraction,
+            (false, true) => fraction*(2.0-fraction),
+            (true, true) => fraction*fraction*(3.0 - 2.0*fraction),
+          };
+          size.rendered*adjusted_fraction
+        }
+      },
+      SignalEffect::Oscillation {size, frequency, waveform} => size.rendered*waveform.sample (sample_time*frequency.rendered),
+    }
+  }
 }
 
-impl Signal {
-  pub fn constant(value: f32)->Signal {
+impl<T: UserNumberType> Signal<T> {
+  pub fn constant(value: UserNumber <T>)->Signal {
     Signal {
       constant: true,
-      control_points: vec![ControlPoint {time: 0.0, value: value, slope: 0.0, jump: false, value_after_jump: 0.0}]
+      initial_value: value,
+      effects: Vec::new(),
     }
   }
-  pub fn sampler (&self)->SignalSampler {
-    SignalSampler {signal: self, next_control_index: 0}
-  }
-}
 
-impl<'a> SignalSampler<'a> {
   pub fn sample (&mut self, time: f32)->f32 {
-    if self.signal.constant {return self.signal.control_points [0].value;}
-    
-    while let Some(control) = self.signal.control_points.get (self.next_control_index) {
-      if time >= control.time {
-        self.next_control_index += 1;
-      }
-      else {break;}
+    let mut result = self.initial_value.rendered;
+    if self.signal.constant {
+      self.initial_value.rendered
     }
-    
-    let previous_control = self.signal.control_points.get (self.next_control_index.wrapping_sub (1));
-    let next_control = self.signal.control_points.get (self.next_control_index);
-    match (previous_control, next_control) {
-      (None, None)=>0.0,
-      (None, Some (control)) => {
-        control.value + control.slope*(time - control.time)
-      },
-      (Some (control), None) => {
-        control.value_after () + control.slope*(time - control.time)
-      },
-      (Some (first), Some (second)) => {
-        let first_value = first.value_after() + first.slope*(time - first.time);
-        let second_value = second.value + second.slope*(time - second.time);
-        let fraction = (time - first.time)/(second.time - first.time);
-        let adjusted_fraction = fraction*fraction*(3.0 - 2.0*fraction);
-        //(((fraction - 0.5)*TURN/2.0).sin() + 1.0)/2.0;
-        first_value * (1.0 - adjusted_fraction) + second_value * adjusted_fraction
-      },
+    else {
+      self.initial_value.rendered + self.effects.iter().map (| effect | effect.sample (time)).sum()
     }
   }
 }
 
 impl Envelope {
-  pub fn duration (&self)->f32 {self.attack + self.sustain + self.decay}
+  pub fn duration (&self)->f32 {self.attack.rendered + self.sustain.rendered + self.decay.rendered}
   pub fn sample (&self, time: f32)->f32 {
-    if time <self.attack {return time/self.attack;}
-    if time <self.attack + self.sustain {return 1.0;}
-    if time <self.attack + self.sustain + self.decay {return (self.attack + self.sustain + self.decay - time)/self.decay;}
+    if time <self.attack.rendered {return time/self.attack.rendered;}
+    if time <self.attack.rendered + self.sustain.rendered {return 1.0;}
+    if time <self.attack.rendered + self.sustain.rendered + self.decay.rendered {return (self.attack.rendered + self.sustain.rendered + self.decay.rendered - time)/self.decay.rendered;}
     0.0
   }
 }
@@ -145,8 +186,6 @@ impl SoundDefinition {
     let mut wave_phase = 0.0;
     let mut bitcrush_phase = 1.0;
     let mut last_used_sample = 0.0;
-    let mut log_frequency_sampler = self.log_frequency.sampler();
-    let mut log_bitcrush_frequency_sampler = self.log_bitcrush_frequency.sampler();
     let frame_duration = 1.0/sample_rate as f32;
     let mut frames = Vec::with_capacity (num_frames as usize);
     
@@ -161,8 +200,8 @@ impl SoundDefinition {
       }
       frames.push (last_used_sample) ;
       
-      let frequency = log_frequency_sampler.sample(time).exp2();
-      let bitcrush_frequency = log_bitcrush_frequency_sampler.sample(time).exp2();
+      let frequency = self.log_frequency.sample(time).exp2();
+      let bitcrush_frequency = self.log_bitcrush_frequency.sample(time).exp2();
       wave_phase += frequency*frame_duration;
       bitcrush_phase += bitcrush_frequency*frame_duration;
     }
@@ -190,6 +229,42 @@ impl SoundDefinition {
 
 
 fn round_step (input: f32, step: f32)->f32 {(input*step).round()/step}
+
+pub struct NumericalInputSpecification <'a, T: UserNumberType> {
+  id: & 'a str,
+  name: & 'a str,
+  slider_range: [f32; 2],
+  hard_range: Option <[f32; 2]>,
+  value_type: T,
+  current_value: UserNumber <T>,
+}
+
+impl <'a, T: UserNumberType> NumericalInputSpecification<'a, T> {
+  pub fn render (&self)->Value {
+    let displayed_value = if self.value_type == current_value.value_type {current_value.source.clone()} else {self.value_type.approximate_from_rendered (current_value.rendered)};
+    let (range_range, range_value, range_step) = if self.slider_logarithmic {
+      ([0.0, 1.0], current_value.rendered
+    }
+    js!{
+      
+      range_input = $("<input>", {type: "range", id: @{self.id}+"_numerical_range", value:@{self.current_value.rendered}, min:@{self.slider_range [0]}, max:@{self.slider_range [1]}, step: data.step });
+      number_input = $("<input>", {type: "number", id: data.id+"_numerical_number", value:@{displayed_value}, step: data.step });
+      
+      var result = $("<div>", {class: "labeled_input"}).append (
+        range_input.on ("input", range_overrides),
+        number_input.on ("input", number_overrides),
+        $("<label>", {"for": data.id+"_numerical_number", text:@{}})
+  ).on("wheel", function (event) {
+    let value = number_input[0].valueAsNumber;
+    value += (Math.sign(event.originalEvent.deltaY) || Math.sign(event.originalEvent.deltaX) || 0)*data.step;
+    number_input.val (value);
+    number_overrides ();
+    event.preventDefault();
+  });
+      return result;
+    }
+  }
+}
 
 fn frequency_editor <F: 'static + FnMut (f32)> (state: & State, id: & str, text: & str, current: f32, mut callback: F)->Value {
   let editor = js!{
