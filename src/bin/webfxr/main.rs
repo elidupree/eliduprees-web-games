@@ -5,8 +5,11 @@ extern crate eliduprees_web_games;
 
 #[macro_use]
 extern crate stdweb;
+extern crate serde;
 #[macro_use]
 extern crate serde_derive;
+#[macro_use]
+extern crate derivative;
 extern crate nalgebra;
 extern crate ordered_float;
 
@@ -16,6 +19,8 @@ use std::str::FromStr;
 use stdweb::unstable::TryInto;
 use stdweb::web::TypedArray;
 use stdweb::Value;
+use serde::{Serialize};
+use serde::de::DeserializeOwned;
 use ordered_float::OrderedFloat;
 
 
@@ -23,29 +28,37 @@ pub const TURN: f32 = ::std::f32::consts::PI*2.0;
 
 pub const DISPLAY_SAMPLE_RATE: f32 = 50.0;
 
-#[derive (PartialEq, Eq)]
+#[derive (PartialEq, Eq, Serialize, Deserialize, Derivative)]
+#[derivative (Default)]
 pub enum FrequencyType {
+  #[derivative (Default)]
   Frequency,
 }
-#[derive (PartialEq, Eq)]
+#[derive (PartialEq, Eq, Serialize, Deserialize, Derivative)]
+#[derivative (Default)]
 pub enum IntervalType {
+  #[derivative (Default)]
   Ratio,
 }
-#[derive (PartialEq, Eq)]
+#[derive (PartialEq, Eq, Serialize, Deserialize, Derivative)]
+#[derivative (Default)]
 pub enum TimeType {
+  #[derivative (Default)]
   Seconds,
 }
-pub trait UserNumberType: Eq {
+pub trait UserNumberType: Eq + Serialize + DeserializeOwned + Default {
   type DifferenceType: UserNumberType;
   fn render (&self, value: & str)->Option<f32>;
   fn approximate_from_rendered (&self, rendered: f32)->String;
   fn unit_name (&self)->&'static str;
   fn currently_used (state: & State)->Self;
 }
-#[derive (Clone)]
+#[derive (Clone, Serialize, Deserialize)]
 pub struct UserNumber <T: UserNumberType> {
   pub source: String,
   pub rendered: f32,
+  // Hacky workaround for https://github.com/rust-lang/rust/issues/41617 (see https://github.com/serde-rs/serde/issues/943)
+  #[serde(deserialize_with = "::serde::Deserialize::deserialize")]
   pub value_type: T,
 }
 impl UserNumberType for FrequencyType {
@@ -123,7 +136,18 @@ impl<T: UserNumberType> UserNumber <T> {
       source: source, rendered: rendered, value_type: value_type,
     })
   }
+  pub fn from_rendered (rendered: f32)->Self {
+    let value_type = T::default() ;
+    UserNumber {
+      source: value_type.approximate_from_rendered (rendered),
+      rendered: rendered, value_type: value_type,
+    }
+  }
 }
+
+
+//js_serializable! (UserNumber) ;
+//js_deserializable! (UserNumber) ;
 
 type UserFrequency = UserNumber <FrequencyType>;
 type UserTime = UserNumber <TimeType>;
@@ -219,7 +243,7 @@ impl<T: UserNumberType> Signal<T> {
       self.initial_value.rendered
     }
     else {
-      self.initial_value.rendered + self.effects.iter().map (| effect | effect.sample (time)).sum()
+      self.initial_value.rendered + self.effects.iter().map (| effect | effect.sample (time)).sum::<f32>()
     }
   }
 }
@@ -268,8 +292,16 @@ impl SoundDefinition {
 
 
 pub struct Getter <T> {
-  with: Box <Fn(FnOnce(&T))>,
-  with_mut: Box <Fn(FnOnce(&mut T))>,
+  with: Box <Fn(&mut FnMut(&T))>,
+  with_mut: Box <Fn(&mut FnMut(&mut T))>,
+}
+impl <T> Getter <T> {
+  fn with <F: FnMut (& T)> (&self, callback: F) {
+    (self.with) (&mut callback);
+  }
+  fn with_mut <F: FnMut (& mut T)> (&self, callback: F) {
+    (self.with_mut) (&mut callback);
+  }
 }
 
 macro_rules! state_getter {
@@ -286,9 +318,7 @@ macro_rules! state_getter {
 
 pub fn input_callback<T, F> (state: &Rc<RefCell<State>>, callback: F)->impl (Fn (T)->bool)
   where
-    F: Fn(T)->bool,
-    stdweb::Value: TryInto<T>,
-    <stdweb::Value as TryInto<T>>::Error: ::std::fmt::Debug {
+    F: Fn(T)->bool {
   let state = state.clone();
   move |arg: T| {
     let success = (callback)(arg);
@@ -316,18 +346,18 @@ pub struct NumericalInputSpecification <'a, T: UserNumberType, F: Fn (UserNumber
   id: & 'a str,
   name: & 'a str,
   slider_range: [f32; 2],
-  slider_step: f32,
   value_type: T,
   current_value: UserNumber <T>,
   input_callback: F,
 }
 
-impl <'a, T: UserNumberType> NumericalInputSpecification<'a, T> {
+impl <'a, F: Fn (UserNumber <T>)->bool, T: UserNumberType> NumericalInputSpecification<'a, T, F> {
   pub fn render (self)->Value {
-    let displayed_value = if self.value_type == current_value.value_type {current_value.source.clone()} else {self.value_type.approximate_from_rendered (current_value.rendered)};
+    let displayed_value = if self.value_type == self.current_value.value_type {self.current_value.source.clone()} else {self.value_type.approximate_from_rendered (self.current_value.rendered)};
+    let slider_step = (self.slider_range [1] - self.slider_range [0])/1000.0;
 
-    js!{
-      var range_input = $("<input>", {type: "range", id: @{self.id}+"_numerical_range", value:@{self.current_value.rendered}, min:@{self.slider_range [0]}, max:@{self.slider_range [1]}, step:@{self.slider_step} });
+    let result: Value = js!{
+      var range_input = $("<input>", {type: "range", id: @{self.id}+"_numerical_range", value:@{self.current_value.rendered}, min:@{self.slider_range [0]}, max:@{self.slider_range [1]}, step:@{slider_step} });
       var number_input = $("<input>", {type: "number", id: data.id+"_numerical_number", value:@{displayed_value}});
       
       function range_overrides() {
@@ -342,7 +372,7 @@ impl <'a, T: UserNumberType> NumericalInputSpecification<'a, T> {
       }
       var update = _.debounce(function(value) {
         var success = @{| value: String |{
-          if let Some(value) = UserNumber::new (value) {
+          if let Some(value) = UserNumber::new (self.value_type, value) {
             if (self.input_callback)(value) {
               return true;
             }
@@ -361,15 +391,16 @@ impl <'a, T: UserNumberType> NumericalInputSpecification<'a, T> {
         }})
       );
       
-      result.on("wheel", function (event) {
+      /*result.on("wheel", function (event) {
         var value = range_input[0].valueAsNumber;
         value += (Math.sign(event.originalEvent.deltaY) || Math.sign(event.originalEvent.deltaX) || 0)*@{self.slider_step};
         range_input.val (value);
         range_overrides ();
         event.preventDefault();
-      });
+      });*/
       return result;
-    }
+    };
+    result
   }
 }
 
@@ -378,24 +409,23 @@ pub struct SignalEditorSpecification <'a, T: UserNumberType> {
   id: & 'a str,
   name: & 'a str,
   slider_range: [f32; 2],
-  sound: & SoundDefinition,
+  state: & 'a Rc<RefCell<State>>,
   getter: Getter <Signal <T>>
 }
 
-impl <'a, T: UserNumberType> NumericalInputSpecification<'a, T> {
-  pub fn render (self)->Value {
-    self.getter.with(&|signal| {
+impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
+  pub fn render (self) {
+    self.getter.with(|signal| {
+      let guard = self.state.borrow();
       
       
-      
-  let container = js!{ return $("<div>", {id:@{id}, class: "panel"});};
+  let container = js!{ return $("<div>", {id:@{self.id}, class: "panel"});};
   js!{ $("#panels").append (@{& container});}
   
-  let mut sampler = signal.sampler();
   
-  js!{@{& container}.append (@{name} + ": ");}
+  js!{@{& container}.append (@{self.name} + ": ");}
   if !signal.constant {js!{@{& container}.append (@{
-    canvas_of_samples (& display_samples (self.sound, | time | sampler.sample (time)))
+    canvas_of_samples (& display_samples (& guard.sound, | time | signal.sample (time)))
   });}}
   
   
@@ -403,9 +433,10 @@ impl <'a, T: UserNumberType> NumericalInputSpecification<'a, T> {
     id: & format! ("{}_initial", & self.id),
     name: if signal.constant {self.name} else {"Initial value"}, 
     slider_range: self.slider_range,
+    value_type: T::currently_used (& guard),
     current_value: signal.initial_value,
-    input_callback: input_callback (| value: UserNumber<T> | {
-      getter.with_mut (&| signal | signal.initial_value = value);
+    input_callback: input_callback (self.state, | value: UserNumber<T> | {
+      self.getter.with_mut (| signal | signal.initial_value = value);
       true
     }),
   }.render();
@@ -413,7 +444,7 @@ impl <'a, T: UserNumberType> NumericalInputSpecification<'a, T> {
   js!{@{& container}.append (@{initial_value_input})}
   
   
-    });
+    })
   }
 }
   
@@ -653,7 +684,8 @@ const sample_rate = 44100;
   const buffer = audio.createBuffer (1, rendered.length, sample_rate);
   buffer.copyToChannel (rendered, 0);
   play_buffer (buffer);
-  }
+  }  
+
   
   }
   
@@ -661,7 +693,7 @@ const sample_rate = 44100;
     id: "frequency",
     name: "Frequency",
     slider_range: [20f32.log2(), 5000f32.log2()],
-    sound: sound,
+    state: & state,
     getter: state_getter! (state, state.sound.log_frequency),
   }.render();
 
@@ -678,9 +710,9 @@ fn main() {
   let state = Rc::new (RefCell::new (State {
     sound: SoundDefinition {
       waveform: Waveform::Sine,
-      envelope: Envelope {attack: 0.1, sustain: 0.5, decay: 0.5},
-      log_frequency: Signal::constant (220.0_f32.log2()),
-      log_bitcrush_frequency: Signal::constant (44100.0_f32.log2()),
+      envelope: Envelope {attack: UserNumber::from_rendered (0.1), sustain: UserNumber::from_rendered (0.5), decay: UserNumber::from_rendered (0.5)},
+      log_frequency: Signal::constant (UserNumber::from_rendered (220.0_f32.log2())),
+      log_bitcrush_frequency: Signal::constant (UserNumber::from_rendered (44100.0_f32.log2())),
     }
   }));
   
