@@ -444,14 +444,30 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     slider_range: self.slider_range,
     value_type: T::currently_used (& guard),
     current_value: signal.initial_value.clone(),
-    input_callback: input_callback (self.state, move | value: UserNumber<T> | {
+    input_callback: {let getter = self.getter.clone(); input_callback (self.state, move | value: UserNumber<T> | {
       getter.with_mut (| signal | signal.initial_value = value.clone());
       true
-    }),
+    })},
   }.render();
   
   js!{@{& container}.append (@{initial_value_input})}
   
+  js!{
+
+  @{& container}.append (
+    $("<input>", {
+      type: "button",
+      id: @{&self.id} + "constant",
+      value: @{signal.constant} ? "Complicate" : "Simplify"
+    }).click (function() {@{{
+      let getter = self.getter.clone();
+      input_callback_nullary (self.state, move || {
+        getter.with_mut (| signal | signal.constant = !signal.constant);
+        true
+      })
+    }}();})
+  );
+  }
   
     })
   }
@@ -572,15 +588,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     }}
   }
   
-  js!{
-    var callback = @{signal_input! ([signal] signal.constant = !signal.constant)};
-  @{& container}.append (
-    $("<input>", {
-      type: "button",
-      id: @{&id} + "constant",
-      value: @{signal.constant} ? "Complicate" : "Simplify"
-    }).click (function() {callback()})
-  );}
+
 
       
       
