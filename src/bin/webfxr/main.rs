@@ -1,3 +1,4 @@
+#![feature (option_filter)]
 #![recursion_limit="256"]
 
 extern crate eliduprees_web_games;
@@ -11,6 +12,7 @@ extern crate ordered_float;
 
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::str::FromStr;
 use stdweb::unstable::TryInto;
 use stdweb::web::TypedArray;
 use stdweb::Value;
@@ -26,13 +28,19 @@ pub enum FrequencyType {
   Frequency,
 }
 #[derive (PartialEq, Eq)]
+pub enum IntervalType {
+  Ratio,
+}
+#[derive (PartialEq, Eq)]
 pub enum TimeType {
   Seconds,
 }
 pub trait UserNumberType: Eq {
+  type DifferenceType: UserNumberType;
   fn render (&self, value: & str)->Option<f32>;
   fn approximate_from_rendered (&self, rendered: f32)->String;
-  fn unit_name (&self)->'static str;
+  fn unit_name (&self)->&'static str;
+  fn currently_used (state: & State)->Self;
 }
 #[derive (Clone)]
 pub struct UserNumber <T: UserNumberType> {
@@ -41,6 +49,7 @@ pub struct UserNumber <T: UserNumberType> {
   pub value_type: T,
 }
 impl UserNumberType for FrequencyType {
+  type DifferenceType = IntervalType;
   fn render (&self, value: & str)->Option <f32> {
     match *self {
       FrequencyType::Frequency => f32::from_str (value).ok().and_then(| value | {
@@ -51,16 +60,44 @@ impl UserNumberType for FrequencyType {
   }
   fn approximate_from_rendered (&self, rendered: f32)->String {
     match *self {
-      FrequencyType::Frequency => format!("{.1}", rendered)
+      FrequencyType::Frequency => format!("{:.1}", rendered)
     }
   }
-  fn unit_name (&self)->'static str {
+  fn unit_name (&self)->&'static str {
     match *self {
       FrequencyType::Frequency => "Hz"
     }
   }
+  fn currently_used (state: & State)->Self {
+    FrequencyType::Frequency
+  }
+}
+impl UserNumberType for IntervalType {
+  type DifferenceType = Self;
+  fn render (&self, value: & str)->Option <f32> {
+    match *self {
+      IntervalType::Ratio => f32::from_str (value).ok().and_then(| value | {
+        let value = value.log2();
+        if value.is_finite() {Some (value)} else {None}
+      })
+    }
+  }
+  fn approximate_from_rendered (&self, rendered: f32)->String {
+    match *self {
+      IntervalType::Ratio => format!("{:.2}", rendered)
+    }
+  }
+  fn unit_name (&self)->&'static str {
+    match *self {
+      IntervalType::Ratio => "ratio"
+    }
+  }
+  fn currently_used (state: & State)->Self {
+    IntervalType::Ratio
+  }
 }
 impl UserNumberType for TimeType {
+  type DifferenceType = Self;
   fn render (&self, value: & str)->Option <f32> {
     match *self {
       TimeType::Seconds => f32::from_str (value).ok().filter (| value | value.is_finite())
@@ -68,20 +105,23 @@ impl UserNumberType for TimeType {
   }
   fn approximate_from_rendered (&self, rendered: f32)->String {
     match *self {
-      TimeType::Seconds => format!("{.3}", rendered)
+      TimeType::Seconds => format!("{:.3}", rendered)
     }
   }
-  fn unit_name (&self)->'static str {
+  fn unit_name (&self)->&'static str {
     match *self {
       TimeType::Seconds => "s"
     }
   }
+  fn currently_used (state: & State)->Self {
+    TimeType::Seconds
+  }
 }
 impl<T: UserNumberType> UserNumber <T> {
   pub fn new (value_type: T, source: String)->Option <Self> {
-    value_type.render (source).map (| rendered | UserNumber {
+    value_type.render (&source).map (| rendered | UserNumber {
       source: source, rendered: rendered, value_type: value_type,
-    });
+    })
   }
 }
 
@@ -101,15 +141,15 @@ js_deserializable! (Waveform) ;
 
 
 pub enum SignalEffect <T: UserNumberType> {
-  Jump {time: UserTime, size: UserNumber<T>},
-  Slide {start: UserTime, duration: UserTime, size: UserNumber<T>, smooth_start: bool, smooth_stop: bool},
-  Oscillation {size: UserNumber<T>, frequency: UserFrequency, waveform: Waveform},
+  Jump {time: UserTime, size: UserNumber<T::DifferenceType>},
+  Slide {start: UserTime, duration: UserTime, size: UserNumber<T::DifferenceType>, smooth_start: bool, smooth_stop: bool},
+  Oscillation {size: UserNumber<T::DifferenceType>, frequency: UserFrequency, waveform: Waveform},
 }
 
 pub struct Signal <T: UserNumberType> {
   pub initial_value: UserNumber<T>,
   pub constant: bool,
-  pub effects: Vec<SignalEffect <Value>>,
+  pub effects: Vec<SignalEffect <T>>,
 }
 
 pub struct Envelope {
@@ -121,8 +161,8 @@ pub struct Envelope {
 pub struct SoundDefinition {
   pub waveform: Waveform,
   pub envelope: Envelope,
-  pub log_frequency: Signal,
-  pub log_bitcrush_frequency: Signal,
+  pub log_frequency: Signal <FrequencyType>,
+  pub log_bitcrush_frequency: Signal <FrequencyType>,
 }
 
 pub struct State {
@@ -144,7 +184,7 @@ impl Waveform {
 impl<T: UserNumberType> SignalEffect <T> {
   pub fn sample (&mut self, sample_time: f32)->f32 {
     match *self {
-      SignalEffect::Jump {time, size} => if sample_time > time {size.rendered} else {0.0},
+      SignalEffect::Jump {time, size} => if sample_time > time.rendered {size.rendered} else {0.0},
       SignalEffect::Slide {start, duration, size, smooth_start, smooth_stop} => {
         if sample_time <start.rendered {0.0}
         else if sample_time >start.rendered + duration.rendered {size.rendered}
@@ -165,7 +205,7 @@ impl<T: UserNumberType> SignalEffect <T> {
 }
 
 impl<T: UserNumberType> Signal<T> {
-  pub fn constant(value: UserNumber <T>)->Signal {
+  pub fn constant(value: UserNumber <T>)->Self {
     Signal {
       constant: true,
       initial_value: value,
@@ -175,7 +215,7 @@ impl<T: UserNumberType> Signal<T> {
 
   pub fn sample (&mut self, time: f32)->f32 {
     let mut result = self.initial_value.rendered;
-    if self.signal.constant {
+    if self.constant {
       self.initial_value.rendered
     }
     else {
@@ -225,34 +265,61 @@ impl SoundDefinition {
   }
 }
 
-  macro_rules! input_callback {
-    ([$state: ident, $($args: tt)*] $contents: expr) => {{
-      let $state = $state.clone();
-      move |$($args)*| {
-        { $contents }
-        redraw (& $state);
-      }
-    }};
-    ([$state: ident] $contents: expr) => {{
-      let $state = $state.clone();
-      move || {
-        { $contents }
-        redraw (& $state);
-      }
-    }}
+
+
+pub struct Getter <T> {
+  with: Box <Fn(FnOnce(&T))>,
+  with_mut: Box <Fn(FnOnce(&mut T))>,
+}
+
+macro_rules! state_getter {
+  ($state: ident, $($path:tt)*) => {
+    Getter {
+      with    : {let $state = $state.clone(); Box::new (move |f| {
+        let $state = $state.borrow    (); (f)(&    $($path)*)})},
+      with_mut: {let $state = $state.clone(); Box::new (move |f| {
+        let $state = $state.borrow_mut(); (f)(&mut $($path)*)})},
+    }
   }
+}
+
+
+pub fn input_callback<T, F> (state: &Rc<RefCell<State>>, callback: F)->impl (Fn (T)->bool)
+  where
+    F: Fn(T)->bool,
+    stdweb::Value: TryInto<T>,
+    <stdweb::Value as TryInto<T>>::Error: ::std::fmt::Debug {
+  let state = state.clone();
+  move |arg: T| {
+    let success = (callback)(arg);
+    if success {
+      redraw (&state);
+    }
+    success
+  }
+}
+
+pub fn input_callback_nullary<F> (state: &Rc<RefCell<State>>, callback: F)->impl (Fn ()->bool)
+  where
+    F: Fn()->bool {
+  let hack = input_callback (state, move |()| (callback)());
+  move || {
+    (hack)(())
+  }
+}
+
 
 
 fn round_step (input: f32, step: f32)->f32 {(input*step).round()/step}
 
-pub struct NumericalInputSpecification <'a, T: UserNumberType> {
+pub struct NumericalInputSpecification <'a, T: UserNumberType, F: Fn (UserNumber <T>)->bool> {
   id: & 'a str,
   name: & 'a str,
   slider_range: [f32; 2],
   slider_step: f32,
-  hard_range: Option <[f32; 2]>,
   value_type: T,
   current_value: UserNumber <T>,
+  input_callback: F,
 }
 
 impl <'a, T: UserNumberType> NumericalInputSpecification<'a, T> {
@@ -276,12 +343,11 @@ impl <'a, T: UserNumberType> NumericalInputSpecification<'a, T> {
       var update = _.debounce(function(value) {
         var success = @{| value: String |{
           if let Some(value) = UserNumber::new (value) {
-          
-            true
+            if (self.input_callback)(value) {
+              return true;
+            }
           }
-          else {
-            false
-          }
+          false
         }} (value);
         if (!success) {
           // TODO display some sort of error message
@@ -307,46 +373,21 @@ impl <'a, T: UserNumberType> NumericalInputSpecification<'a, T> {
   }
 }
 
-fn frequency_editor <F: 'static + FnMut (f32)> (state: & State, id: & str, text: & str, current: f32, mut callback: F)->Value {
-  let editor = js!{
-  return numerical_input ({
-    id: @{id},
-    text: @{text} + " (Hz)",
-    min: 20,
-    max: 22050,
-    current:@{round_step (current.exp2(), 100.0)},
-    step: 1,
-    logarithmic: true,
-  }, @{move | value: f64 | callback (value.log2() as f32)}
-  );
-  };
-  editor
+
+pub struct SignalEditorSpecification <'a, T: UserNumberType> {
+  id: & 'a str,
+  name: & 'a str,
+  slider_range: [f32; 2],
+  sound: & SoundDefinition,
+  getter: Getter <Signal <T>>
 }
 
-fn time_editor <F: 'static + FnMut (f32)> (state: & State, id: & str, text: & str, current: f32, mut callback: F)->Value {
-  let editor = js!{
-  return numerical_input ({
-    id: @{id},
-    text: @{text} + " (s)",
-    min: 0.0,
-    max: 10.0,
-    current:@{round_step (current, 1000.0)},
-    step: 0.1,
-  }, @{move | value: f64 | callback (value as f32)}
-  );
-  };
-  editor
-}
-
-fn add_signal_editor <
-  F: 'static + Fn (&State)->&Signal,
-  FMut: 'static + Fn (&mut State)->&mut Signal
-> (state: &Rc<RefCell<State>>, id: & 'static str, name: & 'static str, get_signal: F, get_signal_mut: FMut) {
-  let get_signal = Rc::new (get_signal);
-  let get_signal_mut = Rc::new (get_signal_mut);
-  let guard = state.borrow();
-  let sound = & guard.sound;
-  let signal = get_signal (&guard) ;
+impl <'a, T: UserNumberType> NumericalInputSpecification<'a, T> {
+  pub fn render (self)->Value {
+    self.getter.with(&|signal| {
+      
+      
+      
   let container = js!{ return $("<div>", {id:@{id}, class: "panel"});};
   js!{ $("#panels").append (@{& container});}
   
@@ -354,9 +395,30 @@ fn add_signal_editor <
   
   js!{@{& container}.append (@{name} + ": ");}
   if !signal.constant {js!{@{& container}.append (@{
-    canvas_of_samples (& display_samples (sound, | time | sampler.sample (time)))
+    canvas_of_samples (& display_samples (self.sound, | time | sampler.sample (time)))
   });}}
   
+  
+  let initial_value_input = NumericalInputSpecification {
+    id: & format! ("{}_initial", & self.id),
+    name: if signal.constant {self.name} else {"Initial value"}, 
+    slider_range: self.slider_range,
+    current_value: signal.initial_value,
+    input_callback: input_callback (| value: UserNumber<T> | {
+      getter.with_mut (&| signal | signal.initial_value = value);
+      true
+    }),
+  }.render();
+  
+  js!{@{& container}.append (@{initial_value_input})}
+  
+  
+    });
+  }
+}
+  
+  
+  /*
    macro_rules! signal_input {
       ([$signal: ident $($args: tt)*] $effect: expr) => {{
       let get_signal_mut = get_signal_mut.clone();
@@ -367,6 +429,8 @@ fn add_signal_editor <
   })
       }}
     }
+  
+  
   
   for (index, control_point) in signal.control_points.iter().enumerate() {
     if signal.constant && index >0 {break;}
@@ -477,7 +541,20 @@ fn add_signal_editor <
       value: @{signal.constant} ? "Complicate" : "Simplify"
     }).click (function() {callback()})
   );}
+
+      
+      
+      
+    });
+  }
 }
+
+fn add_signal_editor <T> () {
+  let get_signal = Rc::new (get_signal);
+  let get_signal_mut = Rc::new (get_signal_mut);
+  let guard = state.borrow();
+  let sound = & guard.sound;
+  let signal = get_signal (&guard) ;}*/
 
 fn display_samples <F: FnMut(f32)->f32> (sound: & SoundDefinition, mut sampler: F)->Vec<f32> {
   let num_samples = (sound.duration()*DISPLAY_SAMPLE_RATE).ceil() as usize + 1;
@@ -530,7 +607,7 @@ fn redraw(state: & Rc<RefCell<State>>) {
   js! {
 $("#panels").empty();
 
-
+/*
 $("#panels").append ($("<div>", {class: "panel"}).append (radio_input ({
   id: "waveform",
   field: "waveform",
@@ -547,8 +624,8 @@ $("#panels").append ($("<div>", {class: "panel"}).append (radio_input ({
     state.borrow_mut().sound.waveform = value;
   })}
 )));
-  
-      const envelope_editor = $("<div>", {class: "panel"});
+  */
+      /*const envelope_editor = $("<div>", {class: "panel"});
       $("#panels").append (envelope_editor);
       envelope_editor.append (@{canvas_of_samples (&envelope_samples)});
       envelope_editor.append (@{
@@ -565,7 +642,7 @@ $("#panels").append ($("<div>", {class: "panel"}).append (radio_input ({
         time_editor (& guard, "decay", "Decay", sound.envelope.decay,
           input_callback! ([state, value: f32] {state.borrow_mut().sound.envelope.decay = value;})
         )
-      });  
+      });  */
   }
 
   let rendered: TypedArray <f32> = sound.render (44100).as_slice().into();
@@ -579,8 +656,18 @@ const sample_rate = 44100;
   }
   
   }
-  add_signal_editor (state, "frequency", "Frequency", |state| &state.sound.log_frequency, |state| &mut state.sound.log_frequency);
-  add_signal_editor (state, "bitcrush_frequency", "Bitcrush frequency", |state| &state.sound.log_bitcrush_frequency, |state| &mut state.sound.log_bitcrush_frequency);
+  
+  SignalEditorSpecification {
+    id: "frequency",
+    name: "Frequency",
+    slider_range: [20f32.log2(), 5000f32.log2()],
+    sound: sound,
+    getter: state_getter! (state, state.sound.log_frequency),
+  }.render();
+
+  
+  //add_signal_editor (state, "frequency", "Frequency", |state| &state.sound.log_frequency, |state| &mut state.sound.log_frequency);
+  //add_signal_editor (state, "bitcrush_frequency", "Bitcrush frequency", |state| &state.sound.log_bitcrush_frequency, |state| &mut state.sound.log_bitcrush_frequency);
 }
 
 
