@@ -28,25 +28,25 @@ pub const TURN: f32 = ::std::f32::consts::PI*2.0;
 
 pub const DISPLAY_SAMPLE_RATE: f32 = 50.0;
 
-#[derive (PartialEq, Eq, Serialize, Deserialize, Derivative)]
+#[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Derivative)]
 #[derivative (Default)]
 pub enum FrequencyType {
   #[derivative (Default)]
   Frequency,
 }
-#[derive (PartialEq, Eq, Serialize, Deserialize, Derivative)]
+#[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Derivative)]
 #[derivative (Default)]
 pub enum IntervalType {
   #[derivative (Default)]
   Ratio,
 }
-#[derive (PartialEq, Eq, Serialize, Deserialize, Derivative)]
+#[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Derivative)]
 #[derivative (Default)]
 pub enum TimeType {
   #[derivative (Default)]
   Seconds,
 }
-pub trait UserNumberType: Eq + Serialize + DeserializeOwned + Default {
+pub trait UserNumberType: 'static + Clone + Eq + Serialize + DeserializeOwned + Default {
   type DifferenceType: UserNumberType;
   fn render (&self, value: & str)->Option<f32>;
   fn approximate_from_rendered (&self, rendered: f32)->String;
@@ -73,7 +73,7 @@ impl UserNumberType for FrequencyType {
   }
   fn approximate_from_rendered (&self, rendered: f32)->String {
     match *self {
-      FrequencyType::Frequency => format!("{:.1}", rendered)
+      FrequencyType::Frequency => format!("{:.1}", rendered.exp2())
     }
   }
   fn unit_name (&self)->&'static str {
@@ -97,7 +97,7 @@ impl UserNumberType for IntervalType {
   }
   fn approximate_from_rendered (&self, rendered: f32)->String {
     match *self {
-      IntervalType::Ratio => format!("{:.2}", rendered)
+      IntervalType::Ratio => format!("{:.2}", rendered.exp2())
     }
   }
   fn unit_name (&self)->&'static str {
@@ -206,8 +206,8 @@ impl Waveform {
 }
 
 impl<T: UserNumberType> SignalEffect <T> {
-  pub fn sample (&mut self, sample_time: f32)->f32 {
-    match *self {
+  pub fn sample (&self, sample_time: f32)->f32 {
+    match self.clone() {
       SignalEffect::Jump {time, size} => if sample_time > time.rendered {size.rendered} else {0.0},
       SignalEffect::Slide {start, duration, size, smooth_start, smooth_stop} => {
         if sample_time <start.rendered {0.0}
@@ -237,8 +237,7 @@ impl<T: UserNumberType> Signal<T> {
     }
   }
 
-  pub fn sample (&mut self, time: f32)->f32 {
-    let mut result = self.initial_value.rendered;
+  pub fn sample (&self, time: f32)->f32 {
     if self.constant {
       self.initial_value.rendered
     }
@@ -290,16 +289,17 @@ impl SoundDefinition {
 }
 
 
-
+#[derive (Derivative)]
+#[derivative (Clone (bound =""))]
 pub struct Getter <T> {
-  with: Box <Fn(&mut FnMut(&T))>,
-  with_mut: Box <Fn(&mut FnMut(&mut T))>,
+  with: Rc <Fn(&mut FnMut(&T))>,
+  with_mut: Rc <Fn(&mut FnMut(&mut T))>,
 }
 impl <T> Getter <T> {
-  fn with <F: FnMut (& T)> (&self, callback: F) {
+  fn with <F: FnMut (& T)> (&self, mut callback: F) {
     (self.with) (&mut callback);
   }
-  fn with_mut <F: FnMut (& mut T)> (&self, callback: F) {
+  fn with_mut <F: FnMut (& mut T)> (&self, mut callback: F) {
     (self.with_mut) (&mut callback);
   }
 }
@@ -307,10 +307,10 @@ impl <T> Getter <T> {
 macro_rules! state_getter {
   ($state: ident, $($path:tt)*) => {
     Getter {
-      with    : {let $state = $state.clone(); Box::new (move |f| {
-        let $state = $state.borrow    (); (f)(&    $($path)*)})},
-      with_mut: {let $state = $state.clone(); Box::new (move |f| {
-        let $state = $state.borrow_mut(); (f)(&mut $($path)*)})},
+      with    : {let $state = $state.clone(); Rc::new (move |f| {
+        let     $state = $state.borrow    (); (f)(&    $($path)*)})},
+      with_mut: {let $state = $state.clone(); Rc::new (move |f| {
+        let mut $state = $state.borrow_mut(); (f)(&mut $($path)*)})},
     }
   }
 }
@@ -351,42 +351,47 @@ pub struct NumericalInputSpecification <'a, T: UserNumberType, F: Fn (UserNumber
   input_callback: F,
 }
 
-impl <'a, F: Fn (UserNumber <T>)->bool, T: UserNumberType> NumericalInputSpecification<'a, T, F> {
+impl <'a, F: 'static + Fn (UserNumber <T>)->bool, T: UserNumberType> NumericalInputSpecification<'a, T, F> {
   pub fn render (self)->Value {
     let displayed_value = if self.value_type == self.current_value.value_type {self.current_value.source.clone()} else {self.value_type.approximate_from_rendered (self.current_value.rendered)};
     let slider_step = (self.slider_range [1] - self.slider_range [0])/1000.0;
-
-    let result: Value = js!{
-      var range_input = $("<input>", {type: "range", id: @{self.id}+"_numerical_range", value:@{self.current_value.rendered}, min:@{self.slider_range [0]}, max:@{self.slider_range [1]}, step:@{slider_step} });
-      var number_input = $("<input>", {type: "number", id: data.id+"_numerical_number", value:@{displayed_value}});
-      
-      function range_overrides() {
-        var value = range_input[0].valueAsNumber;
-        var source = @{| value: f64 | self.value_type.approximate_from_rendered (value as f32)} (value)
-        // immediately update the number input with the range input, even though the actual data editing is debounced.
-        number_input.val(source);
-        update(source);
-      }
-      function number_overrides() {
-        update(number_input.val());
-      }
-      var update = _.debounce(function(value) {
-        var success = @{| value: String |{
-          if let Some(value) = UserNumber::new (self.value_type, value) {
-            if (self.input_callback)(value) {
+    let value_type = self.value_type.clone();
+    let input_callback = self.input_callback;
+    let update_callback = move | value: String |{
+          if let Some(value) = UserNumber::new (value_type.clone(), value) {
+            if (input_callback)(value) {
               return true;
             }
           }
           false
-        }} (value);
+        };
+    let range_input = js!{return $("<input>", {type: "range", id: @{self.id}+"_numerical_range", value:@{self.current_value.rendered}, min:@{self.slider_range [0]}, max:@{self.slider_range [1]}, step:@{slider_step} });};
+    let number_input = js!{return $("<input>", {type: "number", id: @{self.id}+"_numerical_number", value:@{displayed_value}});};
+    let value_type = self.value_type.clone();
+    let range_overrides = js!{return function () {
+        var value = @{&range_input}[0].valueAsNumber;
+        var source = @{move | value: f64 | value_type.approximate_from_rendered (value as f32)} (value)
+        // immediately update the number input with the range input, even though the actual data editing is debounced.
+        @{&number_input}.val(source);
+        update(source);
+      }
+;};
+    let number_overrides = js!{return function () {
+        update(@{&number_input}.val());
+      }
+;};
+    let update = js!{return _.debounce(function(value) {
+        var success = @{update_callback} (value);
         if (!success) {
           // TODO display some sort of error message
         }
-      }, 200);
+      }, 200);};
+    
+    let result: Value = js!{
       var result = $("<div>", {class: "labeled_input"}).append (
-        range_input.on ("input", range_overrides),
-        number_input.on ("input", number_overrides),
-        $("<label>", {"for": data.id+"_numerical_number", text:@{
+        @{&range_input}.on ("input", @{&range_overrides}),
+        @{&number_input}.on ("input", @{&number_overrides}),
+        $("<label>", {"for": @{self.id}+"_numerical_number", text:@{
           format! ("{} ({})", self.name, self.value_type.unit_name())
         }})
       );
@@ -429,14 +434,15 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   });}}
   
   
+  let getter = self.getter.clone();
   let initial_value_input = NumericalInputSpecification {
     id: & format! ("{}_initial", & self.id),
     name: if signal.constant {self.name} else {"Initial value"}, 
     slider_range: self.slider_range,
     value_type: T::currently_used (& guard),
-    current_value: signal.initial_value,
-    input_callback: input_callback (self.state, | value: UserNumber<T> | {
-      self.getter.with_mut (| signal | signal.initial_value = value);
+    current_value: signal.initial_value.clone(),
+    input_callback: input_callback (self.state, move | value: UserNumber<T> | {
+      getter.with_mut (| signal | signal.initial_value = value.clone());
       true
     }),
   }.render();
