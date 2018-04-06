@@ -365,27 +365,28 @@ impl <'a, F: 'static + Fn (UserNumber <T>)->bool, T: UserNumberType> NumericalIn
           }
           false
         };
-    let range_input = js!{return $("<input>", {type: "range", id: @{self.id}+"_numerical_range", value:@{self.current_value.rendered}, min:@{self.slider_range [0]}, max:@{self.slider_range [1]}, step:@{slider_step} });};
-    let number_input = js!{return $("<input>", {type: "number", id: @{self.id}+"_numerical_number", value:@{displayed_value}});};
-    let value_type = self.value_type.clone();
-    let range_overrides = js!{return function () {
-        var value = @{&range_input}[0].valueAsNumber;
-        var source = @{move | value: f64 | value_type.approximate_from_rendered (value as f32)} (value)
-        // immediately update the number input with the range input, even though the actual data editing is debounced.
-        @{&number_input}.val(source);
-        update(source);
-      }
-;};
-    let number_overrides = js!{return function () {
-        update(@{&number_input}.val());
-      }
-;};
     let update = js!{return _.debounce(function(value) {
         var success = @{update_callback} (value);
         if (!success) {
           // TODO display some sort of error message
         }
       }, 200);};
+    let range_input = js!{return $("<input>", {type: "range", id: @{self.id}+"_numerical_range", value:@{self.current_value.rendered}, min:@{self.slider_range [0]}, max:@{self.slider_range [1]}, step:@{slider_step} });};
+    let number_input = js!{return $("<input>", {type: "number", id: @{self.id}+"_numerical_number", value:@{displayed_value}});};
+    let value_type = self.value_type.clone();
+    let range_overrides = js!{return function () {
+        var value = @{&range_input}[0].valueAsNumber;
+        var source = @{move | value: f64 | value_type.approximate_from_rendered (value as f32)} (value);
+        // immediately update the number input with the range input, even though the actual data editing is debounced.
+        @{&number_input}.val(source);
+        @{&update}(source);
+      }
+;};
+    let number_overrides = js!{return function () {
+        @{&update}(@{&number_input}.val());
+      }
+;};
+    
     
     let result: Value = js!{
       var result = $("<div>", {class: "labeled_input"}).append (
@@ -395,6 +396,8 @@ impl <'a, F: 'static + Fn (UserNumber <T>)->bool, T: UserNumberType> NumericalIn
           format! ("{} ({})", self.name, self.value_type.unit_name())
         }})
       );
+      
+      @{&range_input}.val(@{self.current_value.rendered});
       
       /*result.on("wheel", function (event) {
         var value = range_input[0].valueAsNumber;
