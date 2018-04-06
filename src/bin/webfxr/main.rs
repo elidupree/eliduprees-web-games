@@ -16,7 +16,7 @@ extern crate ordered_float;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::str::FromStr;
-use stdweb::unstable::TryInto;
+//use stdweb::unstable::TryInto;
 use stdweb::web::TypedArray;
 use stdweb::Value;
 use serde::{Serialize};
@@ -51,7 +51,7 @@ pub trait UserNumberType: 'static + Clone + Eq + Serialize + DeserializeOwned + 
   fn render (&self, value: & str)->Option<f32>;
   fn approximate_from_rendered (&self, rendered: f32)->String;
   fn unit_name (&self)->&'static str;
-  fn currently_used (state: & State)->Self;
+  fn currently_used (_state: & State)->Self {Self::default()}
 }
 #[derive (Clone, Serialize, Deserialize)]
 pub struct UserNumber <T: UserNumberType> {
@@ -81,9 +81,6 @@ impl UserNumberType for FrequencyType {
       FrequencyType::Frequency => "Hz"
     }
   }
-  fn currently_used (state: & State)->Self {
-    FrequencyType::Frequency
-  }
 }
 impl UserNumberType for IntervalType {
   type DifferenceType = Self;
@@ -105,9 +102,6 @@ impl UserNumberType for IntervalType {
       IntervalType::Ratio => "ratio"
     }
   }
-  fn currently_used (state: & State)->Self {
-    IntervalType::Ratio
-  }
 }
 impl UserNumberType for TimeType {
   type DifferenceType = Self;
@@ -125,9 +119,6 @@ impl UserNumberType for TimeType {
     match *self {
       TimeType::Seconds => "s"
     }
-  }
-  fn currently_used (state: & State)->Self {
-    TimeType::Seconds
   }
 }
 impl<T: UserNumberType> UserNumber <T> {
@@ -340,31 +331,31 @@ pub fn input_callback_nullary<F> (state: &Rc<RefCell<State>>, callback: F)->impl
 
 
 
-fn round_step (input: f32, step: f32)->f32 {(input*step).round()/step}
+//fn round_step (input: f32, step: f32)->f32 {(input*step).round()/step}
 
 pub struct NumericalInputSpecification <'a, T: UserNumberType, F: Fn (UserNumber <T>)->bool> {
+  state: & 'a Rc<RefCell<State>>,
   id: & 'a str,
   name: & 'a str,
   slider_range: [f32; 2],
-  value_type: T,
   current_value: UserNumber <T>,
   input_callback: F,
 }
 
 impl <'a, F: 'static + Fn (UserNumber <T>)->bool, T: UserNumberType> NumericalInputSpecification<'a, T, F> {
   pub fn render (self)->Value {
-    let displayed_value = if self.value_type == self.current_value.value_type {self.current_value.source.clone()} else {self.value_type.approximate_from_rendered (self.current_value.rendered)};
+    let value_type = T::currently_used (&self.state.borrow());
+    let displayed_value = if value_type == self.current_value.value_type {self.current_value.source.clone()} else {value_type.approximate_from_rendered (self.current_value.rendered)};
     let slider_step = (self.slider_range [1] - self.slider_range [0])/1000.0;
-    let value_type = self.value_type.clone();
     let input_callback = self.input_callback;
-    let update_callback = move | value: String |{
+    let update_callback = { let value_type = value_type.clone(); move | value: String |{
           if let Some(value) = UserNumber::new (value_type.clone(), value) {
             if (input_callback)(value) {
               return true;
             }
           }
           false
-        };
+        }};
     let update = js!{return _.debounce(function(value) {
         var success = @{update_callback} (value);
         if (!success) {
@@ -373,10 +364,10 @@ impl <'a, F: 'static + Fn (UserNumber <T>)->bool, T: UserNumberType> NumericalIn
       }, 200);};
     let range_input = js!{return $("<input>", {type: "range", id: @{self.id}+"_numerical_range", value:@{self.current_value.rendered}, min:@{self.slider_range [0]}, max:@{self.slider_range [1]}, step:@{slider_step} });};
     let number_input = js!{return $("<input>", {type: "number", id: @{self.id}+"_numerical_number", value:@{displayed_value}});};
-    let value_type = self.value_type.clone();
+    
     let range_overrides = js!{return function () {
         var value = @{&range_input}[0].valueAsNumber;
-        var source = @{move | value: f64 | value_type.approximate_from_rendered (value as f32)} (value);
+        var source = @{{let value_type = value_type.clone(); move | value: f64 | value_type.approximate_from_rendered (value as f32)}} (value);
         // immediately update the number input with the range input, even though the actual data editing is debounced.
         @{&number_input}.val(source);
         @{&update}(source);
@@ -393,7 +384,7 @@ impl <'a, F: 'static + Fn (UserNumber <T>)->bool, T: UserNumberType> NumericalIn
         @{&range_input}.on ("input", @{&range_overrides}),
         @{&number_input}.on ("input", @{&number_overrides}),
         $("<label>", {"for": @{self.id}+"_numerical_number", text:@{
-          format! ("{} ({})", self.name, self.value_type.unit_name())
+          format! ("{} ({})", self.name, value_type.unit_name())
         }})
       );
       
@@ -414,10 +405,10 @@ impl <'a, F: 'static + Fn (UserNumber <T>)->bool, T: UserNumberType> NumericalIn
 
 
 pub struct SignalEditorSpecification <'a, T: UserNumberType> {
+  state: & 'a Rc<RefCell<State>>,
   id: & 'a str,
   name: & 'a str,
   slider_range: [f32; 2],
-  state: & 'a Rc<RefCell<State>>,
   getter: Getter <Signal <T>>
 }
 
@@ -437,12 +428,11 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   });}}
   
   
-  let getter = self.getter.clone();
   let initial_value_input = NumericalInputSpecification {
+    state: self.state,
     id: & format! ("{}_initial", & self.id),
     name: if signal.constant {self.name} else {"Initial value"}, 
     slider_range: self.slider_range,
-    value_type: T::currently_used (& guard),
     current_value: signal.initial_value.clone(),
     input_callback: {let getter = self.getter.clone(); input_callback (self.state, move | value: UserNumber<T> | {
       getter.with_mut (| signal | signal.initial_value = value.clone());
