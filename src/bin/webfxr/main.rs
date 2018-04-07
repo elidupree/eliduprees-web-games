@@ -16,9 +16,9 @@ extern crate ordered_float;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::str::FromStr;
-//use stdweb::unstable::TryInto;
+use stdweb::unstable::{TryInto, TryFrom};
 use stdweb::web::TypedArray;
-use stdweb::Value;
+use stdweb::{JsSerialize, Value};
 use serde::{Serialize};
 use serde::de::DeserializeOwned;
 use ordered_float::OrderedFloat;
@@ -143,7 +143,7 @@ impl<T: UserNumberType> UserNumber <T> {
 type UserFrequency = UserNumber <FrequencyType>;
 type UserTime = UserNumber <TimeType>;
 
-#[derive (Serialize, Deserialize)]
+#[derive (Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Waveform {
   Sine,
   Square,
@@ -333,7 +333,48 @@ pub fn input_callback_nullary<F> (state: &Rc<RefCell<State>>, callback: F)->impl
 
 //fn round_step (input: f32, step: f32)->f32 {(input*step).round()/step}
 
-pub struct NumericalInputSpecification <'a, T: UserNumberType, F: Fn (UserNumber <T>)->bool> {
+pub struct RadioInputSpecification <'a, T: 'a, F> {
+  state: & 'a Rc<RefCell<State>>,
+  id: & 'a str,
+  name: & 'a str,
+  options: & 'a [(T, & 'a str)],
+  current_value: T,
+  input_callback: F,
+}
+
+impl <'a, F: 'static + Fn (T)->bool, T: Eq> RadioInputSpecification <'a, T, F>
+  where
+    T: JsSerialize,
+    T: TryFrom<Value>,
+    Value: TryInto<T>,
+    <Value as TryInto<T>>::Error: ::std::fmt::Debug {
+  pub fn render (self)->Value {
+    let result = js!{return $("<div>", {class: "labeled_input"}).append (
+      $("<label>", {text:@{self.name} + ":"})
+    );};
+    
+    let update = js!{
+      return function (value) {@{self.input_callback}(value)}
+    };
+    
+    for &(ref value, name) in self.options.iter() {
+      js!{
+        function choice_overrides() {
+          var value = $("input:radio[name="+@{self.id}+"_radios]:checked").val();
+          @{&update}(value);
+        }
+        @{&result}.append (
+          $("<input>", {type: "radio", id: @{self.id}+"_radios_" + @{value}, name: @{self.id}+"_radios", value: @{value}, checked: @{*value == self.current_value}}).click (choice_overrides),
+          $("<label>", {"for": @{self.id}+"_radios_" + @{value}, text: @{name}})
+        );
+      }
+    }
+    
+    result
+  }
+}
+
+pub struct NumericalInputSpecification <'a, T: UserNumberType, F> {
   state: & 'a Rc<RefCell<State>>,
   id: & 'a str,
   name: & 'a str,
@@ -660,28 +701,25 @@ fn redraw(state: & Rc<RefCell<State>>) {
     }
   }
   
+  let waveform_input = RadioInputSpecification {
+    state: state, id: "waveform", name: "Waveform",
+    options: &[
+      (Waveform::Sine, "Sine"),
+      (Waveform::Square, "Square"),
+      (Waveform::Triangle, "Triangle"),
+      (Waveform::Sawtooth, "Sawtooth"), 
+    ],
+    current_value: sound.waveform.clone(),
+    input_callback: {let state2 = state.clone(); input_callback (state, move | value: Waveform | {
+      state2.borrow_mut().sound.waveform = value;
+      true
+    })},
+  }.render();
   
   js! {
 $("#panels").empty();
+$("#panels").append ($("<div>", {class: "panel"}).append (@{waveform_input}));
 
-/*
-$("#panels").append ($("<div>", {class: "panel"}).append (radio_input ({
-  id: "waveform",
-  field: "waveform",
-  text: "Waveform",
-  current:@{&sound.waveform},
-  options: [
-    {value: "Sine", text: "Sine"},
-    {value: "Square", text: "Square"},
-    {value: "Triangle", text: "Triangle"},
-    {value: "Sawtooth", text: "Sawtooth"},
-  ]
-}, 
-  @{input_callback! ([state, value: Waveform] {
-    state.borrow_mut().sound.waveform = value;
-  })}
-)));
-  */
       const envelope_editor = $("<div>", {class: "panel"});
       $("#panels").append (envelope_editor);
       envelope_editor.append (@{canvas_of_samples (&envelope_samples)});
