@@ -642,6 +642,25 @@ fn redraw(state: & Rc<RefCell<State>>) {
   
   let envelope_samples = display_samples (sound, | time | sound.envelope.sample (time));
   
+  macro_rules! envelope_input {
+  ($variable: ident, $name: expr, $range: expr) => {NumericalInputSpecification {
+    state: state,
+    id: stringify! ($variable),
+    name: $name, 
+    slider_range: $range,
+    current_value: sound.envelope.$variable.clone(),
+    input_callback: {let state2 = state.clone(); input_callback (state, move | value: UserTime | {
+      if value.rendered >= 0.0 && value.rendered <= 30.0 {
+        state2.borrow_mut().sound.envelope.$variable = value;
+        return true
+      }
+      false
+    })},
+  }.render()
+    }
+  }
+  
+  
   js! {
 $("#panels").empty();
 
@@ -666,36 +685,9 @@ $("#panels").append ($("<div>", {class: "panel"}).append (radio_input ({
       const envelope_editor = $("<div>", {class: "panel"});
       $("#panels").append (envelope_editor);
       envelope_editor.append (@{canvas_of_samples (&envelope_samples)});
-      envelope_editor.append (@{
-   NumericalInputSpecification {
-    state: state,
-    id: "attack",
-    name: "Attack", 
-    slider_range: [0.0, 1.0],
-    current_value: sound.envelope.attack.clone(),
-    input_callback: {let state2 = state.clone(); input_callback (state, move | value: UserTime | {
-      if value.rendered >= 0.0 && value.rendered <= 30.0 {
-        state2.borrow_mut().sound.envelope.attack = value;
-        return true
-      }
-      false
-    })},
-  }.render()
-      });
-      
-      /*  time_editor (& guard, "attack", "Attack", sound.envelope.attack,
-          input_callback! ([state, value: f32] {state.borrow_mut().sound.envelope.attack = value;})
-      
-      envelope_editor.append (@{
-        time_editor (& guard, "sustain", "Sustain", sound.envelope.sustain,
-          input_callback! ([state, value: f32] {state.borrow_mut().sound.envelope.sustain = value;})
-        )
-      });
-      envelope_editor.append (@{
-        time_editor (& guard, "decay", "Decay", sound.envelope.decay,
-          input_callback! ([state, value: f32] {state.borrow_mut().sound.envelope.decay = value;})
-        )
-      });  */
+      envelope_editor.append (@{envelope_input!(attack, "Attack", [0.0, 1.0])});
+      envelope_editor.append (@{envelope_input!(sustain, "Sustain", [0.0, 3.0])});
+      envelope_editor.append (@{envelope_input!(decay, "Decay", [0.0, 3.0])});
   }
 
   let rendered: TypedArray <f32> = sound.render (44100).as_slice().into();
