@@ -704,11 +704,18 @@ const sample_rate = 44100;
   }
   
   SignalEditorSpecification {
+    state: & state,
     id: "frequency",
     name: "Frequency",
     slider_range: [20f32.log2(), 5000f32.log2()],
-    state: & state,
     getter: state_getter! (state, state.sound.log_frequency),
+  }.render();
+  SignalEditorSpecification {
+    state: & state,
+    id: "bitcrush_frequency",
+    name: "Bitcrush frequency",
+    slider_range: [20f32.log2(), 48000f32.log2()],
+    getter: state_getter! (state, state.sound.log_bitcrush_frequency),
   }.render();
 
   
