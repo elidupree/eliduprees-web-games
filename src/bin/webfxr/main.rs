@@ -355,6 +355,20 @@ pub fn input_callback_nullary<F> (state: &Rc<RefCell<State>>, callback: F)->impl
   }
 }
 
+pub fn input_callback_gotten<T, U, F> (state: &Rc<RefCell<State>>, getter: &Getter <State, T>, callback: F)->impl (Fn (U)->bool)
+  where
+    F: Fn(&mut T, U)->bool {
+  let getter = getter.clone();
+  input_callback (state, move | state, arg | (callback)(getter.get_mut (state), arg))
+}
+
+pub fn input_callback_gotten_nullary<T, F> (state: &Rc<RefCell<State>>, getter: &Getter <State, T>, callback: F)->impl (Fn ()->bool)
+  where
+    F: Fn(&mut T)->bool {
+  let getter = getter.clone();
+  input_callback_nullary (state, move | state | (callback)(getter.get_mut (state)))
+}
+
 
 pub fn button_input<F: 'static + Fn()->bool> (id: & str, name: & str, callback: F)->Value {
   let result: Value = js!{
@@ -567,31 +581,24 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   let toggle_constant_button = button_input (
     & format! ("{}_toggle_constant", & self.id),
     if signal.constant {"Complicate"} else {"Simplify"},
-    {
-      let getter = self.getter.clone();
-      input_callback_nullary (self.state, move | state | {
-        let signal = getter.get_mut (state);
-        signal.constant = !signal.constant;
-        true
-      })
-    }
+    input_callback_gotten_nullary (self.state, &self.getter, move | signal | {
+      signal.constant = !signal.constant;
+      true
+    })
   );
   
   
   js!{ @{& container}.append (@{toggle_constant_button}); }
   
   if !signal.constant {
+    let range = self.difference_slider_range;
     let add_jump_button = button_input (
       & format! ("{}_add_jump", & self.id),
       "Add jump",
-      {
-        let getter = self.getter.clone();
-        let range = self.difference_slider_range;
-        input_callback_nullary (self.state, move | state | {
-          getter.get_mut (state).effects.push (SignalEffect::Jump {time: UserTime::from_rendered (0.5), size: UserNumber::from_rendered (range [1])});
-          true
-        })
-      }
+      input_callback_gotten_nullary (self.state, &self.getter, move | signal | {
+        signal.effects.push (SignalEffect::Jump {time: UserTime::from_rendered (0.5), size: UserNumber::from_rendered (range [1])});
+        true
+      })
     );
     js!{ @{& container}.append (@{add_jump_button}); }
 
