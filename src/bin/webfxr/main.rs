@@ -560,7 +560,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   
   
     
-  for (index, effect) in signal.effects.iter().enumerate() {
+  if !signal.constant {for (index, effect) in signal.effects.iter().enumerate() {
     let effect_getter = self.getter.clone() + getter!(signal => signal.effects [index]);
     let delete_button = button_input ("Delete",
       input_callback_gotten_nullary (self.state, &self.getter, move | signal | {
@@ -606,7 +606,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
         (frequency, "Frequency", frequency_input)
       ]
     }
-  }
+  }}
   
   let toggle_constant_button = button_input (
     if signal.constant {"Complicate"} else {"Simplify"},
