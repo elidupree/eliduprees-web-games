@@ -457,13 +457,13 @@ impl <'a, F: 'static + Fn (UserNumber <T>)->bool, T: UserNumberType> NumericalIn
       
       @{&range_input}.val(@{self.current_value.rendered});
       
-      /*result.on("wheel", function (event) {
-        var value = range_input[0].valueAsNumber;
-        value += (Math.sign(event.originalEvent.deltaY) || Math.sign(event.originalEvent.deltaX) || 0)*@{self.slider_step};
-        range_input.val (value);
-        range_overrides ();
+      result.on("wheel", function (event) {
+        var value = @{&range_input}[0].valueAsNumber;
+        value += (-Math.sign(event.originalEvent.deltaY) || Math.sign(event.originalEvent.deltaX) || 0)*@{slider_step*50.0};
+        @{&range_input}.val (value);
+        @{&range_overrides}();
         event.preventDefault();
-      });*/
+      });
       return result;
     };
     result
