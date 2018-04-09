@@ -1,19 +1,26 @@
+#![feature (option_filter)]
 #![recursion_limit="256"]
 
 extern crate eliduprees_web_games;
 
 #[macro_use]
 extern crate stdweb;
+extern crate serde;
 #[macro_use]
 extern crate serde_derive;
+#[macro_use]
+extern crate derivative;
 extern crate nalgebra;
 extern crate ordered_float;
 
 use std::rc::Rc;
 use std::cell::RefCell;
-use stdweb::unstable::TryInto;
+use std::str::FromStr;
+use stdweb::unstable::{TryInto, TryFrom};
 use stdweb::web::TypedArray;
-use stdweb::Value;
+use stdweb::{JsSerialize, Value};
+use serde::{Serialize};
+use serde::de::DeserializeOwned;
 use ordered_float::OrderedFloat;
 
 
@@ -21,7 +28,122 @@ pub const TURN: f32 = ::std::f32::consts::PI*2.0;
 
 pub const DISPLAY_SAMPLE_RATE: f32 = 50.0;
 
-#[derive (Serialize, Deserialize)]
+#[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Derivative)]
+#[derivative (Default)]
+pub enum FrequencyType {
+  #[derivative (Default)]
+  Frequency,
+}
+#[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Derivative)]
+#[derivative (Default)]
+pub enum IntervalType {
+  #[derivative (Default)]
+  Ratio,
+}
+#[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Derivative)]
+#[derivative (Default)]
+pub enum TimeType {
+  #[derivative (Default)]
+  Seconds,
+}
+pub trait UserNumberType: 'static + Clone + Eq + Serialize + DeserializeOwned + Default {
+  type DifferenceType: UserNumberType;
+  fn render (&self, value: & str)->Option<f32>;
+  fn approximate_from_rendered (&self, rendered: f32)->String;
+  fn unit_name (&self)->&'static str;
+  fn currently_used (_state: & State)->Self {Self::default()}
+}
+#[derive (Clone, Serialize, Deserialize)]
+pub struct UserNumber <T: UserNumberType> {
+  pub source: String,
+  pub rendered: f32,
+  // Hacky workaround for https://github.com/rust-lang/rust/issues/41617 (see https://github.com/serde-rs/serde/issues/943)
+  #[serde(deserialize_with = "::serde::Deserialize::deserialize")]
+  pub value_type: T,
+}
+impl UserNumberType for FrequencyType {
+  type DifferenceType = IntervalType;
+  fn render (&self, value: & str)->Option <f32> {
+    match *self {
+      FrequencyType::Frequency => f32::from_str (value).ok().and_then(| value | {
+        let value = value.log2();
+        if value.is_finite() {Some (value)} else {None}
+      })
+    }
+  }
+  fn approximate_from_rendered (&self, rendered: f32)->String {
+    match *self {
+      FrequencyType::Frequency => format!("{:.1}", rendered.exp2())
+    }
+  }
+  fn unit_name (&self)->&'static str {
+    match *self {
+      FrequencyType::Frequency => "Hz"
+    }
+  }
+}
+impl UserNumberType for IntervalType {
+  type DifferenceType = Self;
+  fn render (&self, value: & str)->Option <f32> {
+    match *self {
+      IntervalType::Ratio => f32::from_str (value).ok().and_then(| value | {
+        let value = value.log2();
+        if value.is_finite() {Some (value)} else {None}
+      })
+    }
+  }
+  fn approximate_from_rendered (&self, rendered: f32)->String {
+    match *self {
+      IntervalType::Ratio => format!("{:.2}", rendered.exp2())
+    }
+  }
+  fn unit_name (&self)->&'static str {
+    match *self {
+      IntervalType::Ratio => "ratio"
+    }
+  }
+}
+impl UserNumberType for TimeType {
+  type DifferenceType = Self;
+  fn render (&self, value: & str)->Option <f32> {
+    match *self {
+      TimeType::Seconds => f32::from_str (value).ok().filter (| value | value.is_finite())
+    }
+  }
+  fn approximate_from_rendered (&self, rendered: f32)->String {
+    match *self {
+      TimeType::Seconds => format!("{:.3}", rendered)
+    }
+  }
+  fn unit_name (&self)->&'static str {
+    match *self {
+      TimeType::Seconds => "s"
+    }
+  }
+}
+impl<T: UserNumberType> UserNumber <T> {
+  pub fn new (value_type: T, source: String)->Option <Self> {
+    value_type.render (&source).map (| rendered | UserNumber {
+      source: source, rendered: rendered, value_type: value_type,
+    })
+  }
+  pub fn from_rendered (rendered: f32)->Self {
+    let value_type = T::default() ;
+    UserNumber {
+      source: value_type.approximate_from_rendered (rendered),
+      rendered: rendered, value_type: value_type,
+    }
+  }
+}
+
+
+//js_serializable! (UserNumber) ;
+//js_deserializable! (UserNumber) ;
+
+type UserFrequency = UserNumber <FrequencyType>;
+type UserTime = UserNumber <TimeType>;
+
+#[derive (Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Waveform {
   Sine,
   Square,
@@ -32,35 +154,30 @@ pub enum Waveform {
 js_serializable! (Waveform) ;
 js_deserializable! (Waveform) ;
 
-#[derive (Clone)]
-pub struct ControlPoint {
-  pub time: f32,
-  pub value: f32,
-  pub slope: f32,
-  pub jump: bool,
-  pub value_after_jump: f32,
+
+pub enum SignalEffect <T: UserNumberType> {
+  Jump {time: UserTime, size: UserNumber<T::DifferenceType>},
+  Slide {start: UserTime, duration: UserTime, size: UserNumber<T::DifferenceType>, smooth_start: bool, smooth_stop: bool},
+  Oscillation {size: UserNumber<T::DifferenceType>, frequency: UserFrequency, waveform: Waveform},
 }
 
-pub struct Signal {
+pub struct Signal <T: UserNumberType> {
+  pub initial_value: UserNumber<T>,
   pub constant: bool,
-  pub control_points: Vec<ControlPoint>,
-}
-pub struct SignalSampler <'a> {
-  signal: & 'a Signal,
-  next_control_index: usize,
+  pub effects: Vec<SignalEffect <T>>,
 }
 
 pub struct Envelope {
-  pub attack: f32,
-  pub sustain: f32,
-  pub decay: f32,
+  pub attack: UserTime,
+  pub sustain: UserTime,
+  pub decay: UserTime,
 }
 
 pub struct SoundDefinition {
   pub waveform: Waveform,
   pub envelope: Envelope,
-  pub log_frequency: Signal,
-  pub log_bitcrush_frequency: Signal,
+  pub log_frequency: Signal <FrequencyType>,
+  pub log_bitcrush_frequency: Signal <FrequencyType>,
 }
 
 pub struct State {
@@ -79,61 +196,54 @@ impl Waveform {
   }
 }
 
-impl ControlPoint {
-  fn value_after (&self)->f32 {if self.jump {self.value_after_jump} else {self.value}}
+impl<T: UserNumberType> SignalEffect <T> {
+  pub fn sample (&self, sample_time: f32)->f32 {
+    match self.clone() {
+      SignalEffect::Jump {time, size} => if sample_time > time.rendered {size.rendered} else {0.0},
+      SignalEffect::Slide {start, duration, size, smooth_start, smooth_stop} => {
+        if sample_time <start.rendered {0.0}
+        else if sample_time >start.rendered + duration.rendered {size.rendered}
+        else {
+          let fraction = (sample_time - start.rendered)/duration.rendered;
+          let adjusted_fraction = match (smooth_start, smooth_stop) {
+            (false, false) => fraction,
+            (true, false) => fraction*fraction,
+            (false, true) => fraction*(2.0-fraction),
+            (true, true) => fraction*fraction*(3.0 - 2.0*fraction),
+          };
+          size.rendered*adjusted_fraction
+        }
+      },
+      SignalEffect::Oscillation {size, frequency, waveform} => size.rendered*waveform.sample (sample_time*frequency.rendered.exp2()),
+    }
+  }
 }
 
-impl Signal {
-  pub fn constant(value: f32)->Signal {
+impl<T: UserNumberType> Signal<T> {
+  pub fn constant(value: UserNumber <T>)->Self {
     Signal {
       constant: true,
-      control_points: vec![ControlPoint {time: 0.0, value: value, slope: 0.0, jump: false, value_after_jump: 0.0}]
+      initial_value: value,
+      effects: Vec::new(),
     }
   }
-  pub fn sampler (&self)->SignalSampler {
-    SignalSampler {signal: self, next_control_index: 0}
-  }
-}
 
-impl<'a> SignalSampler<'a> {
-  pub fn sample (&mut self, time: f32)->f32 {
-    if self.signal.constant {return self.signal.control_points [0].value;}
-    
-    while let Some(control) = self.signal.control_points.get (self.next_control_index) {
-      if time >= control.time {
-        self.next_control_index += 1;
-      }
-      else {break;}
+  pub fn sample (&self, time: f32)->f32 {
+    if self.constant {
+      self.initial_value.rendered
     }
-    
-    let previous_control = self.signal.control_points.get (self.next_control_index.wrapping_sub (1));
-    let next_control = self.signal.control_points.get (self.next_control_index);
-    match (previous_control, next_control) {
-      (None, None)=>0.0,
-      (None, Some (control)) => {
-        control.value + control.slope*(time - control.time)
-      },
-      (Some (control), None) => {
-        control.value_after () + control.slope*(time - control.time)
-      },
-      (Some (first), Some (second)) => {
-        let first_value = first.value_after() + first.slope*(time - first.time);
-        let second_value = second.value + second.slope*(time - second.time);
-        let fraction = (time - first.time)/(second.time - first.time);
-        let adjusted_fraction = fraction*fraction*(3.0 - 2.0*fraction);
-        //(((fraction - 0.5)*TURN/2.0).sin() + 1.0)/2.0;
-        first_value * (1.0 - adjusted_fraction) + second_value * adjusted_fraction
-      },
+    else {
+      self.initial_value.rendered + self.effects.iter().map (| effect | effect.sample (time)).sum::<f32>()
     }
   }
 }
 
 impl Envelope {
-  pub fn duration (&self)->f32 {self.attack + self.sustain + self.decay}
+  pub fn duration (&self)->f32 {self.attack.rendered + self.sustain.rendered + self.decay.rendered}
   pub fn sample (&self, time: f32)->f32 {
-    if time <self.attack {return time/self.attack;}
-    if time <self.attack + self.sustain {return 1.0;}
-    if time <self.attack + self.sustain + self.decay {return (self.attack + self.sustain + self.decay - time)/self.decay;}
+    if time <self.attack.rendered {return time/self.attack.rendered;}
+    if time <self.attack.rendered + self.sustain.rendered {return 1.0;}
+    if time <self.attack.rendered + self.sustain.rendered + self.decay.rendered {return (self.attack.rendered + self.sustain.rendered + self.decay.rendered - time)/self.decay.rendered;}
     0.0
   }
 }
@@ -145,8 +255,6 @@ impl SoundDefinition {
     let mut wave_phase = 0.0;
     let mut bitcrush_phase = 1.0;
     let mut last_used_sample = 0.0;
-    let mut log_frequency_sampler = self.log_frequency.sampler();
-    let mut log_bitcrush_frequency_sampler = self.log_bitcrush_frequency.sampler();
     let frame_duration = 1.0/sample_rate as f32;
     let mut frames = Vec::with_capacity (num_frames as usize);
     
@@ -161,8 +269,8 @@ impl SoundDefinition {
       }
       frames.push (last_used_sample) ;
       
-      let frequency = log_frequency_sampler.sample(time).exp2();
-      let bitcrush_frequency = log_bitcrush_frequency_sampler.sample(time).exp2();
+      let frequency = self.log_frequency.sample(time).exp2();
+      let bitcrush_frequency = self.log_bitcrush_frequency.sample(time).exp2();
       wave_phase += frequency*frame_duration;
       bitcrush_phase += bitcrush_frequency*frame_duration;
     }
@@ -171,76 +279,378 @@ impl SoundDefinition {
   }
 }
 
-  macro_rules! input_callback {
-    ([$state: ident, $($args: tt)*] $contents: expr) => {{
-      let $state = $state.clone();
-      move |$($args)*| {
-        { $contents }
-        redraw (& $state);
+
+#[derive (Derivative)]
+#[derivative (Clone (bound =""))]
+pub struct Getter <T, U> {
+  get: Rc <Fn(&T)->&U>,
+  get_mut: Rc <Fn(&mut T)->&mut U>,
+}
+impl <T, U> Getter <T, U> {
+  fn get<'a, 'b> (&'a self, value: &'b T)->&'b U {
+    (self.get) (value)
+  }
+  fn get_mut<'a, 'b> (&'a self, value: &'b mut T)->&'b mut U {
+    (self.get_mut) (value)
+  }
+}
+
+impl <T: 'static,U: 'static,V: 'static> ::std::ops::Add<Getter <U, V>> for Getter <T, U> {
+  type Output = Getter <T, V>;
+  fn add (self, other: Getter <U, V>)->Self::Output {
+    let my_get = self.get;
+    let my_get_mut = self.get_mut;
+    let other_get = other.get;
+    let other_get_mut = other.get_mut;
+    Getter {
+      get: Rc::new (move | value | (other_get) ((my_get) (value))),
+      get_mut: Rc::new (move | value | (other_get_mut) ((my_get_mut) (value))),
+    }
+  }
+}
+
+macro_rules! getter {
+  ($value: ident => $($path:tt)*) => {
+    Getter {
+      get    : Rc::new (move | $value | &    $($path)*),
+      get_mut: Rc::new (move | $value | &mut $($path)*),
+    }
+  }
+}
+macro_rules! variant_field_getter {
+  ($Enum: ident::$Variant: ident => $field: ident) => {
+    Getter {
+      get    : Rc::new (| value | match value {
+        &    $Enum::$Variant {ref     $field,..} => $field,
+        _ => unreachable!(),
+      }),
+      get_mut: Rc::new (| value | match value {
+        &mut $Enum::$Variant {ref mut $field,..} => $field,
+        _ => unreachable!(),
+      }),
+    }
+  }
+}
+
+
+pub fn input_callback<T, F> (state: &Rc<RefCell<State>>, callback: F)->impl (Fn (T)->bool)
+  where
+    F: Fn(&mut State, T)->bool {
+  let state = state.clone();
+  move |arg: T| {
+    let success = (callback)(&mut state.borrow_mut(), arg);
+    if success {
+      redraw (&state);
+    }
+    success
+  }
+}
+
+pub fn input_callback_nullary<F> (state: &Rc<RefCell<State>>, callback: F)->impl (Fn ()->bool)
+  where
+    F: Fn(&mut State)->bool {
+  let hack = input_callback (state, move | state,()| (callback)(state));
+  move || {
+    (hack)(())
+  }
+}
+
+pub fn input_callback_gotten<T, U, F> (state: &Rc<RefCell<State>>, getter: &Getter <State, T>, callback: F)->impl (Fn (U)->bool)
+  where
+    F: Fn(&mut T, U)->bool {
+  let getter = getter.clone();
+  input_callback (state, move | state, arg | (callback)(getter.get_mut (state), arg))
+}
+
+pub fn input_callback_gotten_nullary<T, F> (state: &Rc<RefCell<State>>, getter: &Getter <State, T>, callback: F)->impl (Fn ()->bool)
+  where
+    F: Fn(&mut T)->bool {
+  let getter = getter.clone();
+  input_callback_nullary (state, move | state | (callback)(getter.get_mut (state)))
+}
+
+
+pub fn button_input<F: 'static + Fn()->bool> (name: & str, callback: F)->Value {
+  let result: Value = js!{
+    return $("<input>", {
+      type: "button",
+      value: @{name}
+    }).click (function() {@{callback}();});
+  };
+  result
+}
+
+//fn round_step (input: f32, step: f32)->f32 {(input*step).round()/step}
+
+pub struct RadioInputSpecification <'a, T: 'a, F> {
+  state: & 'a Rc<RefCell<State>>,
+  id: & 'a str,
+  name: & 'a str,
+  options: & 'a [(T, & 'a str)],
+  current_value: T,
+  input_callback: F,
+}
+
+impl <'a, F: 'static + Fn (T)->bool, T: Eq> RadioInputSpecification <'a, T, F>
+  where
+    T: JsSerialize,
+    T: TryFrom<Value>,
+    Value: TryInto<T>,
+    <Value as TryInto<T>>::Error: ::std::fmt::Debug {
+  pub fn render (self)->Value {
+    let result = js!{return $("<div>", {class: "labeled_input"}).append (
+      $("<label>", {text:@{self.name} + ":"})
+    );};
+    
+    let update = js!{
+      return function (value) {@{self.input_callback}(value)}
+    };
+    
+    for &(ref value, name) in self.options.iter() {
+      js!{
+        function choice_overrides() {
+          var value = $("input:radio[name="+@{self.id}+"_radios]:checked").val();
+          @{&update}(value);
+        }
+        @{&result}.append (
+          $("<input>", {type: "radio", id: @{self.id}+"_radios_" + @{value}, name: @{self.id}+"_radios", value: @{value}, checked: @{*value == self.current_value}}).click (choice_overrides),
+          $("<label>", {"for": @{self.id}+"_radios_" + @{value}, text: @{name}})
+        );
       }
-    }};
-    ([$state: ident] $contents: expr) => {{
-      let $state = $state.clone();
-      move || {
-        { $contents }
-        redraw (& $state);
+    }
+    
+    result
+  }
+}
+
+pub struct NumericalInputSpecification <'a, T: UserNumberType, F> {
+  state: & 'a Rc<RefCell<State>>,
+  id: & 'a str,
+  name: & 'a str,
+  slider_range: [f32; 2],
+  current_value: UserNumber <T>,
+  input_callback: F,
+}
+
+impl <'a, F: 'static + Fn (UserNumber <T>)->bool, T: UserNumberType> NumericalInputSpecification<'a, T, F> {
+  pub fn render (self)->Value {
+    let value_type = T::currently_used (&self.state.borrow());
+    let displayed_value = if value_type == self.current_value.value_type {self.current_value.source.clone()} else {value_type.approximate_from_rendered (self.current_value.rendered)};
+    let slider_step = (self.slider_range [1] - self.slider_range [0])/1000.0;
+    let input_callback = self.input_callback;
+    let update_callback = { let value_type = value_type.clone(); move | value: String |{
+          if let Some(value) = UserNumber::new (value_type.clone(), value) {
+            if (input_callback)(value) {
+              return true;
+            }
+          }
+          false
+        }};
+    let update = js!{return _.debounce(function(value) {
+        var success = @{update_callback} (value);
+        if (!success) {
+          // TODO display some sort of error message
+        }
+      }, 200);};
+    let range_input = js!{return $("<input>", {type: "range", id: @{self.id}+"_numerical_range", value:@{self.current_value.rendered}, min:@{self.slider_range [0]}, max:@{self.slider_range [1]}, step:@{slider_step} });};
+    let number_input = js!{return $("<input>", {type: "number", id: @{self.id}+"_numerical_number", value:@{displayed_value}});};
+    
+    let range_overrides = js!{return function () {
+        var value = @{&range_input}[0].valueAsNumber;
+        var source = @{{let value_type = value_type.clone(); move | value: f64 | value_type.approximate_from_rendered (value as f32)}} (value);
+        // immediately update the number input with the range input, even though the actual data editing is debounced.
+        @{&number_input}.val(source);
+        @{&update}(source);
       }
-    }}
+;};
+    let number_overrides = js!{return function () {
+        @{&update}(@{&number_input}.val());
+      }
+;};
+    
+    
+    let result: Value = js!{
+      var result = $("<div>", {class: "labeled_input"}).append (
+        @{&range_input}.on ("input", @{&range_overrides}),
+        @{&number_input}.on ("input", @{&number_overrides}),
+        $("<label>", {"for": @{self.id}+"_numerical_number", text:@{
+          format! ("{} ({})", self.name, value_type.unit_name())
+        }})
+      );
+      
+      @{&range_input}.val(@{self.current_value.rendered});
+      
+      result.on("wheel", function (event) {
+        var value = @{&range_input}[0].valueAsNumber;
+        value += (-Math.sign(event.originalEvent.deltaY) || Math.sign(event.originalEvent.deltaX) || 0)*@{slider_step*50.0};
+        @{&range_input}.val (value);
+        @{&range_overrides}();
+        event.preventDefault();
+      });
+      return result;
+    };
+    result
+  }
+}
+
+
+pub struct SignalEditorSpecification <'a, T: UserNumberType> {
+  state: & 'a Rc<RefCell<State>>,
+  id: & 'a str,
+  name: & 'a str,
+  slider_range: [f32; 2],
+  difference_slider_range: [f32; 2],
+  getter: Getter <State, Signal <T>>
+}
+
+impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
+  pub fn numeric_input <U: UserNumberType> (&self, id: & str, name: & str, slider_range: [f32; 2], getter: Getter <State, UserNumber <U>>)->Value {
+    let current_value = getter.get (&self.state.borrow()).clone();
+    NumericalInputSpecification {
+      state: self.state,
+      id: id,
+      name: name, 
+      slider_range: slider_range,
+      current_value: current_value,
+      input_callback: input_callback (self.state, move | state, value: UserNumber <U> | {
+        *getter.get_mut (state) = value;
+        true
+      }),
+    }.render()
+  }
+
+  pub fn time_input (&self, id: & str, name: & str, getter: Getter <State, UserTime>)->Value {
+    self.numeric_input (id, name, [0.0, 3.0], getter)
+  }
+  
+  pub fn value_input (&self, id: & str, name: & str, getter: Getter <State, UserNumber <T>>)->Value {
+    self.numeric_input (id, name, self.slider_range, getter)
+  }
+  
+  pub fn difference_input (&self, id: & str, name: & str, getter: Getter <State, UserNumber <T::DifferenceType>>)->Value {
+    self.numeric_input (id, name, self.difference_slider_range, getter)
+  }
+  
+  pub fn frequency_input (&self, id: & str, name: & str, getter: Getter <State, UserFrequency>)->Value {
+    self.numeric_input (id, name, [1.0f32.log2(), 20f32.log2()], getter)
   }
 
 
-fn round_step (input: f32, step: f32)->f32 {(input*step).round()/step}
-
-fn frequency_editor <F: 'static + FnMut (f32)> (state: & State, id: & str, text: & str, current: f32, mut callback: F)->Value {
-  let editor = js!{
-  return numerical_input ({
-    id: @{id},
-    text: @{text} + " (Hz)",
-    min: 20,
-    max: 22050,
-    current:@{round_step (current.exp2(), 100.0)},
-    step: 1,
-    logarithmic: true,
-  }, @{move | value: f64 | callback (value.log2() as f32)}
-  );
-  };
-  editor
-}
-
-fn time_editor <F: 'static + FnMut (f32)> (state: & State, id: & str, text: & str, current: f32, mut callback: F)->Value {
-  let editor = js!{
-  return numerical_input ({
-    id: @{id},
-    text: @{text} + " (s)",
-    min: 0.0,
-    max: 10.0,
-    current:@{round_step (current, 1000.0)},
-    step: 0.1,
-  }, @{move | value: f64 | callback (value as f32)}
-  );
-  };
-  editor
-}
-
-fn add_signal_editor <
-  F: 'static + Fn (&State)->&Signal,
-  FMut: 'static + Fn (&mut State)->&mut Signal
-> (state: &Rc<RefCell<State>>, id: & 'static str, name: & 'static str, get_signal: F, get_signal_mut: FMut) {
-  let get_signal = Rc::new (get_signal);
-  let get_signal_mut = Rc::new (get_signal_mut);
-  let guard = state.borrow();
-  let sound = & guard.sound;
-  let signal = get_signal (&guard) ;
-  let container = js!{ return $("<div>", {id:@{id}, class: "panel"});};
+  pub fn render (self) {
+    
+      let guard = self.state.borrow();
+    let signal = self.getter.get (& guard);
+      
+  let container = js!{ return $("<div>", {id:@{self.id}, class: "panel"});};
   js!{ $("#panels").append (@{& container});}
   
-  let mut sampler = signal.sampler();
   
-  js!{@{& container}.append (@{name} + ": ");}
+  js!{@{& container}.append (@{self.name} + ": ");}
   if !signal.constant {js!{@{& container}.append (@{
-    canvas_of_samples (& display_samples (sound, | time | sampler.sample (time)))
+    canvas_of_samples (& display_samples (& guard.sound, | time | signal.sample (time)))
   });}}
   
+  let initial_value_input = self.value_input (
+    & format! ("{}_initial", & self.id),
+    if signal.constant {self.name} else {"Initial value"}, 
+    self.getter.clone() + getter! (signal => signal.initial_value)
+  );
+  
+  js!{@{& container}.append (@{initial_value_input})}
+  
+  
+    
+  for (index, effect) in signal.effects.iter().enumerate() {
+    let effect_getter = self.getter.clone() + getter!(signal => signal.effects [index]);
+    let delete_button = button_input ("Delete",
+      input_callback_gotten_nullary (self.state, &self.getter, move | signal | {
+        signal.effects.remove (index);
+        true
+      })
+    );
+    macro_rules! effect_editors {
+      (
+        $([
+          $Variant: ident, $variant_name: expr,
+            $((
+              $field: ident, $name: expr, $input_method: ident
+            ))*
+        ])*) => {
+        match *effect {
+          $(SignalEffect::$Variant {..} => {
+            js!{@{& container}.append (@{$variant_name}+": ",@{delete_button});}
+            $(
+              js!{@{& container}.append (@{self.$input_method(
+                & format! ("{}_{}_{}", & self.id, index, stringify! ($field)),
+                $name,
+                effect_getter.clone() + variant_field_getter! (SignalEffect::$Variant => $field)
+              )})}
+            )*
+          },)*
+          _=>(),
+        }
+      }
+    }
+    effect_editors! {
+      [Jump, "Jump",
+        (time, "Time", time_input)
+        (size, "Size", difference_input)
+      ]
+      [Slide, "Slide",
+        (start, "Start", time_input)
+        (duration, "Duration", time_input)
+        (size, "Size", difference_input)
+      ]
+      [Oscillation, "Oscillation",
+        (size, "Size", difference_input)
+        (frequency, "Frequency", frequency_input)
+      ]
+    }
+  }
+  
+  let toggle_constant_button = button_input (
+    if signal.constant {"Complicate"} else {"Simplify"},
+    input_callback_gotten_nullary (self.state, &self.getter, move | signal | {
+      signal.constant = !signal.constant;
+      true
+    })
+  );
+  
+  
+  js!{ @{& container}.append (@{toggle_constant_button}); }
+  
+  if !signal.constant {
+    let range = self.difference_slider_range;
+    let add_jump_button = button_input (
+      "Add jump",
+      input_callback_gotten_nullary (self.state, &self.getter, move | signal | {
+        signal.effects.push (SignalEffect::Jump {time: UserTime::from_rendered (0.5), size: UserNumber::from_rendered (range [1])});
+        true
+      })
+    );
+    let add_slide_button = button_input (
+      "Add slide",
+      input_callback_gotten_nullary (self.state, &self.getter, move | signal | {
+        signal.effects.push (SignalEffect::Slide {start: UserTime::from_rendered (0.5), duration: UserTime::from_rendered (0.5), size: UserNumber::from_rendered (range [1]), smooth_start: true, smooth_stop: true });
+        true
+      })
+    );
+    let add_oscillation_button = button_input (
+      "Add oscillation",
+      input_callback_gotten_nullary (self.state, &self.getter, move | signal | {
+        signal.effects.push (SignalEffect::Oscillation {size: UserNumber::from_rendered (range [1]/3.0), frequency: UserNumber::from_rendered (4.0f32.log2()), waveform: Waveform::Square });
+        true
+      })
+    );
+    js!{ @{& container}.append (@{add_jump_button}, @{add_slide_button}, @{add_oscillation_button}); }
+
+  }
+  
+  }
+}
+  
+  
+  /*
    macro_rules! signal_input {
       ([$signal: ident $($args: tt)*] $effect: expr) => {{
       let get_signal_mut = get_signal_mut.clone();
@@ -251,6 +661,8 @@ fn add_signal_editor <
   })
       }}
     }
+  
+  
   
   for (index, control_point) in signal.control_points.iter().enumerate() {
     if signal.constant && index >0 {break;}
@@ -352,16 +764,21 @@ fn add_signal_editor <
     }}
   }
   
-  js!{
-    var callback = @{signal_input! ([signal] signal.constant = !signal.constant)};
-  @{& container}.append (
-    $("<input>", {
-      type: "button",
-      id: @{&id} + "constant",
-      value: @{signal.constant} ? "Complicate" : "Simplify"
-    }).click (function() {callback()})
-  );}
+
+
+      
+      
+      
+    });
+  }
 }
+
+fn add_signal_editor <T> () {
+  let get_signal = Rc::new (get_signal);
+  let get_signal_mut = Rc::new (get_signal_mut);
+  let guard = state.borrow();
+  let sound = & guard.sound;
+  let signal = get_signal (&guard) ;}*/
 
 fn display_samples <F: FnMut(f32)->f32> (sound: & SoundDefinition, mut sampler: F)->Vec<f32> {
   let num_samples = (sound.duration()*DISPLAY_SAMPLE_RATE).ceil() as usize + 1;
@@ -411,45 +828,49 @@ fn redraw(state: & Rc<RefCell<State>>) {
   
   let envelope_samples = display_samples (sound, | time | sound.envelope.sample (time));
   
+  macro_rules! envelope_input {
+  ($variable: ident, $name: expr, $range: expr) => {NumericalInputSpecification {
+    state: state,
+    id: stringify! ($variable),
+    name: $name, 
+    slider_range: $range,
+    current_value: sound.envelope.$variable.clone(),
+    input_callback: input_callback (state, move | state, value: UserTime | {
+      if value.rendered >= 0.0 && value.rendered <= 30.0 {
+        state.sound.envelope.$variable = value;
+        return true
+      }
+      false
+    }),
+  }.render()
+    }
+  }
+  
+  let waveform_input = RadioInputSpecification {
+    state: state, id: "waveform", name: "Waveform",
+    options: &[
+      (Waveform::Sine, "Sine"),
+      (Waveform::Square, "Square"),
+      (Waveform::Triangle, "Triangle"),
+      (Waveform::Sawtooth, "Sawtooth"), 
+    ],
+    current_value: sound.waveform.clone(),
+    input_callback: input_callback (state, move | state, value: Waveform | {
+      state.sound.waveform = value;
+      true
+    }),
+  }.render();
+  
   js! {
 $("#panels").empty();
+$("#panels").append ($("<div>", {class: "panel"}).append (@{waveform_input}));
 
-
-$("#panels").append ($("<div>", {class: "panel"}).append (radio_input ({
-  id: "waveform",
-  field: "waveform",
-  text: "Waveform",
-  current:@{&sound.waveform},
-  options: [
-    {value: "Sine", text: "Sine"},
-    {value: "Square", text: "Square"},
-    {value: "Triangle", text: "Triangle"},
-    {value: "Sawtooth", text: "Sawtooth"},
-  ]
-}, 
-  @{input_callback! ([state, value: Waveform] {
-    state.borrow_mut().sound.waveform = value;
-  })}
-)));
-  
       const envelope_editor = $("<div>", {class: "panel"});
       $("#panels").append (envelope_editor);
       envelope_editor.append (@{canvas_of_samples (&envelope_samples)});
-      envelope_editor.append (@{
-        time_editor (& guard, "attack", "Attack", sound.envelope.attack,
-          input_callback! ([state, value: f32] {state.borrow_mut().sound.envelope.attack = value;})
-        )
-      });
-      envelope_editor.append (@{
-        time_editor (& guard, "sustain", "Sustain", sound.envelope.sustain,
-          input_callback! ([state, value: f32] {state.borrow_mut().sound.envelope.sustain = value;})
-        )
-      });
-      envelope_editor.append (@{
-        time_editor (& guard, "decay", "Decay", sound.envelope.decay,
-          input_callback! ([state, value: f32] {state.borrow_mut().sound.envelope.decay = value;})
-        )
-      });  
+      envelope_editor.append (@{envelope_input!(attack, "Attack", [0.0, 1.0])});
+      envelope_editor.append (@{envelope_input!(sustain, "Sustain", [0.0, 3.0])});
+      envelope_editor.append (@{envelope_input!(decay, "Decay", [0.0, 3.0])});
   }
 
   let rendered: TypedArray <f32> = sound.render (44100).as_slice().into();
@@ -460,11 +881,31 @@ const sample_rate = 44100;
   const buffer = audio.createBuffer (1, rendered.length, sample_rate);
   buffer.copyToChannel (rendered, 0);
   play_buffer (buffer);
-  }
+  }  
+
   
   }
-  add_signal_editor (state, "frequency", "Frequency", |state| &state.sound.log_frequency, |state| &mut state.sound.log_frequency);
-  add_signal_editor (state, "bitcrush_frequency", "Bitcrush frequency", |state| &state.sound.log_bitcrush_frequency, |state| &mut state.sound.log_bitcrush_frequency);
+  
+  SignalEditorSpecification {
+    state: & state,
+    id: "frequency",
+    name: "Frequency",
+    slider_range: [20f32.log2(), 5000f32.log2()],
+    difference_slider_range: [-2.0, 2.0],
+    getter: getter! (state => state.sound.log_frequency),
+  }.render();
+  SignalEditorSpecification {
+    state: & state,
+    id: "bitcrush_frequency",
+    name: "Bitcrush frequency",
+    slider_range: [20f32.log2(), 48000f32.log2()],
+    difference_slider_range: [-5.0, 5.0],
+    getter: getter! (state => state.sound.log_bitcrush_frequency),
+  }.render();
+
+  
+  //add_signal_editor (state, "frequency", "Frequency", |state| &state.sound.log_frequency, |state| &mut state.sound.log_frequency);
+  //add_signal_editor (state, "bitcrush_frequency", "Bitcrush frequency", |state| &state.sound.log_bitcrush_frequency, |state| &mut state.sound.log_bitcrush_frequency);
 }
 
 
@@ -475,9 +916,9 @@ fn main() {
   let state = Rc::new (RefCell::new (State {
     sound: SoundDefinition {
       waveform: Waveform::Sine,
-      envelope: Envelope {attack: 0.1, sustain: 0.5, decay: 0.5},
-      log_frequency: Signal::constant (220.0_f32.log2()),
-      log_bitcrush_frequency: Signal::constant (44100.0_f32.log2()),
+      envelope: Envelope {attack: UserNumber::from_rendered (0.1), sustain: UserNumber::from_rendered (0.5), decay: UserNumber::from_rendered (0.5)},
+      log_frequency: Signal::constant (UserNumber::from_rendered (220.0_f32.log2())),
+      log_bitcrush_frequency: Signal::constant (UserNumber::from_rendered (44100.0_f32.log2())),
     }
   }));
   
