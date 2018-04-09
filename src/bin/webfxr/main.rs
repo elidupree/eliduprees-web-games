@@ -214,7 +214,7 @@ impl<T: UserNumberType> SignalEffect <T> {
           size.rendered*adjusted_fraction
         }
       },
-      SignalEffect::Oscillation {size, frequency, waveform} => size.rendered*waveform.sample (sample_time*frequency.rendered),
+      SignalEffect::Oscillation {size, frequency, waveform} => size.rendered*waveform.sample (sample_time*frequency.rendered.exp2()),
     }
   }
 }
@@ -530,6 +530,10 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   pub fn difference_input (&self, id: & str, name: & str, getter: Getter <State, UserNumber <T::DifferenceType>>)->Value {
     self.numeric_input (id, name, self.difference_slider_range, getter)
   }
+  
+  pub fn frequency_input (&self, id: & str, name: & str, getter: Getter <State, UserFrequency>)->Value {
+    self.numeric_input (id, name, [1.0f32.log2(), 20f32.log2()], getter)
+  }
 
 
   pub fn render (self) {
@@ -591,6 +595,15 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
       [Jump, "Jump",
         (time, "Time", time_input)
         (size, "Size", difference_input)
+      ]
+      [Slide, "Slide",
+        (start, "Start", time_input)
+        (duration, "Duration", time_input)
+        (size, "Size", difference_input)
+      ]
+      [Oscillation, "Oscillation",
+        (size, "Size", difference_input)
+        (frequency, "Frequency", frequency_input)
       ]
     }
   }
