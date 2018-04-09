@@ -481,49 +481,31 @@ pub struct SignalEditorSpecification <'a, T: UserNumberType> {
 }
 
 impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
-  pub fn time_input (&self, id: & str, name: & str, getter: Getter <State, UserTime>)->Value {
+  pub fn numeric_input <U: UserNumberType> (&self, id: & str, name: & str, slider_range: [f32; 2], getter: Getter <State, UserNumber <U>>)->Value {
     let current_value = getter.get (&self.state.borrow()).clone();
     NumericalInputSpecification {
       state: self.state,
       id: id,
       name: name, 
-      slider_range: [0.0, 3.0],
+      slider_range: slider_range,
       current_value: current_value,
-      input_callback: input_callback (self.state, move | state, value: UserTime | {
+      input_callback: input_callback (self.state, move | state, value: UserNumber <U> | {
         *getter.get_mut (state) = value;
         true
       }),
     }.render()
+  }
+
+  pub fn time_input (&self, id: & str, name: & str, getter: Getter <State, UserTime>)->Value {
+    self.numeric_input (id, name, [0.0, 3.0], getter)
   }
   
   pub fn value_input (&self, id: & str, name: & str, getter: Getter <State, UserNumber <T>>)->Value {
-    let current_value = getter.get (&self.state.borrow()).clone();
-    NumericalInputSpecification {
-      state: self.state,
-      id: id,
-      name: name, 
-      slider_range: self.slider_range,
-      current_value: current_value,
-      input_callback: input_callback (self.state, move | state, value: UserNumber <T> | {
-        *getter.get_mut (state) = value;
-        true
-      }),
-    }.render()
+    self.numeric_input (id, name, self.slider_range, getter)
   }
   
   pub fn difference_input (&self, id: & str, name: & str, getter: Getter <State, UserNumber <T::DifferenceType>>)->Value {
-    let current_value = getter.get (&self.state.borrow()).clone();
-    NumericalInputSpecification {
-      state: self.state,
-      id: id,
-      name: name, 
-      slider_range: self.difference_slider_range,
-      current_value: current_value,
-      input_callback: input_callback (self.state, move | state, value: UserNumber <T::DifferenceType> | {
-        *getter.get_mut (state) = value;
-        true
-      }),
-    }.render()
+    self.numeric_input (id, name, self.difference_slider_range, getter)
   }
 
   pub fn render (self) {
