@@ -370,13 +370,12 @@ pub fn input_callback_gotten_nullary<T, F> (state: &Rc<RefCell<State>>, getter: 
 }
 
 
-pub fn button_input<F: 'static + Fn()->bool> (id: & str, name: & str, callback: F)->Value {
+pub fn button_input<F: 'static + Fn()->bool> (name: & str, callback: F)->Value {
   let result: Value = js!{
-    $("<input>", {
+    return $("<input>", {
       type: "button",
-      id:@{id},
       value: @{name}
-    }).click (function() {@{callback}();})
+    }).click (function() {@{callback}();});
   };
   result
 }
@@ -579,7 +578,6 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   }
   
   let toggle_constant_button = button_input (
-    & format! ("{}_toggle_constant", & self.id),
     if signal.constant {"Complicate"} else {"Simplify"},
     input_callback_gotten_nullary (self.state, &self.getter, move | signal | {
       signal.constant = !signal.constant;
@@ -593,14 +591,27 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   if !signal.constant {
     let range = self.difference_slider_range;
     let add_jump_button = button_input (
-      & format! ("{}_add_jump", & self.id),
       "Add jump",
       input_callback_gotten_nullary (self.state, &self.getter, move | signal | {
         signal.effects.push (SignalEffect::Jump {time: UserTime::from_rendered (0.5), size: UserNumber::from_rendered (range [1])});
         true
       })
     );
-    js!{ @{& container}.append (@{add_jump_button}); }
+    let add_slide_button = button_input (
+      "Add slide",
+      input_callback_gotten_nullary (self.state, &self.getter, move | signal | {
+        signal.effects.push (SignalEffect::Slide {start: UserTime::from_rendered (0.5), duration: UserTime::from_rendered (0.5), size: UserNumber::from_rendered (range [1]), smooth_start: true, smooth_stop: true });
+        true
+      })
+    );
+    let add_oscillation_button = button_input (
+      "Add oscillation",
+      input_callback_gotten_nullary (self.state, &self.getter, move | signal | {
+        signal.effects.push (SignalEffect::Oscillation {size: UserNumber::from_rendered (range [1]/3.0), frequency: UserNumber::from_rendered (4.0f32.log2()), waveform: Waveform::Square });
+        true
+      })
+    );
+    js!{ @{& container}.append (@{add_jump_button}, @{add_slide_button}, @{add_oscillation_button}); }
 
   }
   
