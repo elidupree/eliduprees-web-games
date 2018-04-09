@@ -483,17 +483,47 @@ pub struct SignalEditorSpecification <'a, T: UserNumberType> {
 impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   pub fn time_input (&self, id: & str, name: & str, getter: Getter <State, UserTime>)->Value {
     let current_value = getter.get (&self.state.borrow()).clone();
-     NumericalInputSpecification {
-    state: self.state,
-    id: id,
-    name: name, 
-    slider_range: [0.0, 3.0],
-    current_value: current_value,
-    input_callback: input_callback (self.state, move | state, value: UserTime | {
-      *getter.get_mut (state) = value;
-      true
-    }),
-  }.render()
+    NumericalInputSpecification {
+      state: self.state,
+      id: id,
+      name: name, 
+      slider_range: [0.0, 3.0],
+      current_value: current_value,
+      input_callback: input_callback (self.state, move | state, value: UserTime | {
+        *getter.get_mut (state) = value;
+        true
+      }),
+    }.render()
+  }
+  
+  pub fn value_input (&self, id: & str, name: & str, getter: Getter <State, UserNumber <T>>)->Value {
+    let current_value = getter.get (&self.state.borrow()).clone();
+    NumericalInputSpecification {
+      state: self.state,
+      id: id,
+      name: name, 
+      slider_range: self.slider_range,
+      current_value: current_value,
+      input_callback: input_callback (self.state, move | state, value: UserNumber <T> | {
+        *getter.get_mut (state) = value;
+        true
+      }),
+    }.render()
+  }
+  
+  pub fn difference_input (&self, id: & str, name: & str, getter: Getter <State, UserNumber <T::DifferenceType>>)->Value {
+    let current_value = getter.get (&self.state.borrow()).clone();
+    NumericalInputSpecification {
+      state: self.state,
+      id: id,
+      name: name, 
+      slider_range: self.difference_slider_range,
+      current_value: current_value,
+      input_callback: input_callback (self.state, move | state, value: UserNumber <T::DifferenceType> | {
+        *getter.get_mut (state) = value;
+        true
+      }),
+    }.render()
   }
 
   pub fn render (self) {
@@ -510,42 +540,32 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     canvas_of_samples (& display_samples (& guard.sound, | time | signal.sample (time)))
   });}}
   
-  let time_slider_range = [0.0, 3.0];
-  
-  let initial_value_input = NumericalInputSpecification {
-    state: self.state,
-    id: & format! ("{}_initial", & self.id),
-    name: if signal.constant {self.name} else {"Initial value"}, 
-    slider_range: self.slider_range,
-    current_value: signal.initial_value.clone(),
-    input_callback: {let getter = self.getter.clone(); input_callback (self.state, move | state, value: UserNumber<T> | {
-      getter.get_mut (state).initial_value = value;
-      true
-    })},
-  }.render();
+  let initial_value_input = self.value_input (
+    & format! ("{}_initial", & self.id),
+    if signal.constant {self.name} else {"Initial value"}, 
+    self.getter.clone() + getter! (signal => signal.initial_value)
+  );
   
   js!{@{& container}.append (@{initial_value_input})}
   
   
     
   for (index, effect) in signal.effects.iter().enumerate() {
-    /*macro_rules! effect_callback {
-      {let getter = self.getter.clone(); input_callback (self.state, move | value: $T | {
-        if let
-        getter.with_mut (| signal | signal.initial_value = value.clone());
-        true
-      })}
-    }*/
     let effect_getter = self.getter.clone() + getter!(signal => signal.effects [index]);
 
     match *effect {
-      SignalEffect::Jump {ref time, ref size} => {
+      SignalEffect::Jump {..} => {
         let time_input = self.time_input (
           & format! ("{}_{}_time", & self.id, index),
           "Time",
           effect_getter.clone() + variant_field_getter! (SignalEffect::Jump => time)
         );
-        js!{@{& container}.append (@{time_input})}
+        let size_input = self.difference_input (
+          & format! ("{}_{}_size", & self.id, index),
+          "Size",
+          effect_getter.clone() + variant_field_getter! (SignalEffect::Jump => size)
+        );
+        js!{@{& container}.append (@{time_input},@{size_input})}
       }
       _=>(),
     }
@@ -836,7 +856,7 @@ const sample_rate = 44100;
     id: "frequency",
     name: "Frequency",
     slider_range: [20f32.log2(), 5000f32.log2()],
-    difference_slider_range: [-2f32.log2(), -2f32.log2()],
+    difference_slider_range: [-2.0, 2.0],
     getter: getter! (state => state.sound.log_frequency),
   }.render();
   SignalEditorSpecification {
@@ -844,7 +864,7 @@ const sample_rate = 44100;
     id: "bitcrush_frequency",
     name: "Bitcrush frequency",
     slider_range: [20f32.log2(), 48000f32.log2()],
-    difference_slider_range: [-5f32.log2(), -5f32.log2()],
+    difference_slider_range: [-5.0, 5.0],
     getter: getter! (state => state.sound.log_bitcrush_frequency),
   }.render();
 
