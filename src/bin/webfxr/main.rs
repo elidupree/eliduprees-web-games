@@ -558,22 +558,40 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     
   for (index, effect) in signal.effects.iter().enumerate() {
     let effect_getter = self.getter.clone() + getter!(signal => signal.effects [index]);
-
-    match *effect {
-      SignalEffect::Jump {..} => {
-        let time_input = self.time_input (
-          & format! ("{}_{}_time", & self.id, index),
-          "Time",
-          effect_getter.clone() + variant_field_getter! (SignalEffect::Jump => time)
-        );
-        let size_input = self.difference_input (
-          & format! ("{}_{}_size", & self.id, index),
-          "Size",
-          effect_getter.clone() + variant_field_getter! (SignalEffect::Jump => size)
-        );
-        js!{@{& container}.append (@{time_input},@{size_input})}
+    let delete_button = button_input ("Delete",
+      input_callback_gotten_nullary (self.state, &self.getter, move | signal | {
+        signal.effects.remove (index);
+        true
+      })
+    );
+    macro_rules! effect_editors {
+      (
+        $([
+          $Variant: ident, $variant_name: expr,
+            $((
+              $field: ident, $name: expr, $input_method: ident
+            ))*
+        ])*) => {
+        match *effect {
+          $(SignalEffect::$Variant {..} => {
+            js!{@{& container}.append (@{$variant_name}+": ",@{delete_button});}
+            $(
+              js!{@{& container}.append (@{self.$input_method(
+                & format! ("{}_{}_{}", & self.id, index, stringify! ($field)),
+                $name,
+                effect_getter.clone() + variant_field_getter! (SignalEffect::$Variant => $field)
+              )})}
+            )*
+          },)*
+          _=>(),
+        }
       }
-      _=>(),
+    }
+    effect_editors! {
+      [Jump, "Jump",
+        (time, "Time", time_input)
+        (size, "Size", difference_input)
+      ]
     }
   }
   
