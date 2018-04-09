@@ -312,19 +312,19 @@ impl <T: 'static,U: 'static,V: 'static> ::std::ops::Add<Getter <U, V>> for Gette
 macro_rules! getter {
   ($value: ident => $($path:tt)*) => {
     Getter {
-      get    : Rc::new (| $value | &    $($path)*),
-      get_mut: Rc::new (| $value | &mut $($path)*),
+      get    : Rc::new (move | $value | &    $($path)*),
+      get_mut: Rc::new (move | $value | &mut $($path)*),
     }
   }
 }
 macro_rules! variant_field_getter {
   ($Enum: ident::$Variant: ident => $field: ident) => {
     Getter {
-      get    : Rc::new (| $value | match $value {
+      get    : Rc::new (| value | match value {
         &    $Enum::$Variant {ref     $field,..} => $field,
         _ => unreachable!(),
       }),
-      get_mut: Rc::new (| $value | match $value {
+      get_mut: Rc::new (| value | match value {
         &mut $Enum::$Variant {ref mut $field,..} => $field,
         _ => unreachable!(),
       }),
@@ -481,6 +481,21 @@ pub struct SignalEditorSpecification <'a, T: UserNumberType> {
 }
 
 impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
+  pub fn time_input (&self, id: & str, name: & str, getter: Getter <State, UserTime>)->Value {
+    let current_value = getter.get (&self.state.borrow()).clone();
+     NumericalInputSpecification {
+    state: self.state,
+    id: id,
+    name: name, 
+    slider_range: [0.0, 3.0],
+    current_value: current_value,
+    input_callback: input_callback (self.state, move | state, value: UserTime | {
+      *getter.get_mut (state) = value;
+      true
+    }),
+  }.render()
+  }
+
   pub fn render (self) {
     
       let guard = self.state.borrow();
@@ -521,20 +536,15 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
         true
       })}
     }*/
+    let effect_getter = self.getter.clone() + getter!(signal => signal.effects [index]);
 
     match *effect {
       SignalEffect::Jump {ref time, ref size} => {
-        let time_input = NumericalInputSpecification {
-    state: self.state,
-    id: & format! ("{}_{}_time", & self.id, index),
-    name: "Time", 
-    slider_range: time_slider_range,
-    current_value: time.clone(),
-    input_callback: {let getter = self.getter.clone(); input_callback (self.state, move | state, value: UserTime | {
-      if let SignalEffect::Jump {ref mut time, ..} = getter.get_mut (state).effects [index] { *time = value; };
-      true
-    })},
-  }.render();
+        let time_input = self.time_input (
+          & format! ("{}_{}_time", & self.id, index),
+          "Time",
+          effect_getter.clone() + variant_field_getter! (SignalEffect::Jump => time)
+        );
         js!{@{& container}.append (@{time_input})}
       }
       _=>(),
