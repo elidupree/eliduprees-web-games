@@ -356,6 +356,16 @@ pub fn input_callback_nullary<F> (state: &Rc<RefCell<State>>, callback: F)->impl
 }
 
 
+pub fn button_input<F: 'static + Fn()->bool> (id: & str, name: & str, callback: F)->Value {
+  let result: Value = js!{
+    $("<input>", {
+      type: "button",
+      id:@{id},
+      value: @{name}
+    }).click (function() {@{callback}();})
+  };
+  result
+}
 
 //fn round_step (input: f32, step: f32)->f32 {(input*step).round()/step}
 
@@ -508,6 +518,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     self.numeric_input (id, name, self.difference_slider_range, getter)
   }
 
+
   pub fn render (self) {
     
       let guard = self.state.borrow();
@@ -553,43 +564,36 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     }
   }
   
-  
-  js!{
-
-  @{& container}.append (
-    $("<input>", {
-      type: "button",
-      id: @{&self.id} + "constant",
-      value: @{signal.constant} ? "Complicate" : "Simplify"
-    }).click (function() {@{{
+  let toggle_constant_button = button_input (
+    & format! ("{}_toggle_constant", & self.id),
+    if signal.constant {"Complicate"} else {"Simplify"},
+    {
       let getter = self.getter.clone();
       input_callback_nullary (self.state, move | state | {
         let signal = getter.get_mut (state);
         signal.constant = !signal.constant;
         true
       })
-    }}();})
+    }
   );
-  }
+  
+  
+  js!{ @{& container}.append (@{toggle_constant_button}); }
   
   if !signal.constant {
-    js!{
-
-  @{& container}.append (
-    $("<input>", {
-      type: "button",
-      id: @{&self.id} + "constant",
-      value: "Add jump"
-    }).click (function() {@{{
+    let add_jump_button = button_input (
+    & format! ("{}_add_jump", & self.id),
+    "Add jump",
+    {
       let getter = self.getter.clone();
       let range = self.difference_slider_range;
       input_callback_nullary (self.state, move | state | {
         getter.get_mut (state).effects.push (SignalEffect::Jump {time: UserTime::from_rendered (0.5), size: UserNumber::from_rendered (range [1])});
         true
       })
-    }}();})
+    }
   );
-  }
+    js!{ @{& container}.append (@{add_jump_button}); }
 
   }
   
