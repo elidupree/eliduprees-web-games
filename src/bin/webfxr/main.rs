@@ -582,17 +582,17 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   
   if !signal.constant {
     let add_jump_button = button_input (
-    & format! ("{}_add_jump", & self.id),
-    "Add jump",
-    {
-      let getter = self.getter.clone();
-      let range = self.difference_slider_range;
-      input_callback_nullary (self.state, move | state | {
-        getter.get_mut (state).effects.push (SignalEffect::Jump {time: UserTime::from_rendered (0.5), size: UserNumber::from_rendered (range [1])});
-        true
-      })
-    }
-  );
+      & format! ("{}_add_jump", & self.id),
+      "Add jump",
+      {
+        let getter = self.getter.clone();
+        let range = self.difference_slider_range;
+        input_callback_nullary (self.state, move | state | {
+          getter.get_mut (state).effects.push (SignalEffect::Jump {time: UserTime::from_rendered (0.5), size: UserNumber::from_rendered (range [1])});
+          true
+        })
+      }
+    );
     js!{ @{& container}.append (@{add_jump_button}); }
 
   }
