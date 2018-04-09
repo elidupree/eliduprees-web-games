@@ -282,26 +282,52 @@ impl SoundDefinition {
 
 #[derive (Derivative)]
 #[derivative (Clone (bound =""))]
-pub struct Getter <T> {
-  with: Rc <Fn(&mut FnMut(&T))>,
-  with_mut: Rc <Fn(&mut FnMut(&mut T))>,
+pub struct Getter <T, U> {
+  get: Rc <Fn(&T)->&U>,
+  get_mut: Rc <Fn(&mut T)->&mut U>,
 }
-impl <T> Getter <T> {
-  fn with <F: FnMut (& T)> (&self, mut callback: F) {
-    (self.with) (&mut callback);
+impl <T, U> Getter <T, U> {
+  fn get<'a, 'b> (&'a self, value: &'b T)->&'b U {
+    (self.get) (value)
   }
-  fn with_mut <F: FnMut (& mut T)> (&self, mut callback: F) {
-    (self.with_mut) (&mut callback);
+  fn get_mut<'a, 'b> (&'a self, value: &'b mut T)->&'b mut U {
+    (self.get_mut) (value)
   }
 }
 
-macro_rules! state_getter {
-  ($state: ident, $($path:tt)*) => {
+impl <T: 'static,U: 'static,V: 'static> ::std::ops::Add<Getter <U, V>> for Getter <T, U> {
+  type Output = Getter <T, V>;
+  fn add (self, other: Getter <U, V>)->Self::Output {
+    let my_get = self.get;
+    let my_get_mut = self.get_mut;
+    let other_get = other.get;
+    let other_get_mut = other.get_mut;
     Getter {
-      with    : {let $state = $state.clone(); Rc::new (move |f| {
-        let     $state = $state.borrow    (); (f)(&    $($path)*)})},
-      with_mut: {let $state = $state.clone(); Rc::new (move |f| {
-        let mut $state = $state.borrow_mut(); (f)(&mut $($path)*)})},
+      get: Rc::new (move | value | (other_get) ((my_get) (value))),
+      get_mut: Rc::new (move | value | (other_get_mut) ((my_get_mut) (value))),
+    }
+  }
+}
+
+macro_rules! getter {
+  ($value: ident => $($path:tt)*) => {
+    Getter {
+      get    : Rc::new (| $value | &    $($path)*),
+      get_mut: Rc::new (| $value | &mut $($path)*),
+    }
+  }
+}
+macro_rules! variant_field_getter {
+  ($Enum: ident::$Variant: ident => $field: ident) => {
+    Getter {
+      get    : Rc::new (| $value | match $value {
+        &    $Enum::$Variant {ref     $field,..} => $field,
+        _ => unreachable!(),
+      }),
+      get_mut: Rc::new (| $value | match $value {
+        &mut $Enum::$Variant {ref mut $field,..} => $field,
+        _ => unreachable!(),
+      }),
     }
   }
 }
@@ -309,10 +335,10 @@ macro_rules! state_getter {
 
 pub fn input_callback<T, F> (state: &Rc<RefCell<State>>, callback: F)->impl (Fn (T)->bool)
   where
-    F: Fn(T)->bool {
+    F: Fn(&mut State, T)->bool {
   let state = state.clone();
   move |arg: T| {
-    let success = (callback)(arg);
+    let success = (callback)(&mut state.borrow_mut(), arg);
     if success {
       redraw (&state);
     }
@@ -322,8 +348,8 @@ pub fn input_callback<T, F> (state: &Rc<RefCell<State>>, callback: F)->impl (Fn 
 
 pub fn input_callback_nullary<F> (state: &Rc<RefCell<State>>, callback: F)->impl (Fn ()->bool)
   where
-    F: Fn()->bool {
-  let hack = input_callback (state, move |()| (callback)());
+    F: Fn(&mut State)->bool {
+  let hack = input_callback (state, move | state,()| (callback)(state));
   move || {
     (hack)(())
   }
@@ -451,14 +477,14 @@ pub struct SignalEditorSpecification <'a, T: UserNumberType> {
   name: & 'a str,
   slider_range: [f32; 2],
   difference_slider_range: [f32; 2],
-  getter: Getter <Signal <T>>
+  getter: Getter <State, Signal <T>>
 }
 
 impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   pub fn render (self) {
-    self.getter.with(|signal| {
+    
       let guard = self.state.borrow();
-      
+    let signal = self.getter.get (& guard);
       
   let container = js!{ return $("<div>", {id:@{self.id}, class: "panel"});};
   js!{ $("#panels").append (@{& container});}
@@ -477,8 +503,8 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     name: if signal.constant {self.name} else {"Initial value"}, 
     slider_range: self.slider_range,
     current_value: signal.initial_value.clone(),
-    input_callback: {let getter = self.getter.clone(); input_callback (self.state, move | value: UserNumber<T> | {
-      getter.with_mut (| signal | signal.initial_value = value.clone());
+    input_callback: {let getter = self.getter.clone(); input_callback (self.state, move | state, value: UserNumber<T> | {
+      getter.get_mut (state).initial_value = value;
       true
     })},
   }.render();
@@ -504,8 +530,8 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     name: "Time", 
     slider_range: time_slider_range,
     current_value: time.clone(),
-    input_callback: {let getter = self.getter.clone(); input_callback (self.state, move | value: UserTime | {
-      getter.with_mut (| signal | if let SignalEffect::Jump {ref mut time, ..} = signal.effects [index] { *time = value.clone(); } );
+    input_callback: {let getter = self.getter.clone(); input_callback (self.state, move | state, value: UserTime | {
+      if let SignalEffect::Jump {ref mut time, ..} = getter.get_mut (state).effects [index] { *time = value; };
       true
     })},
   }.render();
@@ -525,8 +551,9 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
       value: @{signal.constant} ? "Complicate" : "Simplify"
     }).click (function() {@{{
       let getter = self.getter.clone();
-      input_callback_nullary (self.state, move || {
-        getter.with_mut (| signal | signal.constant = !signal.constant);
+      input_callback_nullary (self.state, move | state | {
+        let signal = getter.get_mut (state);
+        signal.constant = !signal.constant;
         true
       })
     }}();})
@@ -544,8 +571,8 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     }).click (function() {@{{
       let getter = self.getter.clone();
       let range = self.difference_slider_range;
-      input_callback_nullary (self.state, move || {
-        getter.with_mut (| signal | signal.effects.push (SignalEffect::Jump {time: UserTime::from_rendered (0.5), size: UserNumber::from_rendered (range [1])}));
+      input_callback_nullary (self.state, move | state | {
+        getter.get_mut (state).effects.push (SignalEffect::Jump {time: UserTime::from_rendered (0.5), size: UserNumber::from_rendered (range [1])});
         true
       })
     }}();})
@@ -554,7 +581,6 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
 
   }
   
-    })
   }
 }
   
@@ -744,13 +770,13 @@ fn redraw(state: & Rc<RefCell<State>>) {
     name: $name, 
     slider_range: $range,
     current_value: sound.envelope.$variable.clone(),
-    input_callback: {let state2 = state.clone(); input_callback (state, move | value: UserTime | {
+    input_callback: input_callback (state, move | state, value: UserTime | {
       if value.rendered >= 0.0 && value.rendered <= 30.0 {
-        state2.borrow_mut().sound.envelope.$variable = value;
+        state.sound.envelope.$variable = value;
         return true
       }
       false
-    })},
+    }),
   }.render()
     }
   }
@@ -764,10 +790,10 @@ fn redraw(state: & Rc<RefCell<State>>) {
       (Waveform::Sawtooth, "Sawtooth"), 
     ],
     current_value: sound.waveform.clone(),
-    input_callback: {let state2 = state.clone(); input_callback (state, move | value: Waveform | {
-      state2.borrow_mut().sound.waveform = value;
+    input_callback: input_callback (state, move | state, value: Waveform | {
+      state.sound.waveform = value;
       true
-    })},
+    }),
   }.render();
   
   js! {
@@ -801,7 +827,7 @@ const sample_rate = 44100;
     name: "Frequency",
     slider_range: [20f32.log2(), 5000f32.log2()],
     difference_slider_range: [-2f32.log2(), -2f32.log2()],
-    getter: state_getter! (state, state.sound.log_frequency),
+    getter: getter! (state => state.sound.log_frequency),
   }.render();
   SignalEditorSpecification {
     state: & state,
@@ -809,7 +835,7 @@ const sample_rate = 44100;
     name: "Bitcrush frequency",
     slider_range: [20f32.log2(), 48000f32.log2()],
     difference_slider_range: [-5f32.log2(), -5f32.log2()],
-    getter: state_getter! (state, state.sound.log_bitcrush_frequency),
+    getter: getter! (state => state.sound.log_bitcrush_frequency),
   }.render();
 
   
