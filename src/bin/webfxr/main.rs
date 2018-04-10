@@ -11,6 +11,7 @@ extern crate serde_derive;
 #[macro_use]
 extern crate derivative;
 extern crate nalgebra;
+extern crate rand;
 extern crate ordered_float;
 
 use std::rc::Rc;
@@ -99,6 +100,14 @@ const sample_rate = 44100;
   }.render();
   SignalEditorSpecification {
     state: & state,
+    id: "volume",
+    name: "Volume",
+    slider_range: [0.0,1.0],
+    difference_slider_range: [-1.0, 1.0],
+    getter: getter! (state => state.sound.volume),
+  }.render();
+  SignalEditorSpecification {
+    state: & state,
     id: "lowpass",
     name: "Low-pass filter cutoff",
     slider_range: [20f32.log2(), 48000f32.log2()],
@@ -133,6 +142,7 @@ fn main() {
       waveform: Waveform::Sine,
       envelope: Envelope {attack: UserNumber::from_rendered (0.1), sustain: UserNumber::from_rendered (0.5), decay: UserNumber::from_rendered (0.5)},
       log_frequency: Signal::constant (UserNumber::from_rendered (220.0_f32.log2())),
+      volume: Signal::constant (UserNumber::from_rendered (0.04)),
       log_bitcrush_frequency: Signal::constant (UserNumber::from_rendered (44100.0_f32.log2())),
       log_lowpass_filter_cutoff: Signal::constant (UserNumber::from_rendered (44100.0_f32.log2())),
       log_highpass_filter_cutoff: Signal::constant (UserNumber::from_rendered (20.0_f32.log2())),

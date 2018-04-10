@@ -1,4 +1,3 @@
-
 use std::str::FromStr;
 use serde::{Serialize};
 use serde::de::DeserializeOwned;
@@ -9,6 +8,9 @@ use serde::de::DeserializeOwned;
 pub const TURN: f32 = ::std::f32::consts::PI*2.0;
 
 pub const DISPLAY_SAMPLE_RATE: f32 = 50.0;
+
+pub fn min (first: f32, second: f32)->f32 {if first < second {first} else {second}}
+pub fn max (first: f32, second: f32)->f32 {if first > second {first} else {second}}
 
 #[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Derivative)]
 #[derivative (Default)]
@@ -27,6 +29,12 @@ pub enum IntervalType {
 pub enum TimeType {
   #[derivative (Default)]
   Seconds,
+}
+#[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Derivative)]
+#[derivative (Default)]
+pub enum DimensionlessType {
+  #[derivative (Default)]
+  Raw,
 }
 pub trait UserNumberType: 'static + Clone + Eq + Serialize + DeserializeOwned + Default {
   type DifferenceType: UserNumberType;
@@ -103,6 +111,24 @@ impl UserNumberType for TimeType {
     }
   }
 }
+impl UserNumberType for DimensionlessType {
+  type DifferenceType = Self;
+  fn render (&self, value: & str)->Option <f32> {
+    match *self {
+      DimensionlessType::Raw => f32::from_str (value).ok().filter (| value | value.is_finite())
+    }
+  }
+  fn approximate_from_rendered (&self, rendered: f32)->String {
+    match *self {
+      DimensionlessType::Raw => format!("{:.3}", rendered)
+    }
+  }
+  fn unit_name (&self)->&'static str {
+    match *self {
+      DimensionlessType::Raw => ""
+    }
+  }
+}
 impl<T: UserNumberType> UserNumber <T> {
   pub fn new (value_type: T, source: String)->Option <Self> {
     value_type.render (&source).map (| rendered | UserNumber {
@@ -159,6 +185,7 @@ pub struct SoundDefinition {
   pub waveform: Waveform,
   pub envelope: Envelope,
   pub log_frequency: Signal <FrequencyType>,
+  pub volume: Signal <DimensionlessType>,
   pub log_lowpass_filter_cutoff: Signal <FrequencyType>,
   pub log_highpass_filter_cutoff: Signal <FrequencyType>,
   pub log_bitcrush_frequency: Signal <FrequencyType>,
@@ -253,7 +280,7 @@ impl SoundDefinition {
     for index in 0..num_frames {
       let time = index as f32/sample_rate as f32;
       
-      let mut sample = self.waveform.sample (wave_phase)*self.envelope.sample (time)/25.0;
+      let mut sample = self.waveform.sample (wave_phase)*self.envelope.sample (time)*max (0.0, self.volume.sample (time));
       
       //note: the formulas for the filter cutoff are based on a first-order filter, so they are not exactly correct for this. TODO fix
       let lowpass_filter_frequency = self.log_lowpass_filter_cutoff.sample (time).exp2();
