@@ -50,20 +50,7 @@ fn redraw(state: & Rc<RefCell<State>>) {
     }
   }
   
-  let waveform_input = RadioInputSpecification {
-    state: state, id: "waveform", name: "Waveform",
-    options: &[
-      (Waveform::Sine, "Sine"),
-      (Waveform::Square, "Square"),
-      (Waveform::Triangle, "Triangle"),
-      (Waveform::Sawtooth, "Sawtooth"), 
-    ],
-    current_value: sound.waveform.clone(),
-    input_callback: input_callback (state, move | state, value: Waveform | {
-      state.sound.waveform = value;
-      true
-    }),
-  }.render();
+  let waveform_input = waveform_input (state, "waveform", "Waveform", getter! (state => state.sound.waveform));
   
   js! {
 $("#panels").empty();

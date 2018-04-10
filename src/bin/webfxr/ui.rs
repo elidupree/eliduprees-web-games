@@ -82,14 +82,14 @@ pub fn input_callback_nullary<F> (state: &Rc<RefCell<State>>, callback: F)->impl
   }
 }
 
-pub fn input_callback_gotten<T, U, F> (state: &Rc<RefCell<State>>, getter: &Getter <State, T>, callback: F)->impl (Fn (U)->bool)
+pub fn input_callback_gotten<T, U, F> (state: &Rc<RefCell<State>>, getter: Getter <State, T>, callback: F)->impl (Fn (U)->bool)
   where
     F: Fn(&mut T, U)->bool {
   let getter = getter.clone();
   input_callback (state, move | state, arg | (callback)(getter.get_mut (state), arg))
 }
 
-pub fn input_callback_gotten_nullary<T, F> (state: &Rc<RefCell<State>>, getter: &Getter <State, T>, callback: F)->impl (Fn ()->bool)
+pub fn input_callback_gotten_nullary<T, F> (state: &Rc<RefCell<State>>, getter: Getter <State, T>, callback: F)->impl (Fn ()->bool)
   where
     F: Fn(&mut T)->bool {
   let getter = getter.clone();
@@ -106,6 +106,42 @@ pub fn button_input<F: 'static + Fn()->bool> (name: & str, callback: F)->Value {
   };
   result
 }
+
+pub fn checkbox_input (state: &Rc<RefCell<State>>, id: & str, name: & str, getter: Getter <State, bool>)->Value {
+  let current_value = getter.get (&state.borrow()).clone();
+  let callback = input_callback_gotten (state, getter, | target, value: bool | {
+    *target = value;
+    true
+  });
+  let result: Value = js!{
+    var input;
+    return $("<div>", {class: "labeled_input"}).append (
+      input = $("<input>", {type: "checkbox", id: @{id}, checked:@{current_value}}).click (function() {@{callback}(input.prop ("checked"));}),
+      $("<label>", {"for": @{id}, text: @{name}})
+    );
+  };
+  result
+}
+
+pub fn waveform_input (state: &Rc<RefCell<State>>, id: & str, name: & str, getter: Getter <State, Waveform>)->Value {
+  let current_value = getter.get (&state.borrow()).clone();
+  RadioInputSpecification {
+    state: state, id: id, name: name,
+    options: &[
+      (Waveform::Sine, "Sine"),
+      (Waveform::Square, "Square"),
+      (Waveform::Triangle, "Triangle"),
+      (Waveform::Sawtooth, "Sawtooth"), 
+    ],
+    current_value: current_value,
+    input_callback: input_callback_gotten (state, getter, | target, value: Waveform | {
+      *target = value;
+      true
+    }),
+  }.render()
+}
+
+
 
 //fn round_step (input: f32, step: f32)->f32 {(input*step).round()/step}
 
@@ -261,6 +297,13 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   pub fn frequency_input (&self, id: & str, name: & str, getter: Getter <State, UserFrequency>)->Value {
     self.numeric_input (id, name, [1.0f32.log2(), 20f32.log2()], getter)
   }
+  
+  pub fn checkbox_input (&self, id: & str, name: & str, getter: Getter <State, bool>)->Value {
+    checkbox_input (self.state, id, name, getter)
+  }
+  pub fn waveform_input (&self, id: & str, name: & str, getter: Getter <State, Waveform>)->Value {
+    waveform_input (self.state, id, name, getter)
+  }
 
 
   pub fn render (self) {
@@ -290,7 +333,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   if !signal.constant {for (index, effect) in signal.effects.iter().enumerate() {
     let effect_getter = self.getter.clone() + getter!(signal => signal.effects [index]);
     let delete_button = button_input ("Delete",
-      input_callback_gotten_nullary (self.state, &self.getter, move | signal | {
+      input_callback_gotten_nullary (self.state, self.getter.clone(), move | signal | {
         signal.effects.remove (index);
         true
       })
@@ -327,17 +370,20 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
         (start, "Start", time_input)
         (duration, "Duration", time_input)
         (size, "Size", difference_input)
+        (smooth_start, "Smooth start", checkbox_input)
+        (smooth_stop, "Smooth stop", checkbox_input)
       ]
       [Oscillation, "Oscillation",
         (size, "Size", difference_input)
         (frequency, "Frequency", frequency_input)
+        (waveform, "Waveform", waveform_input)
       ]
     }
   }}
   
   let toggle_constant_button = button_input (
     if signal.constant {"Complicate"} else {"Simplify"},
-    input_callback_gotten_nullary (self.state, &self.getter, move | signal | {
+    input_callback_gotten_nullary (self.state, self.getter.clone(), move | signal | {
       signal.constant = !signal.constant;
       true
     })
@@ -350,21 +396,21 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     let range = self.difference_slider_range;
     let add_jump_button = button_input (
       "Add jump",
-      input_callback_gotten_nullary (self.state, &self.getter, move | signal | {
+      input_callback_gotten_nullary (self.state, self.getter.clone(), move | signal | {
         signal.effects.push (SignalEffect::Jump {time: UserTime::from_rendered (0.5), size: UserNumber::from_rendered (range [1])});
         true
       })
     );
     let add_slide_button = button_input (
       "Add slide",
-      input_callback_gotten_nullary (self.state, &self.getter, move | signal | {
+      input_callback_gotten_nullary (self.state, self.getter.clone(), move | signal | {
         signal.effects.push (SignalEffect::Slide {start: UserTime::from_rendered (0.5), duration: UserTime::from_rendered (0.5), size: UserNumber::from_rendered (range [1]), smooth_start: true, smooth_stop: true });
         true
       })
     );
     let add_oscillation_button = button_input (
       "Add oscillation",
-      input_callback_gotten_nullary (self.state, &self.getter, move | signal | {
+      input_callback_gotten_nullary (self.state, self.getter.clone(), move | signal | {
         signal.effects.push (SignalEffect::Oscillation {size: UserNumber::from_rendered (range [1]/3.0), frequency: UserNumber::from_rendered (4.0f32.log2()), waveform: Waveform::Square });
         true
       })
