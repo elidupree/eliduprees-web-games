@@ -177,6 +177,8 @@ pub struct SoundDefinition {
   pub waveform: Waveform,
   pub envelope: Envelope,
   pub log_frequency: Signal <FrequencyType>,
+  pub log_lowpass_filter_cutoff: Signal <FrequencyType>,
+  pub log_highpass_filter_cutoff: Signal <FrequencyType>,
   pub log_bitcrush_frequency: Signal <FrequencyType>,
 }
 
@@ -258,10 +260,38 @@ impl SoundDefinition {
     let frame_duration = 1.0/sample_rate as f32;
     let mut frames = Vec::with_capacity (num_frames as usize);
     
+    // BFXR uses first-order digital RC low/high pass filters.
+    // Personally, I always end up feeling like the rolloff isn't steep enough.
+    // So I chain multiples of them together.
+    const FILTER_ITERATIONS: usize = 3;
+    let mut lowpass_filter_state = [0.0; FILTER_ITERATIONS];
+    let mut highpass_filter_state = [0.0; FILTER_ITERATIONS];
+    let mut highpass_filter_prev_input = [0.0; FILTER_ITERATIONS];
+    
     for index in 0..num_frames {
       let time = index as f32/sample_rate as f32;
       
-      let sample = self.waveform.sample (wave_phase)*self.envelope.sample (time)/25.0;
+      let mut sample = self.waveform.sample (wave_phase)*self.envelope.sample (time)/25.0;
+      
+      //note: the formulas for the filter cutoff are based on a first-order filter, so they are not exactly correct for this. TODO fix
+      let lowpass_filter_frequency = self.log_lowpass_filter_cutoff.sample (time).exp2();
+      let dt = 1.0/sample_rate as f32;
+      let rc = 1.0/(TURN*lowpass_filter_frequency);
+      let lowpass_filter_constant = dt/(dt + rc);
+      for iteration in 0..FILTER_ITERATIONS {
+        lowpass_filter_state [iteration] = lowpass_filter_state [iteration] + lowpass_filter_constant * (sample - lowpass_filter_state [iteration]);
+        sample = lowpass_filter_state [iteration];
+      }
+      let highpass_filter_frequency = self.log_highpass_filter_cutoff.sample (time).exp2();
+      let rc = 1.0/(TURN*highpass_filter_frequency);
+      let highpass_filter_constant = rc/(rc + dt);
+      for iteration in 0..FILTER_ITERATIONS {
+        highpass_filter_state [iteration] = highpass_filter_constant * (
+          highpass_filter_state [iteration] + (sample - highpass_filter_prev_input [iteration]));
+        highpass_filter_prev_input [iteration] = sample;
+        sample = highpass_filter_state [iteration];
+      }
+      
       if bitcrush_phase >= 1.0 {
         bitcrush_phase -= 1.0;
         if bitcrush_phase >1.0 {bitcrush_phase = 1.0;}
@@ -896,16 +926,28 @@ const sample_rate = 44100;
   }.render();
   SignalEditorSpecification {
     state: & state,
+    id: "lowpass",
+    name: "Low-pass filter cutoff",
+    slider_range: [20f32.log2(), 48000f32.log2()],
+    difference_slider_range: [-5.0, 5.0],
+    getter: getter! (state => state.sound.log_lowpass_filter_cutoff),
+  }.render();
+  SignalEditorSpecification {
+    state: & state,
+    id: "highpass",
+    name: "High-pass filter cutoff",
+    slider_range: [20f32.log2(), 20000f32.log2()],
+    difference_slider_range: [-5.0, 5.0],
+    getter: getter! (state => state.sound.log_highpass_filter_cutoff),
+  }.render();
+  SignalEditorSpecification {
+    state: & state,
     id: "bitcrush_frequency",
     name: "Bitcrush frequency",
     slider_range: [20f32.log2(), 48000f32.log2()],
     difference_slider_range: [-5.0, 5.0],
     getter: getter! (state => state.sound.log_bitcrush_frequency),
   }.render();
-
-  
-  //add_signal_editor (state, "frequency", "Frequency", |state| &state.sound.log_frequency, |state| &mut state.sound.log_frequency);
-  //add_signal_editor (state, "bitcrush_frequency", "Bitcrush frequency", |state| &state.sound.log_bitcrush_frequency, |state| &mut state.sound.log_bitcrush_frequency);
 }
 
 
@@ -919,6 +961,8 @@ fn main() {
       envelope: Envelope {attack: UserNumber::from_rendered (0.1), sustain: UserNumber::from_rendered (0.5), decay: UserNumber::from_rendered (0.5)},
       log_frequency: Signal::constant (UserNumber::from_rendered (220.0_f32.log2())),
       log_bitcrush_frequency: Signal::constant (UserNumber::from_rendered (44100.0_f32.log2())),
+      log_lowpass_filter_cutoff: Signal::constant (UserNumber::from_rendered (44100.0_f32.log2())),
+      log_highpass_filter_cutoff: Signal::constant (UserNumber::from_rendered (20.0_f32.log2())),
     }
   }));
   
