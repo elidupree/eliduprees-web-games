@@ -1,11 +1,7 @@
 use std::rc::Rc;
 use std::cell::RefCell;
-use std::str::FromStr;
 use stdweb::unstable::{TryInto, TryFrom};
-use stdweb::web::TypedArray;
 use stdweb::{JsSerialize, Value};
-use serde::{Serialize};
-use serde::de::DeserializeOwned;
 use ordered_float::OrderedFloat;
 
 use super::*;
@@ -318,7 +314,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
               )})}
             )*
           },)*
-          _=>(),
+          //_=>(),
         }
       }
     }
@@ -380,136 +376,6 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   }
 }
 
-  
-  /*
-   macro_rules! signal_input {
-      ([$signal: ident $($args: tt)*] $effect: expr) => {{
-      let get_signal_mut = get_signal_mut.clone();
-  input_callback! ([state $($args)*] {
-    let mut guard = state.borrow_mut();
-    let $signal = get_signal_mut (&mut guard) ;
-    $effect
-  })
-      }}
-    }
-  
-  
-  
-  for (index, control_point) in signal.control_points.iter().enumerate() {
-    if signal.constant && index >0 {break;}
-    let id = format! ("{}_{}", id, index);
-    macro_rules! control_input {
-      ([$control: ident $($args: tt)*] $effect: expr) => {{
-      let get_signal_mut = get_signal_mut.clone();
-  input_callback! ([state $($args)*] {
-    let mut guard = state.borrow_mut();
-    let signal = get_signal_mut (&mut guard) ;
-    let $control = &mut signal.control_points [index];
-    $effect
-  })
-      }}
-    }
-    
-    let control_editor = js!{
-      const control_editor = $("<div>");
-      @{& container}.append (control_editor);
-      return control_editor;
-    };
-    
-    if index >0 {js!{
-      @{& control_editor}.append (@{
-        time_editor (& guard, & format! ("{}_time", &id), "Time", control_point.time,
-          control_input! ([control, value: f32] control.time = value)
-        )
-      })
-    }}
-    
-    js!{
-      var frequency_editor = @{
-        frequency_editor (& guard, & format! ("{}_frequency", &id), "Frequency", control_point.value, control_input! ([control, value: f32] control.value = value))
-      };
-      @{& control_editor}.append (frequency_editor) ;
-      if (@{signal.constant}) {
-        @{& control_editor}.css ("display", "inline");
-        frequency_editor.css ("display", "inline");
-      }
-    }
-    if !signal.constant {js!{
-      if (@{index >0}) {
-        var jump_editor = @{
-          frequency_editor (& guard, & format! ("{}_jump", &id), "Jump to", control_point.value_after_jump, control_input! ([control, value: f32] control.value_after_jump = value))
-        };
-        @{& control_editor}.append (jump_editor) ;
-        jump_editor.prepend (
-          $("<input>", {type: "checkbox", checked:@{control_point.jump}}).on ("input", function(event) {
-            @{control_input! ([control] control.jump = !control.jump)}();
-          })
-        );
-      }
-@{& control_editor}.append (numerical_input ({
-  id: @{&id} + "slope",
-  text: "Slope (Octaves/second)",
-  min: - 10.0,
-  max: 10.0,
-  current:@{round_step (control_point.slope, 1000.0)},
-  step: 0.01,
-}, 
-  @{control_input! ([control, value: f64] control.slope = value as f32)}
-      )) ;
-      
-      if (@{index >0}) {
-      var delete_callback = @{signal_input! ([signal] {
-        signal.control_points.remove (index);
-      })};
-      @{& control_editor}.append ($("<input>", {
-        type: "button",
-        id: @{&id} + "delete_control",
-        value: "Delete control point"
-      }).click (function() {delete_callback()})
-      );   
-      }   
-
-      var callback = @{signal_input! ([signal] {
-        let previous = signal.control_points [index].clone();
-        let next = signal.control_points.get (index + 1).cloned();
-        let time = match next {
-          None => previous.time + 0.5,
-          Some (thingy) => (previous.time + thingy.time)/2.0,
-        };
-        let value = signal.sampler().sample(time);
-        let offset = 0.000001;
-        let offset_value = signal.sampler().sample (time + offset) ;
-        let slope = (offset_value - value)/offset;
-        signal.control_points.insert (index + 1, ControlPoint {
-          time: time, value: value, slope: slope,
-          jump: false, value_after_jump: value,
-        });
-      })};
-      @{& container}.append ($("<input>", {
-        type: "button",
-        id: @{&id} + "add_control",
-        value: "Add control point"
-      }).click (function() {callback()})
-      );
-      
-    }}
-  }
-  
-
-
-      
-      
-      
-    });
-  }
-}
-
-fn add_signal_editor <T> () {
-  let get_signal = Rc::new (get_signal);
-  let get_signal_mut = Rc::new (get_signal_mut);
-  let guard = state.borrow();
-  let sound = & guard.sound;
-  let signal = get_signal (&guard) ;}*/
 
 pub fn display_samples <F: FnMut(f32)->f32> (sound: & SoundDefinition, mut sampler: F)->Vec<f32> {
   let num_samples = (sound.duration()*DISPLAY_SAMPLE_RATE).ceil() as usize + 1;
