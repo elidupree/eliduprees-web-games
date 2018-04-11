@@ -21,8 +21,10 @@ use stdweb::web::TypedArray;
 #[macro_use]
 mod data;
 mod ui;
+mod randomization;
 pub use data::*;
 pub use ui::*;
+pub use randomization::*;
 
 
 fn redraw(state: & Rc<RefCell<State>>) {
@@ -30,6 +32,13 @@ fn redraw(state: & Rc<RefCell<State>>) {
   let sound = & guard.sound;
   
   let envelope_samples = display_samples (sound, | time | sound.envelope.sample (time));
+  
+  let randomize_button = button_input ("Randomize",
+    input_callback_nullary (state, move | state | {
+      state.sound = random_sound (&mut rand::thread_rng());
+      true
+    })
+  );
   
   macro_rules! envelope_input {
   ($variable: ident, $name: expr, $range: expr) => {NumericalInputSpecification {
@@ -53,7 +62,7 @@ fn redraw(state: & Rc<RefCell<State>>) {
   
   js! {
 $("#panels").empty();
-$("#panels").append ($("<div>", {class: "panel"}).append (@{waveform_input}));
+$("#panels").append (@{randomize_button}, $("<div>", {class: "panel"}).append (@{waveform_input}));
 
       const envelope_editor = $("<div>", {class: "panel"});
       $("#panels").append (envelope_editor);
@@ -76,7 +85,7 @@ const sample_rate = 44100;
   
   struct Visitor <'a> (& 'a Rc<RefCell<State>>);
   impl<'a> SignalVisitor for Visitor<'a> {
-    fn visit <T: UserNumberType> (self, info: &SignalInfo, _signal: & Signal <T>, getter: Getter <State, Signal <T>>) {
+    fn visit <T: UserNumberType> (&mut self, info: &SignalInfo, _signal: & Signal <T>, getter: Getter <State, Signal <T>>) {
       SignalEditorSpecification {
     state: self.0,
     info: info,
@@ -85,7 +94,7 @@ const sample_rate = 44100;
     }
   }
   
-  for caller in sound.visit_callers::<Visitor>() {(caller)(Visitor (state), sound);}
+  for caller in sound.visit_callers::<Visitor>() {(caller)(&mut Visitor (state), sound);}
 }
 
 

@@ -193,10 +193,12 @@ impl<T: UserNumberType> UserNumber <T> {
   }
   pub fn from_rendered (rendered: f32)->Self {
     let value_type = T::default() ;
-    UserNumber {
-      source: value_type.approximate_from_rendered (rendered),
-      rendered: rendered, value_type: value_type,
-    }
+    Self::new (value_type.clone(), value_type.approximate_from_rendered (rendered)).unwrap()
+  }
+}
+impl<T: UserNumberType> Default for UserNumber <T> {
+  fn default ()->Self {
+    Self::from_rendered(1.0)
   }
 }
 
@@ -207,8 +209,10 @@ impl<T: UserNumberType> UserNumber <T> {
 pub type UserFrequency = UserNumber <FrequencyType>;
 pub type UserTime = UserNumber <TimeType>;
 
-#[derive (Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Derivative)]
+#[derivative (Default)]
 pub enum Waveform {
+  #[derivative (Default)]
   Sine,
   Square,
   Triangle,
@@ -225,12 +229,14 @@ pub enum SignalEffect <T: UserNumberType> {
   Oscillation {size: UserNumber<T::DifferenceType>, frequency: UserFrequency, waveform: Waveform},
 }
 
+#[derive (Default)]
 pub struct Signal <T: UserNumberType> {
   pub initial_value: UserNumber<T>,
   pub constant: bool,
   pub effects: Vec<SignalEffect <T>>,
 }
 
+#[derive (Default)]
 pub struct Envelope {
   pub attack: UserTime,
   pub sustain: UserTime,
@@ -245,11 +251,11 @@ pub struct SignalInfo {
 }
 
 pub trait SignalVisitor {
-  fn visit <T: UserNumberType> (self, info: & SignalInfo, signal: & Signal <T>, getter: Getter <State, Signal <T>>);
+  fn visit <T: UserNumberType> (&mut self, info: & SignalInfo, signal: & Signal <T>, getter: Getter <State, Signal <T>>);
 }
 
 pub trait SignalVisitorMut {
-  fn visit_mut <T: UserNumberType> (self, info: & SignalInfo, signal: &mut Signal <T>, getter: Getter <State, Signal <T>>);
+  fn visit_mut <T: UserNumberType> (&mut self, info: & SignalInfo, signal: &mut Signal <T>, getter: Getter <State, Signal <T>>);
 }
 
 macro_rules! signals_definitions {
@@ -260,12 +266,12 @@ macro_rules! signals_definitions {
           $($info,)*
         ]
       }
-      pub fn visit_callers <T: SignalVisitor> (&self)->Vec<Box<Fn(T, &SoundDefinition)>> {
+      pub fn visit_callers <T: SignalVisitor> (&self)->Vec<Box<Fn(&mut T, &SoundDefinition)>> {
         vec![
           $(Box::new (| visitor, sound | visitor.visit (& $info, &sound.$field, getter! (state => state.sound.$field))),)*
         ]
       }
-      pub fn visit_mut_callers <T: SignalVisitorMut> (&self)->Vec<Box<Fn(T, &mut SoundDefinition)>> {
+      pub fn visit_mut_callers <T: SignalVisitorMut> (&self)->Vec<Box<Fn(&mut T, &mut SoundDefinition)>> {
         vec![
           $(Box::new (| visitor, sound | visitor.visit_mut (& $info, &mut sound.$field, getter! (state => state.sound.$field))),)*
         ]
@@ -274,6 +280,7 @@ macro_rules! signals_definitions {
   }
 }
 
+#[derive (Default)]
 pub struct SoundDefinition {
   pub waveform: Waveform,
   pub envelope: Envelope,
