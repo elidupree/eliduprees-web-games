@@ -277,6 +277,12 @@ macro_rules! signals_definitions {
         ]
       }
     }
+    
+    impl SignalInfo {
+      $(pub fn $field ()->Self {
+        $info
+      })*
+    }
   }
 }
 
@@ -302,7 +308,7 @@ signals_definitions! {
     id: "volume",
     name: "Volume",
     slider_range: [0.0,1.0],
-    difference_slider_range: 1.0,
+    difference_slider_range: 0.5,
   }),
   (log_lowpass_filter_cutoff, SignalInfo {
     id: "lowpass",
@@ -361,6 +367,13 @@ impl<T: UserNumberType> SignalEffect <T> {
       SignalEffect::Oscillation {size, frequency, waveform} => size.rendered*waveform.sample (sample_time*frequency.rendered.exp2()),
     }
   }
+  pub fn range (&self)->[f32;2] {
+    match self.clone() {
+      SignalEffect::Jump {size, ..} => [min (0.0, size.rendered), max (0.0, size.rendered)],
+      SignalEffect::Slide {size, ..} => [min (0.0, size.rendered), max (0.0, size.rendered)],
+      SignalEffect::Oscillation {size, ..} => [-size.rendered.abs(), size.rendered.abs()],
+    }
+  }
 }
 
 impl<T: UserNumberType> Signal<T> {
@@ -379,6 +392,16 @@ impl<T: UserNumberType> Signal<T> {
     else {
       self.initial_value.rendered + self.effects.iter().map (| effect | effect.sample (time)).sum::<f32>()
     }
+  }
+  
+  pub fn range (&self)->[f32;2] {
+    let mut result = [self.initial_value.rendered; 2];
+    for effect in self.effects.iter() {
+      let range = effect.range();
+      result [0] += range [0];
+      result [1] += range [1];
+    }
+    result
   }
 }
 

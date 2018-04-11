@@ -16,9 +16,9 @@ pub fn random_waveform <G: Rng>(generator: &mut G)->Waveform {
 }
 pub fn random_envelope <G: Rng>(generator: &mut G)->Envelope {
   Envelope {
-    attack: random_time(generator),
-    sustain: random_time(generator),
-    decay: random_time(generator),
+    attack: UserNumber::from_rendered (generator.gen_range (0.001f32.log2(), 1f32.log2()).exp2()),
+    sustain: UserNumber::from_rendered (generator.gen_range (0.25f32.log2(), 3f32.log2()).exp2()),
+    decay: UserNumber::from_rendered (generator.gen_range (0.25f32.log2(), 3f32.log2()).exp2()),
   }
 }
 pub fn random_signal <G: Rng, T: UserNumberType>(generator: &mut G, info: & SignalInfo)->Signal <T> {
@@ -86,5 +86,22 @@ pub fn random_sound <G: Rng>(generator: &mut G)->SoundDefinition {
       (caller)(&mut visitor, &mut sound);
     }
   }
+  
+  for _attempt in 0..90 {
+    let volume_range = sound.volume.range();
+    if volume_range[1] > 1.0 || (volume_range[0] + volume_range[1] <= 0.0) {
+      sound.volume = random_signal (generator, &SignalInfo::volume());
+    }
+    if sound.log_lowpass_filter_cutoff.range() [0] < sound.log_frequency.range() [1] {
+      sound.log_lowpass_filter_cutoff = random_signal (generator, &SignalInfo::log_lowpass_filter_cutoff());
+    }
+    if sound.log_highpass_filter_cutoff.range() [1] > sound.log_frequency.range() [0] {
+      sound.log_highpass_filter_cutoff = random_signal (generator, &SignalInfo::log_highpass_filter_cutoff());
+    }
+    if sound.log_bitcrush_frequency.range() [0] < sound.log_frequency.range() [1] {
+      sound.log_bitcrush_frequency = random_signal (generator, &SignalInfo::log_bitcrush_frequency());
+    }
+  }
+  
   sound
 }
