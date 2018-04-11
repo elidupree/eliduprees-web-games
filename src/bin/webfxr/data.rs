@@ -248,6 +248,7 @@ pub struct SignalInfo {
   pub name: & 'static str,
   pub slider_range: [f32; 2],
   pub difference_slider_range: f32,
+  pub average_effects: f32,
 }
 
 pub trait SignalVisitor {
@@ -303,30 +304,35 @@ signals_definitions! {
     name: "Frequency",
     slider_range: [20f32.log2(), 5000f32.log2()],
     difference_slider_range: 2.0,
+    average_effects: 2.0,
   }),
   (volume, SignalInfo {
     id: "volume",
     name: "Volume",
     slider_range: [0.0,1.0],
     difference_slider_range: 0.5,
+    average_effects: 0.7,
   }),
   (log_lowpass_filter_cutoff, SignalInfo {
     id: "lowpass",
     name: "Low-pass filter cutoff",
     slider_range: [20f32.log2(), 48000f32.log2()],
     difference_slider_range: 5.0,
+    average_effects: 0.7,
   }),
   (log_highpass_filter_cutoff, SignalInfo {
     id: "highpass",
     name: "High-pass filter cutoff",
-    slider_range: [20f32.log2(), 20000f32.log2()],
+    slider_range: [10f32.log2(), 20000f32.log2()],
     difference_slider_range: 5.0,
+    average_effects: 0.7,
   }),
   (log_bitcrush_frequency, SignalInfo {
     id: "bitcrush_frequency",
     name: "Bitcrush frequency",
     slider_range: [20f32.log2(), 48000f32.log2()],
     difference_slider_range: 5.0,
+    average_effects: 0.7,
   }),
 }
 

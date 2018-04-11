@@ -8,7 +8,7 @@ stdweb = "0.4"
 serde = {version = "1", features = ["rc"]}
 serde_derive = "1"
 nalgebra = {version = "0.13", features = ["serde-serialize"]}
-rand = "0.3"
+rand = {git = "https://github.com/rust-lang-nursery/rand"}
 derivative = "1.0"
 ordered-float = "0.2"
 boolinator = "2.4"
