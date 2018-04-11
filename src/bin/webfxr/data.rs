@@ -1,3 +1,4 @@
+use std::rc::Rc;
 use std::str::FromStr;
 use serde::{Serialize};
 use serde::de::DeserializeOwned;
@@ -11,6 +12,61 @@ pub const DISPLAY_SAMPLE_RATE: f32 = 50.0;
 
 pub fn min (first: f32, second: f32)->f32 {if first < second {first} else {second}}
 pub fn max (first: f32, second: f32)->f32 {if first > second {first} else {second}}
+
+
+#[derive (Derivative)]
+#[derivative (Clone (bound =""))]
+pub struct Getter <T, U> {
+  pub get: Rc <Fn(&T)->&U>,
+  pub get_mut: Rc <Fn(&mut T)->&mut U>,
+}
+impl <T, U> Getter <T, U> {
+  pub fn get<'a, 'b> (&'a self, value: &'b T)->&'b U {
+    (self.get) (value)
+  }
+  pub fn get_mut<'a, 'b> (&'a self, value: &'b mut T)->&'b mut U {
+    (self.get_mut) (value)
+  }
+}
+
+impl <T: 'static,U: 'static,V: 'static> ::std::ops::Add<Getter <U, V>> for Getter <T, U> {
+  type Output = Getter <T, V>;
+  fn add (self, other: Getter <U, V>)->Self::Output {
+    let my_get = self.get;
+    let my_get_mut = self.get_mut;
+    let other_get = other.get;
+    let other_get_mut = other.get_mut;
+    Getter {
+      get: Rc::new (move | value | (other_get) ((my_get) (value))),
+      get_mut: Rc::new (move | value | (other_get_mut) ((my_get_mut) (value))),
+    }
+  }
+}
+
+macro_rules! getter {
+  ($value: ident => $($path:tt)*) => {
+    Getter {
+      get    : Rc::new (move | $value | &    $($path)*),
+      get_mut: Rc::new (move | $value | &mut $($path)*),
+    }
+  }
+}
+macro_rules! variant_field_getter {
+  ($Enum: ident::$Variant: ident => $field: ident) => {
+    Getter {
+      get    : Rc::new (| value | match value {
+        &    $Enum::$Variant {ref     $field,..} => $field,
+        _ => unreachable!(),
+      }),
+      get_mut: Rc::new (| value | match value {
+        &mut $Enum::$Variant {ref mut $field,..} => $field,
+        _ => unreachable!(),
+      }),
+    }
+  }
+}
+
+
 
 #[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Derivative)]
 #[derivative (Default)]
@@ -181,6 +237,43 @@ pub struct Envelope {
   pub decay: UserTime,
 }
 
+pub struct SignalInfo {
+  pub id: & 'static str,
+  pub name: & 'static str,
+  pub slider_range: [f32; 2],
+  pub difference_slider_range: f32,
+}
+
+pub trait SignalVisitor {
+  fn visit <T: UserNumberType> (self, info: & SignalInfo, signal: & Signal <T>, getter: Getter <State, Signal <T>>);
+}
+
+pub trait SignalVisitorMut {
+  fn visit_mut <T: UserNumberType> (self, info: & SignalInfo, signal: &mut Signal <T>, getter: Getter <State, Signal <T>>);
+}
+
+macro_rules! signals_definitions {
+  ($(($field: ident, $info: expr),)*) => {
+    impl SoundDefinition {
+      pub fn signals_static_info()->Vec<SignalInfo> {
+        vec![
+          $($info,)*
+        ]
+      }
+      pub fn visit_callers <T: SignalVisitor> (&self)->Vec<Box<Fn(T, &SoundDefinition)>> {
+        vec![
+          $(Box::new (| visitor, sound | visitor.visit (& $info, &sound.$field, getter! (state => state.sound.$field))),)*
+        ]
+      }
+      pub fn visit_mut_callers <T: SignalVisitorMut> (&self)->Vec<Box<Fn(T, &mut SoundDefinition)>> {
+        vec![
+          $(Box::new (| visitor, sound | visitor.visit_mut (& $info, &mut sound.$field, getter! (state => state.sound.$field))),)*
+        ]
+      }
+    }
+  }
+}
+
 pub struct SoundDefinition {
   pub waveform: Waveform,
   pub envelope: Envelope,
@@ -189,6 +282,39 @@ pub struct SoundDefinition {
   pub log_lowpass_filter_cutoff: Signal <FrequencyType>,
   pub log_highpass_filter_cutoff: Signal <FrequencyType>,
   pub log_bitcrush_frequency: Signal <FrequencyType>,
+}
+
+signals_definitions! {
+  (log_frequency, SignalInfo {
+    id: "frequency",
+    name: "Frequency",
+    slider_range: [20f32.log2(), 5000f32.log2()],
+    difference_slider_range: 2.0,
+  }),
+  (volume, SignalInfo {
+    id: "volume",
+    name: "Volume",
+    slider_range: [0.0,1.0],
+    difference_slider_range: 1.0,
+  }),
+  (log_lowpass_filter_cutoff, SignalInfo {
+    id: "lowpass",
+    name: "Low-pass filter cutoff",
+    slider_range: [20f32.log2(), 48000f32.log2()],
+    difference_slider_range: 5.0,
+  }),
+  (log_highpass_filter_cutoff, SignalInfo {
+    id: "highpass",
+    name: "High-pass filter cutoff",
+    slider_range: [20f32.log2(), 20000f32.log2()],
+    difference_slider_range: 5.0,
+  }),
+  (log_bitcrush_frequency, SignalInfo {
+    id: "bitcrush_frequency",
+    name: "Bitcrush frequency",
+    slider_range: [20f32.log2(), 48000f32.log2()],
+    difference_slider_range: 5.0,
+  }),
 }
 
 pub struct State {
@@ -317,4 +443,3 @@ impl SoundDefinition {
     frames
   }
 }
-

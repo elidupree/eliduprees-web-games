@@ -7,59 +7,6 @@ use ordered_float::OrderedFloat;
 use super::*;
 
 
-#[derive (Derivative)]
-#[derivative (Clone (bound =""))]
-pub struct Getter <T, U> {
-  pub get: Rc <Fn(&T)->&U>,
-  pub get_mut: Rc <Fn(&mut T)->&mut U>,
-}
-impl <T, U> Getter <T, U> {
-  pub fn get<'a, 'b> (&'a self, value: &'b T)->&'b U {
-    (self.get) (value)
-  }
-  pub fn get_mut<'a, 'b> (&'a self, value: &'b mut T)->&'b mut U {
-    (self.get_mut) (value)
-  }
-}
-
-impl <T: 'static,U: 'static,V: 'static> ::std::ops::Add<Getter <U, V>> for Getter <T, U> {
-  type Output = Getter <T, V>;
-  fn add (self, other: Getter <U, V>)->Self::Output {
-    let my_get = self.get;
-    let my_get_mut = self.get_mut;
-    let other_get = other.get;
-    let other_get_mut = other.get_mut;
-    Getter {
-      get: Rc::new (move | value | (other_get) ((my_get) (value))),
-      get_mut: Rc::new (move | value | (other_get_mut) ((my_get_mut) (value))),
-    }
-  }
-}
-
-macro_rules! getter {
-  ($value: ident => $($path:tt)*) => {
-    Getter {
-      get    : Rc::new (move | $value | &    $($path)*),
-      get_mut: Rc::new (move | $value | &mut $($path)*),
-    }
-  }
-}
-macro_rules! variant_field_getter {
-  ($Enum: ident::$Variant: ident => $field: ident) => {
-    Getter {
-      get    : Rc::new (| value | match value {
-        &    $Enum::$Variant {ref     $field,..} => $field,
-        _ => unreachable!(),
-      }),
-      get_mut: Rc::new (| value | match value {
-        &mut $Enum::$Variant {ref mut $field,..} => $field,
-        _ => unreachable!(),
-      }),
-    }
-  }
-}
-
-
 pub fn input_callback<T, F> (state: &Rc<RefCell<State>>, callback: F)->impl (Fn (T)->bool)
   where
     F: Fn(&mut State, T)->bool {
@@ -259,10 +206,7 @@ impl <'a, F: 'static + Fn (UserNumber <T>)->bool, T: UserNumberType> NumericalIn
 
 pub struct SignalEditorSpecification <'a, T: UserNumberType> {
   pub state: & 'a Rc<RefCell<State>>,
-  pub id: & 'a str,
-  pub name: & 'a str,
-  pub slider_range: [f32; 2],
-  pub difference_slider_range: [f32; 2],
+  pub info: &'a SignalInfo,
   pub getter: Getter <State, Signal <T>>
 }
 
@@ -287,11 +231,11 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   }
   
   pub fn value_input (&self, id: & str, name: & str, getter: Getter <State, UserNumber <T>>)->Value {
-    self.numeric_input (id, name, self.slider_range, getter)
+    self.numeric_input (id, name, self.info.slider_range, getter)
   }
   
   pub fn difference_input (&self, id: & str, name: & str, getter: Getter <State, UserNumber <T::DifferenceType>>)->Value {
-    self.numeric_input (id, name, self.difference_slider_range, getter)
+    self.numeric_input (id, name, [-self.info.difference_slider_range, self.info.difference_slider_range], getter)
   }
   
   pub fn frequency_input (&self, id: & str, name: & str, getter: Getter <State, UserFrequency>)->Value {
@@ -311,18 +255,18 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
       let guard = self.state.borrow();
     let signal = self.getter.get (& guard);
       
-  let container = js!{ return $("<div>", {id:@{self.id}, class: "panel"});};
+  let container = js!{ return $("<div>", {id:@{self.info.id}, class: "panel"});};
   js!{ $("#panels").append (@{& container});}
   
   
-  js!{@{& container}.append (@{self.name} + ": ");}
+  js!{@{& container}.append (@{self.info.name} + ": ");}
   if !signal.constant {js!{@{& container}.append (@{
     canvas_of_samples (& display_samples (& guard.sound, | time | signal.sample (time)))
   });}}
   
   let initial_value_input = self.value_input (
-    & format! ("{}_initial", & self.id),
-    if signal.constant {self.name} else {"Initial value"}, 
+    & format! ("{}_initial", & self.info.id),
+    if signal.constant {self.info.name} else {"Initial value"}, 
     self.getter.clone() + getter! (signal => signal.initial_value)
   );
   
@@ -351,7 +295,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
             js!{@{& container}.append (@{$variant_name}+": ",@{delete_button});}
             $(
               js!{@{& container}.append (@{self.$input_method(
-                & format! ("{}_{}_{}", & self.id, index, stringify! ($field)),
+                & format! ("{}_{}_{}", & self.info.id, index, stringify! ($field)),
                 $name,
                 effect_getter.clone() + variant_field_getter! (SignalEffect::$Variant => $field)
               )})}
@@ -393,25 +337,25 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   js!{ @{& container}.append (@{toggle_constant_button}); }
   
   if !signal.constant {
-    let range = self.difference_slider_range;
+    let range = self.info.difference_slider_range;
     let add_jump_button = button_input (
       "Add jump",
       input_callback_gotten_nullary (self.state, self.getter.clone(), move | signal | {
-        signal.effects.push (SignalEffect::Jump {time: UserTime::from_rendered (0.5), size: UserNumber::from_rendered (range [1])});
+        signal.effects.push (SignalEffect::Jump {time: UserTime::from_rendered (0.5), size: UserNumber::from_rendered (range)});
         true
       })
     );
     let add_slide_button = button_input (
       "Add slide",
       input_callback_gotten_nullary (self.state, self.getter.clone(), move | signal | {
-        signal.effects.push (SignalEffect::Slide {start: UserTime::from_rendered (0.5), duration: UserTime::from_rendered (0.5), size: UserNumber::from_rendered (range [1]), smooth_start: true, smooth_stop: true });
+        signal.effects.push (SignalEffect::Slide {start: UserTime::from_rendered (0.5), duration: UserTime::from_rendered (0.5), size: UserNumber::from_rendered (range), smooth_start: true, smooth_stop: true });
         true
       })
     );
     let add_oscillation_button = button_input (
       "Add oscillation",
       input_callback_gotten_nullary (self.state, self.getter.clone(), move | signal | {
-        signal.effects.push (SignalEffect::Oscillation {size: UserNumber::from_rendered (range [1]/3.0), frequency: UserNumber::from_rendered (4.0f32.log2()), waveform: Waveform::Square });
+        signal.effects.push (SignalEffect::Oscillation {size: UserNumber::from_rendered (range/3.0), frequency: UserNumber::from_rendered (4.0f32.log2()), waveform: Waveform::Square });
         true
       })
     );

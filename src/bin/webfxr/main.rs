@@ -18,15 +18,14 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use stdweb::web::TypedArray;
 
-mod data;
 #[macro_use]
+mod data;
 mod ui;
 pub use data::*;
 pub use ui::*;
 
 
 fn redraw(state: & Rc<RefCell<State>>) {
-  {
   let guard = state.borrow();
   let sound = & guard.sound;
   
@@ -75,48 +74,18 @@ const sample_rate = 44100;
   }  
 
   
+  struct Visitor <'a> (& 'a Rc<RefCell<State>>);
+  impl<'a> SignalVisitor for Visitor<'a> {
+    fn visit <T: UserNumberType> (self, info: &SignalInfo, _signal: & Signal <T>, getter: Getter <State, Signal <T>>) {
+      SignalEditorSpecification {
+    state: self.0,
+    info: info,
+    getter: getter,
+  }.render();
+    }
   }
   
-  SignalEditorSpecification {
-    state: & state,
-    id: "frequency",
-    name: "Frequency",
-    slider_range: [20f32.log2(), 5000f32.log2()],
-    difference_slider_range: [-2.0, 2.0],
-    getter: getter! (state => state.sound.log_frequency),
-  }.render();
-  SignalEditorSpecification {
-    state: & state,
-    id: "volume",
-    name: "Volume",
-    slider_range: [0.0,1.0],
-    difference_slider_range: [-1.0, 1.0],
-    getter: getter! (state => state.sound.volume),
-  }.render();
-  SignalEditorSpecification {
-    state: & state,
-    id: "lowpass",
-    name: "Low-pass filter cutoff",
-    slider_range: [20f32.log2(), 48000f32.log2()],
-    difference_slider_range: [-5.0, 5.0],
-    getter: getter! (state => state.sound.log_lowpass_filter_cutoff),
-  }.render();
-  SignalEditorSpecification {
-    state: & state,
-    id: "highpass",
-    name: "High-pass filter cutoff",
-    slider_range: [20f32.log2(), 20000f32.log2()],
-    difference_slider_range: [-5.0, 5.0],
-    getter: getter! (state => state.sound.log_highpass_filter_cutoff),
-  }.render();
-  SignalEditorSpecification {
-    state: & state,
-    id: "bitcrush_frequency",
-    name: "Bitcrush frequency",
-    slider_range: [20f32.log2(), 48000f32.log2()],
-    difference_slider_range: [-5.0, 5.0],
-    getter: getter! (state => state.sound.log_bitcrush_frequency),
-  }.render();
+  for caller in sound.visit_callers::<Visitor>() {(caller)(Visitor (state), sound);}
 }
 
 
