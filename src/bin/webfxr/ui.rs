@@ -261,7 +261,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   
   js!{@{& container}.append (@{self.info.name} + ": ");}
   if !signal.constant {js!{@{& container}.append (@{
-    canvas_of_samples (& display_samples (& guard.sound, | time | signal.sample (time)))
+    canvas_of_samples (& display_samples (& guard.sound, | time | signal.sample (time)), self.info.slider_range)
   });}}
   
   let initial_value_input = self.value_input (
@@ -372,7 +372,7 @@ pub fn display_samples <F: FnMut(f32)->f32> (sound: & SoundDefinition, mut sampl
   (0..num_samples).map (| sample | sampler (sample as f32/DISPLAY_SAMPLE_RATE)).collect()
 }
 
-pub fn canvas_of_samples (samples: & [f32])->Value {
+pub fn canvas_of_samples (samples: & [f32], default_range: [f32; 2])->Value {
   let canvas = js!{ return document.createElement ("canvas") ;};
   let canvas_height = 100.0;
   let context = js!{
@@ -383,25 +383,53 @@ pub fn canvas_of_samples (samples: & [f32])->Value {
     return context;
   };
   
-    let min = samples.iter().min_by_key (| value | OrderedFloat (**value)).unwrap() - 0.0001;
-    let max = samples.iter().max_by_key (| value | OrderedFloat (**value)).unwrap() + 0.0001;
-    let range = max - min;
+  let min_sample = *samples.iter().min_by_key (| value | OrderedFloat (**value)).unwrap();
+  let max_sample = *samples.iter().max_by_key (| value | OrderedFloat (**value)).unwrap();
+  let default_range_size = default_range [1] - default_range [0];
+  let min_displayed = min(min_sample, default_range [0]);
+  let max_displayed = max(max_sample, default_range [1]);
+  let draw_min = min_sample < default_range [0] - 0.0001*default_range_size;
+  let draw_max = max_sample > default_range [1] + 0.0001*default_range_size;
+  let range_displayed = max_displayed - min_displayed;
+  
+  let display_height = | sample | (max_displayed - sample)/range_displayed*canvas_height;
+  
+  js!{
+    var canvas = @{& canvas};
+    var context =@{&context};
+    context.strokeStyle = "rgb(128,128,128)";
+    context.stroke();
+    if (@{draw_min}) {
+      context.beginPath();
+      context.moveTo (0,@{display_height (default_range [0])});
+      context.lineTo (canvas.width,@{display_height (default_range [0])});
+      context.stroke();
+    }
+    if (@{draw_max}) {
+      context.beginPath();
+      context.moveTo (0,@{display_height (default_range [1])});
+      context.lineTo (canvas.width,@{display_height (default_range [1])});
+      context.stroke();
+    }
+    context.beginPath();
+  }
     
-    for (index, sample) in samples.iter().enumerate() {
-      js!{
-        var context =@{&context};
-        var first = @{index as f32 + 0.5};
-        var second = @{(max - sample)/range*canvas_height};
-        if (@{index == 0}) {
-          context.moveTo (first, second);
-        } else {
-          context.lineTo (first, second);
-        }
+  for (index, &sample) in samples.iter().enumerate() {
+    js!{
+      var context =@{&context};
+      var first = @{index as f32 + 0.5};
+      var second = @{display_height (sample)};
+      if (@{index == 0}) {
+        context.moveTo (first, second);
+      } else {
+        context.lineTo (first, second);
       }
     }
+  }
     
   js!{
     var context =@{&context};
+    context.strokeStyle = "rgb(0,0,0)";
     context.stroke();
   }
   

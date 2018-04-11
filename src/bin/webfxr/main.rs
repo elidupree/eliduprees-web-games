@@ -57,7 +57,7 @@ $("#panels").append ($("<div>", {class: "panel"}).append (@{waveform_input}));
 
       const envelope_editor = $("<div>", {class: "panel"});
       $("#panels").append (envelope_editor);
-      envelope_editor.append (@{canvas_of_samples (&envelope_samples)});
+      envelope_editor.append (@{canvas_of_samples (&envelope_samples, [0.0, 1.0])});
       envelope_editor.append (@{envelope_input!(attack, "Attack", [0.0, 1.0])});
       envelope_editor.append (@{envelope_input!(sustain, "Sustain", [0.0, 3.0])});
       envelope_editor.append (@{envelope_input!(decay, "Decay", [0.0, 3.0])});
