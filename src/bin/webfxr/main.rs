@@ -71,7 +71,8 @@ fn redraw(state: & Rc<RefCell<State>>) {
   let waveform_input = assign_row (rows, waveform_input (state, "waveform", "Waveform", getter! (state => state.sound.waveform)));
   rows += 1;
   
-  js!{$("#panels").append (@{randomize_button}, @{waveform_input});}
+  js!{$("#panels").append (@{randomize_button});}
+  js!{$("#panels").append (@{waveform_input}.addClass("sound_waveform_input"));}
   js!{$("#panels").append (
     @{canvas_of_samples (&envelope_samples, [0.0, 1.0])}
     .css("grid-row", @{rows}+" / span 3")
