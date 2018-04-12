@@ -260,6 +260,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     
       let guard = self.state.borrow();
     let signal = self.getter.get (& guard);
+    let first_row = *self.rows;
       
   let container = js!{ return $("#panels");};
   
@@ -311,7 +312,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     );
     let buttons = self.assign_row(js!{ return $("<div>", {class: "add_effect_buttons"}).append (@{add_jump_button}, @{add_slide_button}, @{add_oscillation_button}); });
     
-    js!{ @{& container}.append (@{buttons}, @{self.assign_row(canvas_of_samples (& display_samples (& guard.sound, | time | signal.sample (time)), self.info.slider_range))}); }
+    js!{ @{& container}.append (@{buttons}); }
       
     *self.rows += 1;
   }
@@ -371,6 +372,10 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
       ]
     }
   }}
+  
+    if !signal.constant && signal.effects.len() > 0 {
+      js!{ @{& container}.append (@{canvas_of_samples (& display_samples (& guard.sound, | time | signal.sample (time)), self.info.slider_range)}.css("grid-row", @{first_row + 1}+" / "+@{*self.rows})); }
+    }
     
   }
 }
