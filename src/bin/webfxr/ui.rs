@@ -338,24 +338,27 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   
   if !signal.constant {
     let range = self.info.difference_slider_range;
+    let info = self.info.clone();
     let add_jump_button = button_input (
       "Add jump",
       input_callback_gotten_nullary (self.state, self.getter.clone(), move | signal | {
-        signal.effects.push (SignalEffect::Jump {time: UserTime::from_rendered (0.5), size: UserNumber::from_rendered (range)});
+        signal.effects.push (random_jump_effect (&mut rand::thread_rng(), &info));
         true
       })
     );
+    let info = self.info.clone();
     let add_slide_button = button_input (
       "Add slide",
       input_callback_gotten_nullary (self.state, self.getter.clone(), move | signal | {
-        signal.effects.push (SignalEffect::Slide {start: UserTime::from_rendered (0.5), duration: UserTime::from_rendered (0.5), size: UserNumber::from_rendered (range), smooth_start: true, smooth_stop: true });
+        signal.effects.push (random_slide_effect (&mut rand::thread_rng(), &info));
         true
       })
     );
+    let info = self.info.clone();
     let add_oscillation_button = button_input (
       "Add oscillation",
       input_callback_gotten_nullary (self.state, self.getter.clone(), move | signal | {
-        signal.effects.push (SignalEffect::Oscillation {size: UserNumber::from_rendered (range/3.0), frequency: UserNumber::from_rendered (4.0f32.log2()), waveform: Waveform::Square });
+        signal.effects.push (random_oscillation_effect (&mut rand::thread_rng(), &info));
         true
       })
     );

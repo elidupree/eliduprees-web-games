@@ -300,6 +300,7 @@ pub struct Envelope {
   pub decay: UserTime,
 }
 
+#[derive (Clone)]
 pub struct SignalInfo {
   pub id: & 'static str,
   pub name: & 'static str,
