@@ -359,7 +359,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     if signal.effects.len() > 0 {
       js!{ @{& container}.append (@{canvas_of_samples (& display_samples (& guard.sound, | time | signal.sample (time)), self.info.slider_range)}.css("grid-row", @{first_row + 1}+" / "+@{*self.rows})); }
     }
-    
+    js!{ @{& container}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{first_row}+" / "+@{*self.rows})); }
   }
 }
 
