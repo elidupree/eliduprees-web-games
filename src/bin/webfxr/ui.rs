@@ -62,7 +62,7 @@ pub fn checkbox_input (state: &Rc<RefCell<State>>, id: & str, name: & str, gette
   });
   let result: Value = js!{
     var input;
-    return $("<div>", {class: "labeled_input"}).append (
+    return $("<div>", {class: "labeled_input checkbox"}).append (
       input = $("<input>", {type: "checkbox", id: @{id}, checked:@{current_value}}).click (function() {@{callback}(input.prop ("checked"));}),
       $("<label>", {"for": @{id}, text: @{name}})
     );
@@ -108,7 +108,7 @@ impl <'a, F: 'static + Fn (T)->bool, T: Eq> RadioInputSpecification <'a, T, F>
     Value: TryInto<T>,
     <Value as TryInto<T>>::Error: ::std::fmt::Debug {
   pub fn render (self)->Value {
-    let result = js!{return $("<div>", {class: "labeled_input"}).append (
+    let result = js!{return $("<div>", {class: "labeled_input radio"}).append (
       $("<label>", {text:@{self.name} + ":"})
     );};
     
@@ -180,7 +180,7 @@ impl <'a, F: 'static + Fn (UserNumber <T>)->bool, T: UserNumberType> NumericalIn
     
     
     let result: Value = js!{
-      var result = $("<div>", {class: "labeled_input"}).append (
+      var result = $("<div>", {class: "labeled_input numeric"}).append (
         @{&range_input}.on ("input", @{&range_overrides}),
         @{&number_input}.on ("input", @{&number_overrides}),
         $("<label>", {"for": @{self.id}+"_numerical_number", text:@{
@@ -207,13 +207,19 @@ impl <'a, F: 'static + Fn (UserNumber <T>)->bool, T: UserNumberType> NumericalIn
 pub struct SignalEditorSpecification <'a, T: UserNumberType> {
   pub state: & 'a Rc<RefCell<State>>,
   pub info: &'a SignalInfo,
-  pub getter: Getter <State, Signal <T>>
+  pub getter: Getter <State, Signal <T>>,
+  pub rows: &'a mut u32,
 }
 
 impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
+  pub fn assign_row (&self, element: Value)->Value {
+    js!{@{&element}.css("grid-row", @{*self.rows}+" / span 1")};
+    element
+  }
+
   pub fn numeric_input <U: UserNumberType> (&self, id: & str, name: & str, slider_range: [f32; 2], getter: Getter <State, UserNumber <U>>)->Value {
     let current_value = getter.get (&self.state.borrow()).clone();
-    NumericalInputSpecification {
+    self.assign_row(NumericalInputSpecification {
       state: self.state,
       id: id,
       name: name, 
@@ -223,7 +229,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
         *getter.get_mut (state) = value;
         true
       }),
-    }.render()
+    }.render())
   }
 
   pub fn time_input (&self, id: & str, name: & str, getter: Getter <State, UserTime>)->Value {
@@ -243,10 +249,10 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   }
   
   pub fn checkbox_input (&self, id: & str, name: & str, getter: Getter <State, bool>)->Value {
-    checkbox_input (self.state, id, name, getter)
+    self.assign_row(checkbox_input (self.state, id, name, getter))
   }
   pub fn waveform_input (&self, id: & str, name: & str, getter: Getter <State, Waveform>)->Value {
-    waveform_input (self.state, id, name, getter)
+    self.assign_row(waveform_input (self.state, id, name, getter))
   }
 
 
@@ -255,23 +261,61 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
       let guard = self.state.borrow();
     let signal = self.getter.get (& guard);
       
-  let container = js!{ return $("<div>", {id:@{self.info.id}, class: "panel"});};
-  js!{ $("#panels").append (@{& container});}
+  let container = js!{ return $("#panels");};
   
-  
-  js!{@{& container}.append (@{self.info.name} + ": ");}
-  if !signal.constant {js!{@{& container}.append (@{
-    canvas_of_samples (& display_samples (& guard.sound, | time | signal.sample (time)), self.info.slider_range)
-  });}}
+  //js!{@{& container}.append (@{self.info.name} + ": ");}
   
   let initial_value_input = self.value_input (
     & format! ("{}_initial", & self.info.id),
-    if signal.constant {self.info.name} else {"Initial value"}, 
+    self.info.name, 
     self.getter.clone() + getter! (signal => signal.initial_value)
   );
+    
+  let toggle_constant_button = self.assign_row(button_input (
+    if signal.constant {"Complicate"} else {"Simplify"},
+    input_callback_gotten_nullary (self.state, self.getter.clone(), move | signal | {
+      signal.constant = !signal.constant;
+      true
+    })
+  ));
   
-  js!{@{& container}.append (@{initial_value_input})}
+  js!{@{& container}.append (@{initial_value_input}, @{toggle_constant_button}.addClass("toggle_constant"))}
   
+  *self.rows += 1;
+  
+  if !signal.constant {
+    //let range = self.info.difference_slider_range;
+    let info = self.info.clone();
+    let add_jump_button = button_input (
+      "Add jump",
+      input_callback_gotten_nullary (self.state, self.getter.clone(), move | signal | {
+        signal.effects.push (random_jump_effect (&mut rand::thread_rng(), &info));
+        true
+      })
+    );
+    let info = self.info.clone();
+    let add_slide_button = button_input (
+      "Add slide",
+      input_callback_gotten_nullary (self.state, self.getter.clone(), move | signal | {
+        signal.effects.push (random_slide_effect (&mut rand::thread_rng(), &info));
+        true
+      })
+    );
+    let info = self.info.clone();
+    let add_oscillation_button = button_input (
+      "Add oscillation",
+      input_callback_gotten_nullary (self.state, self.getter.clone(), move | signal | {
+        signal.effects.push (random_oscillation_effect (&mut rand::thread_rng(), &info));
+        true
+      })
+    );
+    let buttons = self.assign_row(js!{ return $("<div>", {class: "add_effect_buttons"}).append (@{add_jump_button}, @{add_slide_button}, @{add_oscillation_button}); });
+    
+    js!{ @{& container}.append (@{buttons}, @{self.assign_row(canvas_of_samples (& display_samples (& guard.sound, | time | signal.sample (time)), self.info.slider_range))}); }
+      
+    *self.rows += 1;
+  }
+
   
     
   if !signal.constant {for (index, effect) in signal.effects.iter().enumerate() {
@@ -292,13 +336,16 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
         ])*) => {
         match *effect {
           $(SignalEffect::$Variant {..} => {
-            js!{@{& container}.append (@{$variant_name}+": ",@{delete_button});}
+            let header = self.assign_row(js!{ return jQuery("<div>", {class: "add_effect_buttons"}).append (@{self.info.name}+" "+@{$variant_name}+": ",@{delete_button})});
+            js!{@{& container}.append (@{header});}
+            *self.rows += 1;
             $(
               js!{@{& container}.append (@{self.$input_method(
                 & format! ("{}_{}_{}", & self.info.id, index, stringify! ($field)),
                 $name,
                 effect_getter.clone() + variant_field_getter! (SignalEffect::$Variant => $field)
-              )})}
+              )}.css("grid-column", "2 / span 1"))}
+              *self.rows += 1;
             )*
           },)*
           //_=>(),
@@ -324,48 +371,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
       ]
     }
   }}
-  
-  let toggle_constant_button = button_input (
-    if signal.constant {"Complicate"} else {"Simplify"},
-    input_callback_gotten_nullary (self.state, self.getter.clone(), move | signal | {
-      signal.constant = !signal.constant;
-      true
-    })
-  );
-  
-  
-  js!{ @{& container}.append (@{toggle_constant_button}); }
-  
-  if !signal.constant {
-    let range = self.info.difference_slider_range;
-    let info = self.info.clone();
-    let add_jump_button = button_input (
-      "Add jump",
-      input_callback_gotten_nullary (self.state, self.getter.clone(), move | signal | {
-        signal.effects.push (random_jump_effect (&mut rand::thread_rng(), &info));
-        true
-      })
-    );
-    let info = self.info.clone();
-    let add_slide_button = button_input (
-      "Add slide",
-      input_callback_gotten_nullary (self.state, self.getter.clone(), move | signal | {
-        signal.effects.push (random_slide_effect (&mut rand::thread_rng(), &info));
-        true
-      })
-    );
-    let info = self.info.clone();
-    let add_oscillation_button = button_input (
-      "Add oscillation",
-      input_callback_gotten_nullary (self.state, self.getter.clone(), move | signal | {
-        signal.effects.push (random_oscillation_effect (&mut rand::thread_rng(), &info));
-        true
-      })
-    );
-    js!{ @{& container}.append (@{add_jump_button}, @{add_slide_button}, @{add_oscillation_button}); }
-
-  }
-  
+    
   }
 }
 
@@ -436,5 +442,6 @@ pub fn canvas_of_samples (samples: & [f32], default_range: [f32; 2])->Value {
     context.stroke();
   }
   
-  canvas
+  let result: Value = js!{return $(@{& canvas});};
+  result
 }
