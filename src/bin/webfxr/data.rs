@@ -198,7 +198,7 @@ impl UserNumberType for VolumeType {
   }
   fn unit_name (&self)->&'static str {
     match *self {
-      VolumeType::DecibelsAbove(_) => "Decibels"
+      VolumeType::DecibelsAbove(_) => "dB"
     }
   }
 }
@@ -219,7 +219,7 @@ impl UserNumberType for VolumeDifferenceType{
   }
   fn unit_name (&self)->&'static str {
     match *self {
-      VolumeDifferenceType::Decibels => "Decibels"
+      VolumeDifferenceType::Decibels => "dB"
     }
   }
 }
