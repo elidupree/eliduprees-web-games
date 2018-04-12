@@ -40,8 +40,9 @@ fn redraw(state: & Rc<RefCell<State>>) {
   
   let envelope_samples = display_samples (sound, | time | sound.envelope.sample (time));
   
-  macro_rules! envelope_input {
-  ($variable: ident, $name: expr, $range: expr) => {assign_row(rows, NumericalInputSpecification {
+  macro_rules! add_envelope_input {
+  ($variable: ident, $name: expr, $range: expr) => {
+    let input = assign_row(rows, NumericalInputSpecification {
     state: state,
     id: stringify! ($variable),
     name: $name, 
@@ -54,7 +55,12 @@ fn redraw(state: & Rc<RefCell<State>>) {
       }
       false
     }),
-  }.render())
+  }.render());
+    
+    let label = assign_row(rows, js!{ return @{&input}.children("label");});
+    js!{@{&label}.append(":").addClass("toplevel_input_label")}
+    js!{jQuery("#panels").append (@{label},@{input});}
+    rows += 1;
     }
   }
     
@@ -66,23 +72,22 @@ fn redraw(state: & Rc<RefCell<State>>) {
       true
     })
   ));
+  js!{$("#panels").append (@{randomize_button});}
   rows += 1;
   
   let waveform_input = assign_row (rows, waveform_input (state, "waveform", "Waveform", getter! (state => state.sound.waveform)));
+  let label = assign_row(rows, js!{ return @{&waveform_input}.children("label").first();});
+  js!{@{&label}.addClass("toplevel_input_label")}
+  js!{jQuery("#panels").append (@{label},@{waveform_input}.addClass("sound_waveform_input"));}
   rows += 1;
-  
-  js!{$("#panels").append (@{randomize_button});}
-  js!{$("#panels").append (@{waveform_input}.addClass("sound_waveform_input"));}
+
   js!{$("#panels").append (
     @{canvas_of_samples (&envelope_samples, [0.0, 1.0])}
     .css("grid-row", @{rows}+" / span 3")
   );}
-  js!{$("#panels").append (@{envelope_input!(attack, "Attack", [0.0, 1.0])});}
-  rows += 1;
-  js!{$("#panels").append (@{envelope_input!(sustain, "Sustain", [0.0, 3.0])});}
-  rows += 1;
-  js!{$("#panels").append (@{envelope_input!(decay, "Decay", [0.0, 3.0])});}
-  rows += 1;
+  add_envelope_input!(attack, "Attack", [0.0, 1.0]);
+  add_envelope_input!(sustain, "Sustain", [0.0, 3.0]);
+  add_envelope_input!(decay, "Decay", [0.0, 3.0]);
   
   struct Visitor <'a> (& 'a Rc<RefCell<State>>, & 'a mut u32);
   impl<'a> SignalVisitor for Visitor<'a> {

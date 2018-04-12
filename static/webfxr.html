@@ -14,11 +14,13 @@ p.disclaimer {font-size: 200%; text-align: center; margin:0.4em 0.8em;}
 /*
 #panels {display: flex; justify-content: center; flex-wrap: wrap; }
 */
-#panels {display: grid; grid-template-columns: 1fr 0fr 0fr 0fr 1fr}
-.labeled_input.numeric, .effect_header, .sound_waveform_input {grid-column: 2 / span 1; white-space:nowrap;}
-.add_effect_buttons {grid-column: 3 / span 1; width: 8em;}
-.signal_effect {grid-column: 2 / span 1; position: relative; left: 4em;}
-#panels canvas {grid-column: 4 / span 1;}
+#panels {display: grid; grid-template-columns: 1fr 0fr 0fr 0fr 0fr 1fr}
+.labeled_input.numeric, .effect_header {grid-column: 3 / span 1; white-space:nowrap;}
+.sound_waveform_input {grid-column: 3 / span 2; white-space:nowrap;}
+.add_effect_buttons {grid-column: 4 / span 1; width: 8em;}
+.signal_effect {grid-column: 3 / span 2 !important; }
+.toplevel_input_label {grid-column: 1 / span 1; text-align: right; align-self: center;}
+#panels canvas {grid-column: 5 / span 1;}
 .panel {margin:0.8em; padding:0.8em; background-color:#eee;}
 .panel .labeled_input {margin:0.2em;}
 .panel label {margin-left: 0.2em; margin-right: 0.6em;}

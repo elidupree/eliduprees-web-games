@@ -181,8 +181,8 @@ impl <'a, F: 'static + Fn (UserNumber <T>)->bool, T: UserNumberType> NumericalIn
     
     let result: Value = js!{
       var result = $("<div>", {class: "labeled_input numeric"}).append (
-        @{&range_input}.on ("input", @{&range_overrides}),
         @{&number_input}.on ("input", @{&number_overrides}),
+        @{&range_input}.on ("input", @{&range_overrides}),
         $("<label>", {"for": @{self.id}+"_numerical_number", text:@{
           format! ("{} ({})", self.name, value_type.unit_name())
         }})
@@ -268,12 +268,13 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   
   let initial_value_input = self.value_input (
     & format! ("{}_initial", & self.info.id),
-    self.info.name, 
+    self.info.name,
     self.getter.clone() + getter! (signal => signal.initial_value)
   );
   
-  js!{@{& container}.append (@{initial_value_input})}
-
+  js!{@{& container}.append (@{&initial_value_input})}
+  let label = self.assign_row(js!{ return @{initial_value_input}.children("label");});
+  js!{@{label}.append(":").appendTo(@{& container}).addClass("toplevel_input_label")}
   
     //let range = self.info.difference_slider_range;
     let info = self.info.clone();
