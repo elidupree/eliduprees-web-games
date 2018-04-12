@@ -228,7 +228,6 @@ pub enum SignalEffect <T: UserNumberType> {
 #[derive (Default)]
 pub struct Signal <T: UserNumberType> {
   pub initial_value: UserNumber<T>,
-  pub constant: bool,
   pub effects: Vec<SignalEffect <T>>,
 }
 
@@ -382,19 +381,13 @@ impl<T: UserNumberType> SignalEffect <T> {
 impl<T: UserNumberType> Signal<T> {
   pub fn constant(value: UserNumber <T>)->Self {
     Signal {
-      constant: true,
       initial_value: value,
       effects: Vec::new(),
     }
   }
 
   pub fn sample (&self, time: f32)->f32 {
-    if self.constant {
-      self.initial_value.rendered
-    }
-    else {
-      self.initial_value.rendered + self.effects.iter().map (| effect | effect.sample (time)).sum::<f32>()
-    }
+    self.initial_value.rendered + self.effects.iter().map (| effect | effect.sample (time)).sum::<f32>()
   }
   
   pub fn range (&self)->[f32;2] {

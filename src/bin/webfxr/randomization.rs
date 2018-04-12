@@ -33,7 +33,6 @@ pub fn random_signal <G: Rng, T: UserNumberType>(generator: &mut G, info: & Sign
   }
   Signal {
     initial_value: UserNumber::from_rendered (generator.gen_range (info.slider_range [0], info.slider_range [1])),
-    constant: effects.len() == 0,
     effects: effects,
   }
 }

@@ -271,55 +271,37 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     self.info.name, 
     self.getter.clone() + getter! (signal => signal.initial_value)
   );
-    
-  let toggle_constant_button = self.assign_row(button_input (
-    if signal.constant {"Complicate"} else {"Simplify"},
-    input_callback_gotten_nullary (self.state, self.getter.clone(), move | signal | {
-      signal.constant = !signal.constant;
-      true
-    })
-  ));
   
-  js!{@{& container}.append (@{initial_value_input}, @{toggle_constant_button}.addClass("toggle_constant"))}
-  
-  *self.rows += 1;
-  
-  if !signal.constant {
-    //let range = self.info.difference_slider_range;
-    let info = self.info.clone();
-    let add_jump_button = button_input (
-      "Add jump",
-      input_callback_gotten_nullary (self.state, self.getter.clone(), move | signal | {
-        signal.effects.push (random_jump_effect (&mut rand::thread_rng(), &info));
-        true
-      })
-    );
-    let info = self.info.clone();
-    let add_slide_button = button_input (
-      "Add slide",
-      input_callback_gotten_nullary (self.state, self.getter.clone(), move | signal | {
-        signal.effects.push (random_slide_effect (&mut rand::thread_rng(), &info));
-        true
-      })
-    );
-    let info = self.info.clone();
-    let add_oscillation_button = button_input (
-      "Add oscillation",
-      input_callback_gotten_nullary (self.state, self.getter.clone(), move | signal | {
-        signal.effects.push (random_oscillation_effect (&mut rand::thread_rng(), &info));
-        true
-      })
-    );
-    let buttons = self.assign_row(js!{ return $("<div>", {class: "add_effect_buttons"}).append (@{add_jump_button}, @{add_slide_button}, @{add_oscillation_button}); });
-    
-    js!{ @{& container}.append (@{buttons}); }
-      
-    *self.rows += 1;
-  }
+  js!{@{& container}.append (@{initial_value_input})}
 
   
+    //let range = self.info.difference_slider_range;
+    let info = self.info.clone();
+    let buttons = self.assign_row(js!{
+      return $("<select>", {class: "add_effect_buttons"}).append (
+        $("<option>", {selected: true}).text("Add effect..."),
+        $("<option>").text(@{self.info.name}+" jump"),
+        $("<option>").text(@{self.info.name}+" slide"),
+        $("<option>").text(@{self.info.name}+" oscillation")
+      ).on("change", function(event) {
+        @{input_callback_gotten (self.state, self.getter.clone(), move | signal, index: i32 | {
+          match index {
+            1 => signal.effects.push (random_jump_effect (&mut rand::thread_rng(), &info)),
+            2 => signal.effects.push (random_slide_effect (&mut rand::thread_rng(), &info)),
+            3 => signal.effects.push (random_oscillation_effect (&mut rand::thread_rng(), &info)),
+            _ => return false,
+          }
+          true
+        })}(event.target.selectedIndex)
+      });
+    });
     
-  if !signal.constant {for (index, effect) in signal.effects.iter().enumerate() {
+    js!{ @{& container}.append (@{buttons}); }
+
+    
+  *self.rows += 1;
+    
+  for (index, effect) in signal.effects.iter().enumerate() {
     let effect_getter = self.getter.clone() + getter!(signal => signal.effects [index]);
     let delete_button = button_input ("Delete",
       input_callback_gotten_nullary (self.state, self.getter.clone(), move | signal | {
@@ -337,7 +319,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
         ])*) => {
         match *effect {
           $(SignalEffect::$Variant {..} => {
-            let header = self.assign_row(js!{ return jQuery("<div>", {class: "add_effect_buttons"}).append (@{self.info.name}+" "+@{$variant_name}+": ",@{delete_button})});
+            let header = self.assign_row(js!{ return jQuery("<div>", {class: "effect_header"}).append (@{self.info.name}+" "+@{$variant_name}+": ",@{delete_button})});
             js!{@{& container}.append (@{header});}
             *self.rows += 1;
             $(
@@ -371,9 +353,9 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
         (waveform, "Waveform", waveform_input)
       ]
     }
-  }}
+  }
   
-    if !signal.constant && signal.effects.len() > 0 {
+    if signal.effects.len() > 0 {
       js!{ @{& container}.append (@{canvas_of_samples (& display_samples (& guard.sound, | time | signal.sample (time)), self.info.slider_range)}.css("grid-row", @{first_row + 1}+" / "+@{*self.rows})); }
     }
     
