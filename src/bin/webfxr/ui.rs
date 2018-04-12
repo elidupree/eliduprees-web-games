@@ -319,7 +319,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
         ])*) => {
         match *effect {
           $(SignalEffect::$Variant {..} => {
-            let header = self.assign_row(js!{ return jQuery("<div>", {class: "effect_header"}).append (@{self.info.name}+" "+@{$variant_name}+": ",@{delete_button})});
+            let header = self.assign_row(js!{ return jQuery("<div>", {class: "signal_effect effect_header"}).append (@{self.info.name}+" "+@{$variant_name}+": ",@{delete_button})});
             js!{@{& container}.append (@{header});}
             *self.rows += 1;
             $(
@@ -327,7 +327,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
                 & format! ("{}_{}_{}", & self.info.id, index, stringify! ($field)),
                 $name,
                 effect_getter.clone() + variant_field_getter! (SignalEffect::$Variant => $field)
-              )}.css("grid-column", "2 / span 1"))}
+              )}.addClass("signal_effect input"))}
               *self.rows += 1;
             )*
           },)*
