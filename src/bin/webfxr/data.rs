@@ -86,13 +86,26 @@ pub enum TimeType {
   #[derivative (Default)]
   Seconds,
 }
+const DEFAULT_DECIBEL_BASE: f32 = -40.0;
+#[derive (Clone, PartialEq, Serialize, Deserialize, Derivative)]
+#[derivative (Default)]
+pub enum VolumeType {
+  #[derivative (Default)]
+  DecibelsAbove(#[derivative (Default (value = "DEFAULT_DECIBEL_BASE"))] f32),
+}
+#[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Derivative)]
+#[derivative (Default)]
+pub enum VolumeDifferenceType {
+  #[derivative (Default)]
+  Decibels,
+}
 #[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Derivative)]
 #[derivative (Default)]
 pub enum DimensionlessType {
   #[derivative (Default)]
   Raw,
 }
-pub trait UserNumberType: 'static + Clone + Eq + Serialize + DeserializeOwned + Default {
+pub trait UserNumberType: 'static + Clone + PartialEq + Serialize + DeserializeOwned + Default {
   type DifferenceType: UserNumberType;
   fn render (&self, value: & str)->Option<f32>;
   fn approximate_from_rendered (&self, rendered: f32)->String;
@@ -167,6 +180,50 @@ impl UserNumberType for TimeType {
     }
   }
 }
+const OCTAVES_TO_DECIBELS: f32 = 3.0102999;
+impl UserNumberType for VolumeType {
+  type DifferenceType = VolumeDifferenceType;
+  fn render (&self, value: & str)->Option <f32> {
+    match *self {
+      VolumeType::DecibelsAbove(base) => f32::from_str (value).ok().and_then(| value | {
+        let value = (value + base)/OCTAVES_TO_DECIBELS;
+        if value.is_finite() {Some (value)} else {None}
+      })
+    }
+  }
+  fn approximate_from_rendered (&self, rendered: f32)->String {
+    match *self {
+      VolumeType::DecibelsAbove(base) => format!("{:.1}", rendered*OCTAVES_TO_DECIBELS - base)
+    }
+  }
+  fn unit_name (&self)->&'static str {
+    match *self {
+      VolumeType::DecibelsAbove(_) => "Decibels"
+    }
+  }
+}
+impl UserNumberType for VolumeDifferenceType{
+  type DifferenceType = Self;
+  fn render (&self, value: & str)->Option <f32> {
+    match *self {
+      VolumeDifferenceType::Decibels => f32::from_str (value).ok().and_then(| value | {
+        let value = value/OCTAVES_TO_DECIBELS;
+        if value.is_finite() {Some (value)} else {None}
+      })
+    }
+  }
+  fn approximate_from_rendered (&self, rendered: f32)->String {
+    match *self {
+      VolumeDifferenceType::Decibels => format!("{:.1}", rendered*OCTAVES_TO_DECIBELS)
+    }
+  }
+  fn unit_name (&self)->&'static str {
+    match *self {
+      VolumeDifferenceType::Decibels => "Decibels"
+    }
+  }
+}
+
 impl UserNumberType for DimensionlessType {
   type DifferenceType = Self;
   fn render (&self, value: & str)->Option <f32> {
@@ -292,7 +349,7 @@ pub struct SoundDefinition {
   pub waveform: Waveform,
   pub envelope: Envelope,
   pub log_frequency: Signal <FrequencyType>,
-  pub volume: Signal <DimensionlessType>,
+  pub volume: Signal <VolumeType>,
   pub log_lowpass_filter_cutoff: Signal <FrequencyType>,
   pub log_highpass_filter_cutoff: Signal <FrequencyType>,
   pub log_bitcrush_frequency: Signal <FrequencyType>,
@@ -309,8 +366,8 @@ signals_definitions! {
   (volume, SignalInfo {
     id: "volume",
     name: "Volume",
-    slider_range: [0.0,1.0],
-    difference_slider_range: 0.5,
+    slider_range: [DEFAULT_DECIBEL_BASE/OCTAVES_TO_DECIBELS,0.0],
+    difference_slider_range: 2.0,
     average_effects: 0.7,
   }),
   (log_lowpass_filter_cutoff, SignalInfo {
@@ -442,7 +499,7 @@ impl SoundDefinition {
     for index in 0..num_frames {
       let time = index as f32/sample_rate as f32;
       
-      let mut sample = self.waveform.sample (wave_phase)*self.envelope.sample (time)*max (0.0, self.volume.sample (time));
+      let mut sample = self.waveform.sample (wave_phase)*self.envelope.sample (time)*self.volume.sample (time).exp2();
       
       //note: the formulas for the filter cutoff are based on a first-order filter, so they are not exactly correct for this. TODO fix
       let lowpass_filter_frequency = self.log_lowpass_filter_cutoff.sample (time).exp2();

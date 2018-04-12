@@ -104,7 +104,7 @@ pub fn random_sound <G: Rng>(generator: &mut G)->SoundDefinition {
   for attempt in 0..max_attempts {
     let last = attempt == max_attempts - 1;
     let volume_range = sound.volume.range();
-    if volume_range[1] > 1.0 || (volume_range[0] + volume_range[1] <= 0.0) {
+    if volume_range[1] > -1.0 || volume_range[1] <= -5.0 {
       sound.volume = random_signal (generator, &SignalInfo::volume());
     }
     if sound.log_lowpass_filter_cutoff.range() [0] < sound.log_frequency.range() [1] {
