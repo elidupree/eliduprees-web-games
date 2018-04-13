@@ -56,8 +56,8 @@ pub struct RenderedSamples {
 }
 impl Default for RenderedSamples {
   fn default()->Self {
-    let canvas = js!{ return document.createElement("canvas"); };
-    let context = js!{ return @{&canvas}.getContext ("2d"); };
+    let canvas = js!{ return $("<canvas>"); };
+    let context = js!{ return @{&canvas}[0].getContext ("2d"); };
     RenderedSamples {
       unprocessed_supersamples: Vec::new(),
       samples: Vec::new(),
@@ -109,13 +109,13 @@ impl RenderedSamples {
       if self.samples.len() % constants.samples_per_illustrated == 0 {
         let value = root_mean_square (& self.samples [self.samples.len()-constants.samples_per_illustrated..]);
         js!{
-          var canvas = @{&self.canvas};
+          var canvas = @{&self.canvas}[0];
           var context = @{&self.context};
-          context.fillStyle = "rgba(0,0,0)";
+          context.fillStyle = "rgb(0,0,0)";
           // assume that root-mean-square only goes up to 0.5;
           // on the other hand, the radius should range from 0 to 0.5
-          let radius = canvas.height*@{value};
-          context.fillRect (@{self.illustration.len() as f64}, 0.5 - radius, 1, radius*2);
+          var radius = canvas.height*@{value};
+          context.fillRect (@{self.illustration.len() as f64}, canvas.height*0.5 - radius, 1, radius*2);
         }
         self.illustration.push (value);
       }
@@ -133,7 +133,7 @@ impl RenderingState {
         supersamples_per_sample: supersamples_per_sample,
         num_supersamples: num_samples*supersamples_per_sample,
         supersample_duration: 1.0/((sound.sample_rate()*supersamples_per_sample) as f32),
-        samples_per_illustrated: (sound.sample_rate() as f32/100.0).ceil() as usize,
+        samples_per_illustrated: (sound.sample_rate() as f32/DISPLAY_SAMPLE_RATE).ceil() as usize,
       },
       bitcrush_phase: 1.0,
       .. Default::default()

@@ -38,6 +38,7 @@ pub struct State {
 
 
 fn redraw(state: & Rc<RefCell<State>>) {
+  {
   let guard = state.borrow();
   let sound = & guard.sound;
   
@@ -117,13 +118,19 @@ fn redraw(state: & Rc<RefCell<State>>) {
   let mut visitor = Visitor (state, &mut rows);
   for caller in sound.visit_callers::<Visitor>() {(caller)(&mut visitor, sound);}
   
-  render_loop (state.clone());
-  
   //js! {window.before_render = Date.now();}
   //let rendered: TypedArray <f32> = sound.render (44100).as_slice().into();
   
   //js! {console.log("rendering took this many milliseconds: " + (Date.now() - window.before_render));}
-  web::window().request_animation_frame ({let state = state.clone(); move | _time | render_loop (state)});
+  
+  }
+  
+  {
+    let mut guard = state.borrow_mut();
+    let state = &mut*guard;
+    state.rendering_state = RenderingState::new (& state.sound);
+  }
+  render_loop (state.clone());
 }
 
 
@@ -150,8 +157,10 @@ fn render_loop (state: Rc<RefCell<State>>) {
 }
 
 fn play (state: &State) {
+  //println!("{:?}", &state.rendering_state.final_samples().samples);
+  let rendered: TypedArray <f32> = state.rendering_state.final_samples().samples.as_slice().into();
   js! {
-  const rendered = @{&state.rendering_state.final_samples().samples};
+  const rendered = @{rendered};
   const sample_rate = @{state.sound.sample_rate() as f64};
   const buffer = audio.createBuffer (1, rendered.length, sample_rate);
   buffer.copyToChannel (rendered, 0);
