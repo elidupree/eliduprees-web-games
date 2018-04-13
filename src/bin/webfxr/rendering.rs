@@ -57,7 +57,7 @@ pub struct RenderedSamples {
 impl Default for RenderedSamples {
   fn default()->Self {
     let canvas = js!{ return document.createElement("canvas"); };
-    let context = js!{ return @{canvas}.getContext ("2d"); };
+    let context = js!{ return @{&canvas}.getContext ("2d"); };
     RenderedSamples {
       unprocessed_supersamples: Vec::new(),
       samples: Vec::new(),
@@ -68,37 +68,37 @@ impl Default for RenderedSamples {
 }
 #[derive (Default)]
 pub struct RenderingStateConstants {
-  num_samples: usize,
-  supersamples_per_sample: usize,
-  num_supersamples: usize,
-  supersample_duration: f32,
-  samples_per_illustrated: usize,
+  pub num_samples: usize,
+  pub supersamples_per_sample: usize,
+  pub num_supersamples: usize,
+  pub supersample_duration: f32,
+  pub samples_per_illustrated: usize,
 }
 
 #[derive (Default)]
 pub struct RenderingState {
-  next_supersample: usize,
+  pub next_supersample: usize,
   
-  wave_phase: f32,
-  after_frequency: RenderedSamples,
+  pub wave_phase: f32,
+  pub after_frequency: RenderedSamples,
   
-  after_volume: RenderedSamples,
+  pub after_volume: RenderedSamples,
   
-  //after_flanger: RenderedSamples,
+  //pub after_flanger: RenderedSamples,
   
-  lowpass_state: LowpassFilterState,
-  after_lowpass: RenderedSamples,
+  pub lowpass_state: LowpassFilterState,
+  pub after_lowpass: RenderedSamples,
   
-  highpass_state: HighpassFilterState,
-  after_highpass: RenderedSamples,
+  pub highpass_state: HighpassFilterState,
+  pub after_highpass: RenderedSamples,
   
-  bitcrush_phase: f32,
-  bitcrush_last_used_sample: f32,
-  after_bitcrush: RenderedSamples,
+  pub bitcrush_phase: f32,
+  pub bitcrush_last_used_sample: f32,
+  pub after_bitcrush: RenderedSamples,
   
-  after_envelope: RenderedSamples,
+  pub after_envelope: RenderedSamples,
   
-  constants: RenderingStateConstants,
+  pub constants: RenderingStateConstants,
 }
 
 impl RenderedSamples {
@@ -109,8 +109,8 @@ impl RenderedSamples {
       if self.samples.len() % constants.samples_per_illustrated == 0 {
         let value = root_mean_square (& self.samples [self.samples.len()-constants.samples_per_illustrated..]);
         js!{
-          var canvas = @{self.canvas};
-          var context = @{self.context};
+          var canvas = @{&self.canvas};
+          var context = @{&self.context};
           context.fillStyle = "rgba(0,0,0)";
           // assume that root-mean-square only goes up to 0.5;
           // on the other hand, the radius should range from 0 to 0.5
@@ -173,10 +173,14 @@ impl RenderingState {
     let bitcrush_frequency = sound.log_bitcrush_frequency.sample(time).exp2();
     self.wave_phase += frequency*self.constants.supersample_duration;
     self.bitcrush_phase += bitcrush_frequency*self.constants.supersample_duration;
+    self.next_supersample += 1;
   }
-  pub fn step (&mut self, sound: & SoundDefinition) {
+  pub fn step (&mut self, sound: & SoundDefinition)->bool {
+    if self.next_supersample == self.constants.num_supersamples {return false;}
     for _ in 0..(self.constants.supersamples_per_sample*self.constants.samples_per_illustrated) {
       self.superstep(sound);
+      if self.next_supersample == self.constants.num_supersamples {return false;}
     }
+    true
   }
 }

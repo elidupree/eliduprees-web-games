@@ -206,8 +206,7 @@ impl <'a, F: 'static + Fn (UserNumber <T>)->bool, T: UserNumberType> NumericalIn
 
 pub struct SignalEditorSpecification <'a, T: UserNumberType> {
   pub state: & 'a Rc<RefCell<State>>,
-  pub info: &'a SignalInfo,
-  pub getter: Getter <State, Signal <T>>,
+  pub info: &'a TypedSignalInfo<T>,
   pub rows: &'a mut u32,
 }
 
@@ -237,11 +236,11 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   }
   
   pub fn value_input (&self, id: & str, name: & str, getter: Getter <State, UserNumber <T>>)->Value {
-    self.numeric_input (id, name, self.info.slider_range, getter)
+    self.numeric_input (id, name, self.info.untyped.slider_range, getter)
   }
   
   pub fn difference_input (&self, id: & str, name: & str, getter: Getter <State, UserNumber <T::DifferenceType>>)->Value {
-    self.numeric_input (id, name, [-self.info.difference_slider_range, self.info.difference_slider_range], getter)
+    self.numeric_input (id, name, [-self.info.untyped.difference_slider_range, self.info.untyped.difference_slider_range], getter)
   }
   
   pub fn frequency_input (&self, id: & str, name: & str, getter: Getter <State, UserFrequency>)->Value {
@@ -259,33 +258,33 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   pub fn render (self) {
     
       let guard = self.state.borrow();
-    let signal = self.getter.get (& guard);
+    let signal = self.info.getter.get (& guard);
     let first_row = *self.rows;
       
   let container = js!{ return $("#panels");};
   
-  //js!{@{& container}.append (@{self.info.name} + ": ");}
+  //js!{@{& container}.append (@{self.info.untyped.name} + ": ");}
   
   let initial_value_input = self.value_input (
-    & format! ("{}_initial", & self.info.id),
-    self.info.name,
-    self.getter.clone() + getter! (signal => signal.initial_value)
+    & format! ("{}_initial", & self.info.untyped.id),
+    self.info.untyped.name,
+    self.info.getter.clone() + getter! (signal => signal.initial_value)
   );
   
   js!{@{& container}.append (@{&initial_value_input})}
   let label = self.assign_row(js!{ return @{initial_value_input}.children("label");});
   js!{@{label}.append(":").appendTo(@{& container}).addClass("toplevel_input_label")}
   
-    //let range = self.info.difference_slider_range;
-    let info = self.info.clone();
+    //let range = self.info.untyped.difference_slider_range;
+    let info = self.info.untyped.clone();
     let buttons = self.assign_row(js!{
       return $("<select>", {class: "add_effect_buttons"}).append (
         $("<option>", {selected: true}).text("Add effect..."),
-        $("<option>").text(@{self.info.name}+" jump"),
-        $("<option>").text(@{self.info.name}+" slide"),
-        $("<option>").text(@{self.info.name}+" oscillation")
+        $("<option>").text(@{self.info.untyped.name}+" jump"),
+        $("<option>").text(@{self.info.untyped.name}+" slide"),
+        $("<option>").text(@{self.info.untyped.name}+" oscillation")
       ).on("change", function(event) {
-        @{input_callback_gotten (self.state, self.getter.clone(), move | signal, index: i32 | {
+        @{input_callback_gotten (self.state, self.info.getter.clone(), move | signal, index: i32 | {
           match index {
             1 => signal.effects.push (random_jump_effect (&mut rand::thread_rng(), &info)),
             2 => signal.effects.push (random_slide_effect (&mut rand::thread_rng(), &info)),
@@ -299,13 +298,16 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     
     js!{ @{& container}.append (@{buttons}); }
 
-    
+    if let Some(rendered) = (self.info.rendered_getter)(&guard) {
+      js!{ @{& container}.append (@{self.assign_row (rendered.canvas.clone()) }); }
+    }
+      
   *self.rows += 1;
     
   for (index, effect) in signal.effects.iter().enumerate() {
-    let effect_getter = self.getter.clone() + getter!(signal => signal.effects [index]);
+    let effect_getter = self.info.getter.clone() + getter!(signal => signal.effects [index]);
     let delete_button = button_input ("Delete",
-      input_callback_gotten_nullary (self.state, self.getter.clone(), move | signal | {
+      input_callback_gotten_nullary (self.state, self.info.getter.clone(), move | signal | {
         signal.effects.remove (index);
         true
       })
@@ -320,12 +322,12 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
         ])*) => {
         match *effect {
           $(SignalEffect::$Variant {..} => {
-            let header = self.assign_row(js!{ return jQuery("<div>", {class: "signal_effect effect_header"}).append (@{self.info.name}+" "+@{$variant_name}+": ",@{delete_button})});
+            let header = self.assign_row(js!{ return jQuery("<div>", {class: "signal_effect effect_header"}).append (@{self.info.untyped.name}+" "+@{$variant_name}+": ",@{delete_button})});
             js!{@{& container}.append (@{header});}
             *self.rows += 1;
             $(
               js!{@{& container}.append (@{self.$input_method(
-                & format! ("{}_{}_{}", & self.info.id, index, stringify! ($field)),
+                & format! ("{}_{}_{}", & self.info.untyped.id, index, stringify! ($field)),
                 $name,
                 effect_getter.clone() + variant_field_getter! (SignalEffect::$Variant => $field)
               )}.addClass("signal_effect input"))}
@@ -357,8 +359,9 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   }
   
     if signal.effects.len() > 0 {
-      js!{ @{& container}.append (@{canvas_of_samples (& display_samples (& guard.sound, | time | signal.sample (time)), self.info.slider_range)}.css("grid-row", @{first_row + 1}+" / "+@{*self.rows})); }
+      js!{ @{& container}.append (@{canvas_of_samples (& display_samples (& guard.sound, | time | signal.sample (time)), self.info.untyped.slider_range)}.css("grid-row", @{first_row + 1}+" / "+@{*self.rows})); }
     }
+    
     js!{ @{& container}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{first_row}+" / "+@{*self.rows})); }
   }
 }

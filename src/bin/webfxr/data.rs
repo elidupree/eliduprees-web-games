@@ -247,16 +247,23 @@ pub struct SignalInfo {
   pub average_effects: f32,
 }
 
+#[derive (Clone)]
+pub struct TypedSignalInfo<T: UserNumberType> {
+  pub untyped: SignalInfo,
+  pub getter: Getter <State, Signal <T>>,
+  pub rendered_getter: Rc<Fn(& State)->Option <& RenderedSamples>>,
+}
+
 pub trait SignalVisitor {
-  fn visit <T: UserNumberType> (&mut self, info: & SignalInfo, signal: & Signal <T>, getter: Getter <State, Signal <T>>);
+  fn visit <T: UserNumberType> (&mut self, info: & TypedSignalInfo <T>, signal: & Signal <T>);
 }
 
 pub trait SignalVisitorMut {
-  fn visit_mut <T: UserNumberType> (&mut self, info: & SignalInfo, signal: &mut Signal <T>, getter: Getter <State, Signal <T>>);
+  fn visit_mut <T: UserNumberType> (&mut self, info: & TypedSignalInfo <T>, signal: &mut Signal <T>);
 }
 
 macro_rules! signals_definitions {
-  ($(($field: ident, $info: expr),)*) => {
+  ($(($field: ident, $NumberType: ident, $rendered_field: expr, $info: expr),)*) => {
     impl SoundDefinition {
       pub fn signals_static_info()->Vec<SignalInfo> {
         vec![
@@ -265,12 +272,12 @@ macro_rules! signals_definitions {
       }
       pub fn visit_callers <T: SignalVisitor> (&self)->Vec<Box<Fn(&mut T, &SoundDefinition)>> {
         vec![
-          $(Box::new (| visitor, sound | visitor.visit (& $info, &sound.$field, getter! (state => state.sound.$field))),)*
+          $(Box::new (| visitor, sound | visitor.visit (& TypedSignalInfo::$field(), &sound.$field)),)*
         ]
       }
       pub fn visit_mut_callers <T: SignalVisitorMut> (&self)->Vec<Box<Fn(&mut T, &mut SoundDefinition)>> {
         vec![
-          $(Box::new (| visitor, sound | visitor.visit_mut (& $info, &mut sound.$field, getter! (state => state.sound.$field))),)*
+          $(Box::new (| visitor, sound | visitor.visit_mut (& TypedSignalInfo::$field(), &mut sound.$field)),)*
         ]
       }
     }
@@ -280,6 +287,15 @@ macro_rules! signals_definitions {
         $info
       })*
     }
+    $(impl TypedSignalInfo <$NumberType> {
+      pub fn $field ()->Self {
+        TypedSignalInfo {
+          untyped: $info,
+          getter: getter! (state => state.sound.$field),
+          rendered_getter: Rc::new ($rendered_field),
+        }
+      }
+    })*
   }
 }
 
@@ -295,35 +311,35 @@ pub struct SoundDefinition {
 }
 
 signals_definitions! {
-  (log_frequency, SignalInfo {
+  (log_frequency, FrequencyType, |state| Some(&state.rendering_state.after_frequency), SignalInfo {
     id: "frequency",
     name: "Frequency",
     slider_range: [20f32.log2(), 5000f32.log2()],
     difference_slider_range: 2.0,
     average_effects: 2.0,
   }),
-  (volume, SignalInfo {
+  (volume, VolumeType, |state| Some(&state.rendering_state.after_volume), SignalInfo {
     id: "volume",
     name: "Volume",
     slider_range: [DEFAULT_DECIBEL_BASE/OCTAVES_TO_DECIBELS,0.0],
     difference_slider_range: 2.0,
     average_effects: 0.7,
   }),
-  (log_lowpass_filter_cutoff, SignalInfo {
+  (log_lowpass_filter_cutoff, FrequencyType, |state| Some(&state.rendering_state.after_lowpass), SignalInfo {
     id: "lowpass",
     name: "Low-pass filter cutoff",
     slider_range: [20f32.log2(), 48000f32.log2()],
     difference_slider_range: 5.0,
     average_effects: 0.7,
   }),
-  (log_highpass_filter_cutoff, SignalInfo {
+  (log_highpass_filter_cutoff, FrequencyType, |state| Some(&state.rendering_state.after_highpass), SignalInfo {
     id: "highpass",
     name: "High-pass filter cutoff",
     slider_range: [10f32.log2(), 20000f32.log2()],
     difference_slider_range: 5.0,
     average_effects: 0.7,
   }),
-  (log_bitcrush_frequency, SignalInfo {
+  (log_bitcrush_frequency, FrequencyType, |state| Some(&state.rendering_state.after_bitcrush), SignalInfo {
     id: "bitcrush_frequency",
     name: "Bitcrush frequency",
     slider_range: [20f32.log2(), 48000f32.log2()],

@@ -77,8 +77,8 @@ pub fn random_sound <G: Rng>(generator: &mut G)->SoundDefinition {
   };
   struct Visitor <'a, G: 'a + Rng> (& 'a mut G);
   impl<'a, G: Rng> SignalVisitorMut for Visitor<'a, G> {
-    fn visit_mut <T: UserNumberType> (&mut self, info: &SignalInfo, signal: & mut Signal <T>, _getter: Getter <State, Signal <T>>) {
-      *signal = random_signal (self.0, info);
+    fn visit_mut <T: UserNumberType> (&mut self, info: & TypedSignalInfo <T>, signal: & mut Signal <T>) {
+      *signal = random_signal (self.0, &info.untyped);
     }
   }
   

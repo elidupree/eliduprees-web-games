@@ -17,7 +17,8 @@ extern crate ordered_float;
 use std::rc::Rc;
 use std::cell::RefCell;
 use stdweb::Value;
-use stdweb::web::TypedArray;
+use stdweb::web::{self, TypedArray};
+use std::time::{Instant, Duration};
 
 #[macro_use]
 mod data;
@@ -104,11 +105,10 @@ fn redraw(state: & Rc<RefCell<State>>) {
   
   struct Visitor <'a> (& 'a Rc<RefCell<State>>, & 'a mut u32);
   impl<'a> SignalVisitor for Visitor<'a> {
-    fn visit <T: UserNumberType> (&mut self, info: &SignalInfo, _signal: & Signal <T>, getter: Getter <State, Signal <T>>) {
+    fn visit <T: UserNumberType> (&mut self, info: & TypedSignalInfo <T>, _signal: & Signal <T>) {
       SignalEditorSpecification {
     state: self.0,
     info: info,
-    getter: getter,
     rows: self.1,
   }.render();
     }
@@ -117,14 +117,42 @@ fn redraw(state: & Rc<RefCell<State>>) {
   let mut visitor = Visitor (state, &mut rows);
   for caller in sound.visit_callers::<Visitor>() {(caller)(&mut visitor, sound);}
   
+  render_loop (state.clone());
   
-  js! {window.before_render = Date.now();}
-  let rendered: TypedArray <f32> = sound.render (44100).as_slice().into();
+  //js! {window.before_render = Date.now();}
+  //let rendered: TypedArray <f32> = sound.render (44100).as_slice().into();
   
-  js! {console.log("rendering took this many milliseconds: " + (Date.now() - window.before_render));}
+  //js! {console.log("rendering took this many milliseconds: " + (Date.now() - window.before_render));}
+  web::window().request_animation_frame ({let state = state.clone(); move | _time | render_loop (state)});
+}
+
+
+fn render_loop (state: Rc<RefCell<State>>) {
+  let mut unfinished;
+  
+  {
+    let mut guard = state.borrow_mut();
+    let start = Instant::now();
+    
+    loop {
+      { let state = &mut*guard; unfinished = state.rendering_state.step(& state.sound); }
+      if !unfinished {play (& guard);}
+      let elapsed = start.elapsed();
+      if elapsed.as_secs() > 0 || elapsed.subsec_nanos() > 5_000_000 {
+        break;
+      }
+    }
+  }
+  
+  if unfinished {
+    web::window().request_animation_frame (move | _time | render_loop (state));
+  }
+}
+
+fn play (state: &State) {
   js! {
-  const rendered = @{rendered};
-const sample_rate = 44100;
+  const rendered = @{&state.rendering_state.final_samples().samples};
+  const sample_rate = @{state.sound.sample_rate() as f64};
   const buffer = audio.createBuffer (1, rendered.length, sample_rate);
   buffer.copyToChannel (rendered, 0);
   play_buffer (buffer);
@@ -145,7 +173,8 @@ fn main() {
       log_bitcrush_frequency: Signal::constant (UserNumber::from_rendered (44100.0_f32.log2())),
       log_lowpass_filter_cutoff: Signal::constant (UserNumber::from_rendered (44100.0_f32.log2())),
       log_highpass_filter_cutoff: Signal::constant (UserNumber::from_rendered (20.0_f32.log2())),
-    }
+    },
+    rendering_state: Default::default(),
   }));
   
 
