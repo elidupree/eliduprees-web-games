@@ -40,6 +40,11 @@ pub struct State {
 
 fn redraw(state: & Rc<RefCell<State>>) {
   {
+    let mut guard = state.borrow_mut();
+    let state = &mut*guard;
+    state.rendering_state = RenderingState::new (& state.sound);
+  }
+  {
   let guard = state.borrow();
   let sound = & guard.sound;
   
@@ -126,11 +131,6 @@ fn redraw(state: & Rc<RefCell<State>>) {
   
   }
   
-  {
-    let mut guard = state.borrow_mut();
-    let state = &mut*guard;
-    state.rendering_state = RenderingState::new (& state.sound);
-  }
   render_loop (state.clone());
 }
 
