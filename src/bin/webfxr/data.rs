@@ -66,45 +66,83 @@ macro_rules! variant_field_getter {
   }
 }
 
+macro_rules! zero_information_number_type {
+  ($Enum: ident, $Variant: ident, $name: expr, | $value: ident | $render: expr, | $rendered: ident | $from_rendered: expr) => {
+
+#[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Derivative)]
+#[derivative (Default)]
+pub enum $Enum {
+  #[derivative (Default)]
+  $Variant,
+}
+
+impl UserNumberType for $Enum {
+  type DifferenceType = IntervalType;
+  fn render (&self, value: & str)->Option <f32> {
+    let $value = match f32::from_str (value).ok().filter (| value | value.is_finite()) {
+      None => return None,
+      Some(a) => a,
+    };
+    match *self {
+      $Enum::$Variant => $render
+    }
+  }
+  fn approximate_from_rendered (&self, $rendered: f32)->String {
+    match *self {
+      $Enum::$Variant => $from_rendered
+    }
+  }
+  fn unit_name (&self)->&'static str {
+    match *self {
+      $Enum::$Variant => $name
+    }
+  }
+}
+
+  }
+}
 
 
-#[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Derivative)]
-#[derivative (Default)]
-pub enum FrequencyType {
-  #[derivative (Default)]
-  Frequency,
-}
-#[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Derivative)]
-#[derivative (Default)]
-pub enum IntervalType {
-  #[derivative (Default)]
-  Ratio,
-}
-#[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Derivative)]
-#[derivative (Default)]
-pub enum TimeType {
-  #[derivative (Default)]
-  Seconds,
-}
+const OCTAVES_TO_DECIBELS: f32 = 3.0102999;
 const DEFAULT_DECIBEL_BASE: f32 = -40.0;
+
+zero_information_number_type!{
+  FrequencyType, Frequency, "Hz",
+  | value | {
+    let value = value.log2();
+    if value.is_finite() {Some (value)} else {None}
+  },
+  | rendered | format!("{:.1}", rendered.exp2())
+}
+zero_information_number_type!{
+  IntervalType, Ratio, "ratio",
+  | value | {
+    let value = value.log2();
+    if value.is_finite() {Some (value)} else {None}
+  },
+  | rendered | format!("{:.2}", rendered.exp2())
+}
+zero_information_number_type!{
+  TimeType, Seconds, "s",
+  | value | Some (value),
+  | rendered | format!("{:.3}", rendered)
+}
+zero_information_number_type!{
+  VolumeDifferenceType, Decibels, "dB",
+  | value | {
+    let value = value/OCTAVES_TO_DECIBELS;
+    if value.is_finite() {Some (value)} else {None}
+  },
+  | rendered | format!("{:.1}", rendered*OCTAVES_TO_DECIBELS)
+}
+
 #[derive (Clone, PartialEq, Serialize, Deserialize, Derivative)]
 #[derivative (Default)]
 pub enum VolumeType {
   #[derivative (Default)]
   DecibelsAbove(#[derivative (Default (value = "DEFAULT_DECIBEL_BASE"))] f32),
 }
-#[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Derivative)]
-#[derivative (Default)]
-pub enum VolumeDifferenceType {
-  #[derivative (Default)]
-  Decibels,
-}
-#[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Derivative)]
-#[derivative (Default)]
-pub enum DimensionlessType {
-  #[derivative (Default)]
-  Raw,
-}
+
 pub trait UserNumberType: 'static + Clone + PartialEq + Serialize + DeserializeOwned + Default {
   type DifferenceType: UserNumberType;
   fn render (&self, value: & str)->Option<f32>;
@@ -120,67 +158,7 @@ pub struct UserNumber <T: UserNumberType> {
   #[serde(deserialize_with = "::serde::Deserialize::deserialize")]
   pub value_type: T,
 }
-impl UserNumberType for FrequencyType {
-  type DifferenceType = IntervalType;
-  fn render (&self, value: & str)->Option <f32> {
-    match *self {
-      FrequencyType::Frequency => f32::from_str (value).ok().and_then(| value | {
-        let value = value.log2();
-        if value.is_finite() {Some (value)} else {None}
-      })
-    }
-  }
-  fn approximate_from_rendered (&self, rendered: f32)->String {
-    match *self {
-      FrequencyType::Frequency => format!("{:.1}", rendered.exp2())
-    }
-  }
-  fn unit_name (&self)->&'static str {
-    match *self {
-      FrequencyType::Frequency => "Hz"
-    }
-  }
-}
-impl UserNumberType for IntervalType {
-  type DifferenceType = Self;
-  fn render (&self, value: & str)->Option <f32> {
-    match *self {
-      IntervalType::Ratio => f32::from_str (value).ok().and_then(| value | {
-        let value = value.log2();
-        if value.is_finite() {Some (value)} else {None}
-      })
-    }
-  }
-  fn approximate_from_rendered (&self, rendered: f32)->String {
-    match *self {
-      IntervalType::Ratio => format!("{:.2}", rendered.exp2())
-    }
-  }
-  fn unit_name (&self)->&'static str {
-    match *self {
-      IntervalType::Ratio => "ratio"
-    }
-  }
-}
-impl UserNumberType for TimeType {
-  type DifferenceType = Self;
-  fn render (&self, value: & str)->Option <f32> {
-    match *self {
-      TimeType::Seconds => f32::from_str (value).ok().filter (| value | value.is_finite())
-    }
-  }
-  fn approximate_from_rendered (&self, rendered: f32)->String {
-    match *self {
-      TimeType::Seconds => format!("{:.3}", rendered)
-    }
-  }
-  fn unit_name (&self)->&'static str {
-    match *self {
-      TimeType::Seconds => "s"
-    }
-  }
-}
-const OCTAVES_TO_DECIBELS: f32 = 3.0102999;
+
 impl UserNumberType for VolumeType {
   type DifferenceType = VolumeDifferenceType;
   fn render (&self, value: & str)->Option <f32> {
@@ -202,46 +180,7 @@ impl UserNumberType for VolumeType {
     }
   }
 }
-impl UserNumberType for VolumeDifferenceType{
-  type DifferenceType = Self;
-  fn render (&self, value: & str)->Option <f32> {
-    match *self {
-      VolumeDifferenceType::Decibels => f32::from_str (value).ok().and_then(| value | {
-        let value = value/OCTAVES_TO_DECIBELS;
-        if value.is_finite() {Some (value)} else {None}
-      })
-    }
-  }
-  fn approximate_from_rendered (&self, rendered: f32)->String {
-    match *self {
-      VolumeDifferenceType::Decibels => format!("{:.1}", rendered*OCTAVES_TO_DECIBELS)
-    }
-  }
-  fn unit_name (&self)->&'static str {
-    match *self {
-      VolumeDifferenceType::Decibels => "dB"
-    }
-  }
-}
 
-impl UserNumberType for DimensionlessType {
-  type DifferenceType = Self;
-  fn render (&self, value: & str)->Option <f32> {
-    match *self {
-      DimensionlessType::Raw => f32::from_str (value).ok().filter (| value | value.is_finite())
-    }
-  }
-  fn approximate_from_rendered (&self, rendered: f32)->String {
-    match *self {
-      DimensionlessType::Raw => format!("{:.3}", rendered)
-    }
-  }
-  fn unit_name (&self)->&'static str {
-    match *self {
-      DimensionlessType::Raw => ""
-    }
-  }
-}
 impl<T: UserNumberType> UserNumber <T> {
   pub fn new (value_type: T, source: String)->Option <Self> {
     value_type.render (&source).map (| rendered | UserNumber {
@@ -289,7 +228,6 @@ pub enum SignalEffect <T: UserNumberType> {
 #[derive (Default)]
 pub struct Signal <T: UserNumberType> {
   pub initial_value: UserNumber<T>,
-  pub constant: bool,
   pub effects: Vec<SignalEffect <T>>,
 }
 
@@ -443,19 +381,13 @@ impl<T: UserNumberType> SignalEffect <T> {
 impl<T: UserNumberType> Signal<T> {
   pub fn constant(value: UserNumber <T>)->Self {
     Signal {
-      constant: true,
       initial_value: value,
       effects: Vec::new(),
     }
   }
 
   pub fn sample (&self, time: f32)->f32 {
-    if self.constant {
-      self.initial_value.rendered
-    }
-    else {
-      self.initial_value.rendered + self.effects.iter().map (| effect | effect.sample (time)).sum::<f32>()
-    }
+    self.initial_value.rendered + self.effects.iter().map (| effect | effect.sample (time)).sum::<f32>()
   }
   
   pub fn range (&self)->[f32;2] {

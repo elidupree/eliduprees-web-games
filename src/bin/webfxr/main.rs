@@ -16,6 +16,7 @@ extern crate ordered_float;
 
 use std::rc::Rc;
 use std::cell::RefCell;
+use stdweb::Value;
 use stdweb::web::TypedArray;
 
 #[macro_use]
@@ -31,17 +32,17 @@ fn redraw(state: & Rc<RefCell<State>>) {
   let guard = state.borrow();
   let sound = & guard.sound;
   
+  let mut rows = 1;
+  pub fn assign_row (rows: u32, element: Value)->Value {
+    js!{@{&element}.css("grid-row", @{rows}+" / span 1")};
+    element
+  }
+  
   let envelope_samples = display_samples (sound, | time | sound.envelope.sample (time));
   
-  let randomize_button = button_input ("Randomize",
-    input_callback_nullary (state, move | state | {
-      state.sound = random_sound (&mut rand::thread_rng());
-      true
-    })
-  );
-  
-  macro_rules! envelope_input {
-  ($variable: ident, $name: expr, $range: expr) => {NumericalInputSpecification {
+  macro_rules! add_envelope_input {
+  ($variable: ident, $name: expr, $range: expr) => {
+    let input = assign_row(rows, NumericalInputSpecification {
     state: state,
     id: stringify! ($variable),
     name: $name, 
@@ -54,24 +55,62 @@ fn redraw(state: & Rc<RefCell<State>>) {
       }
       false
     }),
-  }.render()
+  }.render());
+    
+    let label = assign_row(rows, js!{ return @{&input}.children("label");});
+    js!{@{&label}.append(":").addClass("toplevel_input_label")}
+    js!{jQuery("#panels").append (@{label},@{input});}
+    rows += 1;
+    }
+  }
+    
+  js!{$("#panels").empty();}
+      
+  let randomize_button = assign_row (rows, button_input ("Randomize",
+    input_callback_nullary (state, move | state | {
+      state.sound = random_sound (&mut rand::thread_rng());
+      true
+    })
+  ));
+  js!{$("#panels").append (@{randomize_button});}
+  rows += 1;
+  
+  let waveform_start = rows;
+  let waveform_input = assign_row (rows, waveform_input (state, "waveform", "Waveform", getter! (state => state.sound.waveform)));
+  let label = assign_row(rows, js!{ return @{&waveform_input}.children("label").first();});
+  js!{@{&label}.addClass("toplevel_input_label")}
+  js!{jQuery("#panels").append (@{label},@{waveform_input}.addClass("sound_waveform_input"));}
+  rows += 1;
+  
+  js!{ $("#panels").prepend ($("<div>", {class:"input_region"}).css("grid-row", @{waveform_start}+" / "+@{rows})); }
+  
+
+  js!{$("#panels").append (
+    @{canvas_of_samples (&envelope_samples, [0.0, 1.0])}
+    .css("grid-row", @{rows}+" / span 3")
+  );}
+  js!{ $("#panels").prepend ($("<div>", {class:"input_region"}).css("grid-row", @{rows}+" / span 3")); }
+  add_envelope_input!(attack, "Attack", [0.0, 1.0]);
+  add_envelope_input!(sustain, "Sustain", [0.0, 3.0]);
+  add_envelope_input!(decay, "Decay", [0.0, 3.0]);
+  
+  struct Visitor <'a> (& 'a Rc<RefCell<State>>, & 'a mut u32);
+  impl<'a> SignalVisitor for Visitor<'a> {
+    fn visit <T: UserNumberType> (&mut self, info: &SignalInfo, _signal: & Signal <T>, getter: Getter <State, Signal <T>>) {
+      SignalEditorSpecification {
+    state: self.0,
+    info: info,
+    getter: getter,
+    rows: self.1,
+  }.render();
     }
   }
   
-  let waveform_input = waveform_input (state, "waveform", "Waveform", getter! (state => state.sound.waveform));
+  let mut visitor = Visitor (state, &mut rows);
+  for caller in sound.visit_callers::<Visitor>() {(caller)(&mut visitor, sound);}
   
-  js! {
-$("#panels").empty();
-$("#panels").append (@{randomize_button}, $("<div>", {class: "panel"}).append (@{waveform_input}));
-
-      const envelope_editor = $("<div>", {class: "panel"});
-      $("#panels").append (envelope_editor);
-      envelope_editor.append (@{canvas_of_samples (&envelope_samples, [0.0, 1.0])});
-      envelope_editor.append (@{envelope_input!(attack, "Attack", [0.0, 1.0])});
-      envelope_editor.append (@{envelope_input!(sustain, "Sustain", [0.0, 3.0])});
-      envelope_editor.append (@{envelope_input!(decay, "Decay", [0.0, 3.0])});
-  }
-
+  
+  
   let rendered: TypedArray <f32> = sound.render (44100).as_slice().into();
   
   js! {
@@ -81,20 +120,6 @@ const sample_rate = 44100;
   buffer.copyToChannel (rendered, 0);
   play_buffer (buffer);
   }  
-
-  
-  struct Visitor <'a> (& 'a Rc<RefCell<State>>);
-  impl<'a> SignalVisitor for Visitor<'a> {
-    fn visit <T: UserNumberType> (&mut self, info: &SignalInfo, _signal: & Signal <T>, getter: Getter <State, Signal <T>>) {
-      SignalEditorSpecification {
-    state: self.0,
-    info: info,
-    getter: getter,
-  }.render();
-    }
-  }
-  
-  for caller in sound.visit_callers::<Visitor>() {(caller)(&mut Visitor (state), sound);}
 }
 
 
