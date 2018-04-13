@@ -409,4 +409,5 @@ impl Envelope {
 
 impl SoundDefinition {
   pub fn duration(&self)->f32 {self.envelope.duration()}
+  pub fn sample_rate (&self)->usize {44100}
 }

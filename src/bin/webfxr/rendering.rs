@@ -1,8 +1,8 @@
-
 use super::*;
 
-const SUPERSAMPLE_SHIFT: usize = 3;
-const SUPERSAMPLE_RATIO: usize = 1 << SUPERSAMPLE_SHIFT;
+pub fn root_mean_square (samples: & [f32])->f32 {
+  (samples.iter().map (| sample | sample*sample).sum::<f32>()/samples.len() as f32).sqrt()
+}
 
 // BFXR uses first-order digital RC low/high pass filters.
 // Personally, I always end up feeling like the rolloff isn't steep enough.
@@ -47,20 +47,37 @@ impl HighpassFilterState {
 }
 
 
-#[derive (Default)]
 pub struct RenderedSamples {
+  pub unprocessed_supersamples: Vec<f32>,
   pub samples: Vec<f32>,
   pub illustration: Vec<f32>,
+  pub canvas: Value,
+  pub context: Value,
+}
+impl Default for RenderedSamples {
+  fn default()->Self {
+    let canvas = js!{ return document.createElement("canvas"); };
+    let context = js!{ return @{canvas}.getContext ("2d"); };
+    RenderedSamples {
+      unprocessed_supersamples: Vec::new(),
+      samples: Vec::new(),
+      illustration: Vec::new(),
+      canvas: canvas, context: context
+    }
+  }
 }
 #[derive (Default)]
 pub struct RenderingStateConstants {
   num_samples: usize,
+  supersamples_per_sample: usize,
+  num_supersamples: usize,
   supersample_duration: f32,
+  samples_per_illustrated: usize,
 }
 
 #[derive (Default)]
 pub struct RenderingState {
-  next_sample: usize,
+  next_supersample: usize,
   
   wave_phase: f32,
   after_frequency: RenderedSamples,
@@ -86,23 +103,44 @@ pub struct RenderingState {
 
 impl RenderedSamples {
   pub fn push (&mut self, value: f32, constants: &RenderingStateConstants) {
-    self.samples.push (value);
+    self.unprocessed_supersamples.push (value);
+    if self.unprocessed_supersamples.len() == constants.supersamples_per_sample {
+      self.samples.push (self.unprocessed_supersamples.drain(..).sum::<f32>() / constants.supersamples_per_sample as f32);
+      if self.samples.len() % constants.samples_per_illustrated == 0 {
+        let value = root_mean_square (& self.samples [self.samples.len()-constants.samples_per_illustrated..]);
+        js!{
+          var canvas = @{self.canvas};
+          var context = @{self.context};
+          context.fillStyle = "rgba(0,0,0)";
+          // assume that root-mean-square only goes up to 0.5;
+          // on the other hand, the radius should range from 0 to 0.5
+          let radius = canvas.height*@{value};
+          context.fillRect (@{self.illustration.len() as f64}, 0.5 - radius, 1, radius*2);
+        }
+        self.illustration.push (value);
+      }
+    }
   }
 }
 impl RenderingState {
   pub fn final_samples (&self)->& RenderedSamples {& self.after_envelope}
   pub fn new (sound: & SoundDefinition)->RenderingState {
+    let num_samples = (sound.duration()*sound.sample_rate() as f32).ceil() as usize;
+    let supersamples_per_sample = 8;
     RenderingState {
       constants: RenderingStateConstants {
-        num_samples: (sound.duration()*sound.sample_rate() as f32).ceil() as usize,
-        supersample_duration: 1.0/(sound.sample_rate()*SUPERSAMPLE_RATIO as f32),
+        num_samples: num_samples,
+        supersamples_per_sample: supersamples_per_sample,
+        num_supersamples: num_samples*supersamples_per_sample,
+        supersample_duration: 1.0/((sound.sample_rate()*supersamples_per_sample) as f32),
+        samples_per_illustrated: (sound.sample_rate() as f32/100.0).ceil() as usize,
       },
       bitcrush_phase: 1.0,
       .. Default::default()
     }
   }
-  pub fn step (&mut self, sound: & SoundDefinition) {
-    let time = self.next_sample as f32*self.constants.supersample_duration;
+  fn superstep (&mut self, sound: & SoundDefinition) {
+    let time = self.next_supersample as f32*self.constants.supersample_duration;
     
     let mut sample = sound.waveform.sample (self.wave_phase);
     self.after_frequency.push (sample, &self.constants);
@@ -135,5 +173,10 @@ impl RenderingState {
     let bitcrush_frequency = sound.log_bitcrush_frequency.sample(time).exp2();
     self.wave_phase += frequency*self.constants.supersample_duration;
     self.bitcrush_phase += bitcrush_frequency*self.constants.supersample_duration;
+  }
+  pub fn step (&mut self, sound: & SoundDefinition) {
+    for _ in 0..(self.constants.supersamples_per_sample*self.constants.samples_per_illustrated) {
+      self.superstep(sound);
+    }
   }
 }
