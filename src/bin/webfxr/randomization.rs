@@ -2,10 +2,10 @@ use super::*;
 use rand::{Rng};
 use rand::distributions::{self, Distribution};
 
-pub fn random_time_linear <G: Rng>(generator: &mut G, min: f32, max: f32)->UserTime {
+pub fn random_time_linear <G: Rng>(generator: &mut G, min: f64, max: f64)->UserTime {
   UserNumber::from_rendered (generator.gen_range (min, max))
 }
-pub fn random_time_logarithmic <G: Rng>(generator: &mut G, min: f32, max: f32)->UserTime {
+pub fn random_time_logarithmic <G: Rng>(generator: &mut G, min: f64, max: f64)->UserTime {
   UserNumber::from_rendered (generator.gen_range (min.log2(), max.log2()).exp2())
 }
 
@@ -27,7 +27,7 @@ pub fn random_envelope <G: Rng>(generator: &mut G)->Envelope {
 }
 pub fn random_signal <G: Rng, T: UserNumberType>(generator: &mut G, info: & SignalInfo)->Signal <T> {
   let mut effects = Vec::new() ;
-  let num_effects = distributions::poisson::Poisson::new(info.average_effects as f64).sample (generator);
+  let num_effects = distributions::poisson::Poisson::new(info.average_effects).sample (generator);
   for _ in 0..num_effects {
     effects.push (random_signal_effect (generator, info));
   }
@@ -64,7 +64,7 @@ pub fn random_oscillation_effect <G: Rng, T: UserNumberType>(generator: &mut G, 
   SignalEffect::Oscillation {
     size: UserNumber::from_rendered (generator.gen_range (- info.difference_slider_range, info.difference_slider_range)),
     waveform: random_waveform (generator),
-    frequency: UserNumber::from_rendered (generator.gen_range (1f32.log2(), 20f32.log2())),
+    frequency: UserNumber::from_rendered (generator.gen_range (1f64.log2(), 20f64.log2())),
   }
 }
 

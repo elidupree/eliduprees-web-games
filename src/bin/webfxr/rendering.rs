@@ -1,6 +1,6 @@
 use super::*;
 
-pub fn root_mean_square (samples: & [f32])->f32 {
+pub fn root_mean_square (samples: & [f32])->f32{
   (samples.iter().map (| sample | sample*sample).sum::<f32>()/samples.len() as f32).sqrt()
 }
 
@@ -10,17 +10,17 @@ pub fn root_mean_square (samples: & [f32])->f32 {
 const FILTER_ITERATIONS: usize = 3;
 
 //#[derive (Default)]
-pub type FirstOrderLowpassFilterState = f32;
+pub type FirstOrderLowpassFilterState = f64;
 #[derive (Default)]
 pub struct LowpassFilterState([FirstOrderLowpassFilterState; FILTER_ITERATIONS]);
 #[derive (Default)]
-pub struct FirstOrderHighpassFilterState {value: f32, previous: f32}
+pub struct FirstOrderHighpassFilterState {value: f64, previous: f64}
 #[derive (Default)]
 pub struct HighpassFilterState([FirstOrderHighpassFilterState; FILTER_ITERATIONS]);
 
 //note: the formulas for the filter cutoff are based on a first-order filter, so they are not exactly correct for this. TODO fix
 impl LowpassFilterState {
-  pub fn apply (&mut self, mut sample: f32, cutoff_frequency: f32, duration: f32)->f32 {
+  pub fn apply (&mut self, mut sample: f64, cutoff_frequency: f64, duration: f64)->f64 {
     let dt = duration;
     let rc = 1.0/(TURN*cutoff_frequency);
     let lowpass_filter_constant = dt/(dt + rc);
@@ -32,7 +32,7 @@ impl LowpassFilterState {
   }
 }
 impl HighpassFilterState {
-  pub fn apply (&mut self, mut sample: f32, cutoff_frequency: f32, duration: f32)->f32 {
+  pub fn apply (&mut self, mut sample: f64, cutoff_frequency: f64, duration: f64)->f64 {
     let dt = duration;
     let rc = 1.0/(TURN*cutoff_frequency);
     let highpass_filter_constant = rc/(rc + dt);
@@ -48,7 +48,7 @@ impl HighpassFilterState {
 
 
 pub struct RenderedSamples {
-  pub unprocessed_supersamples: Vec<f32>,
+  pub unprocessed_supersamples: Vec<f64>,
   pub samples: Vec<f32>,
   pub illustration: Vec<f32>,
   pub canvas: Value,
@@ -71,7 +71,7 @@ pub struct RenderingStateConstants {
   pub num_samples: usize,
   pub supersamples_per_sample: usize,
   pub num_supersamples: usize,
-  pub supersample_duration: f32,
+  pub supersample_duration: f64,
   pub samples_per_illustrated: usize,
 }
 
@@ -79,7 +79,7 @@ pub struct RenderingStateConstants {
 pub struct RenderingState {
   pub next_supersample: usize,
   
-  pub wave_phase: f32,
+  pub wave_phase: f64,
   pub after_frequency: RenderedSamples,
   
   pub after_volume: RenderedSamples,
@@ -92,8 +92,8 @@ pub struct RenderingState {
   pub highpass_state: HighpassFilterState,
   pub after_highpass: RenderedSamples,
   
-  pub bitcrush_phase: f32,
-  pub bitcrush_last_used_sample: f32,
+  pub bitcrush_phase: f64,
+  pub bitcrush_last_used_sample: f64,
   pub after_bitcrush: RenderedSamples,
   
   pub after_envelope: RenderedSamples,
@@ -102,10 +102,10 @@ pub struct RenderingState {
 }
 
 impl RenderedSamples {
-  pub fn push (&mut self, value: f32, constants: &RenderingStateConstants) {
+  pub fn push (&mut self, value: f64, constants: &RenderingStateConstants) {
     self.unprocessed_supersamples.push (value);
     if self.unprocessed_supersamples.len() == constants.supersamples_per_sample {
-      self.samples.push (self.unprocessed_supersamples.drain(..).sum::<f32>() / constants.supersamples_per_sample as f32);
+      self.samples.push ((self.unprocessed_supersamples.drain(..).sum::<f64>() / constants.supersamples_per_sample as f64) as f32);
       if self.samples.len() % constants.samples_per_illustrated == 0 {
         let value = root_mean_square (& self.samples [self.samples.len()-constants.samples_per_illustrated..]);
         js!{
@@ -125,22 +125,22 @@ impl RenderedSamples {
 impl RenderingState {
   pub fn final_samples (&self)->& RenderedSamples {& self.after_envelope}
   pub fn new (sound: & SoundDefinition)->RenderingState {
-    let num_samples = (sound.duration()*sound.sample_rate() as f32).ceil() as usize;
+    let num_samples = (sound.duration()*sound.sample_rate() as f64).ceil() as usize;
     let supersamples_per_sample = 8;
     RenderingState {
       constants: RenderingStateConstants {
         num_samples: num_samples,
         supersamples_per_sample: supersamples_per_sample,
         num_supersamples: num_samples*supersamples_per_sample,
-        supersample_duration: 1.0/((sound.sample_rate()*supersamples_per_sample) as f32),
-        samples_per_illustrated: (sound.sample_rate() as f32/DISPLAY_SAMPLE_RATE).ceil() as usize,
+        supersample_duration: 1.0/((sound.sample_rate()*supersamples_per_sample) as f64),
+        samples_per_illustrated: (sound.sample_rate() as f64/DISPLAY_SAMPLE_RATE).ceil() as usize,
       },
       bitcrush_phase: 1.0,
       .. Default::default()
     }
   }
   fn superstep (&mut self, sound: & SoundDefinition) {
-    let time = self.next_supersample as f32*self.constants.supersample_duration;
+    let time = self.next_supersample as f64*self.constants.supersample_duration;
     
     let mut sample = sound.waveform.sample (self.wave_phase);
     self.after_frequency.push (sample, &self.constants);

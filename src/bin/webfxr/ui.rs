@@ -90,7 +90,7 @@ pub fn waveform_input (state: &Rc<RefCell<State>>, id: & str, name: & str, gette
 
 
 
-//fn round_step (input: f32, step: f32)->f32 {(input*step).round()/step}
+//fn round_step (input: f64, step: f64)->f64 {(input*step).round()/step}
 
 pub struct RadioInputSpecification <'a, T: 'a, F> {
   pub state: & 'a Rc<RefCell<State>>,
@@ -137,7 +137,7 @@ pub struct NumericalInputSpecification <'a, T: UserNumberType, F> {
   pub state: & 'a Rc<RefCell<State>>,
   pub id: & 'a str,
   pub name: & 'a str,
-  pub slider_range: [f32; 2],
+  pub slider_range: [f64; 2],
   pub current_value: UserNumber <T>,
   pub input_callback: F,
 }
@@ -167,7 +167,7 @@ impl <'a, F: 'static + Fn (UserNumber <T>)->bool, T: UserNumberType> NumericalIn
     
     let range_overrides = js!{return function () {
         var value = @{&range_input}[0].valueAsNumber;
-        var source = @{{let value_type = value_type.clone(); move | value: f64 | value_type.approximate_from_rendered (value as f32)}} (value);
+        var source = @{{let value_type = value_type.clone(); move | value: f64 | value_type.approximate_from_rendered (value)}} (value);
         // immediately update the number input with the range input, even though the actual data editing is debounced.
         @{&number_input}.val(source);
         @{&update}(source);
@@ -216,7 +216,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     element
   }
 
-  pub fn numeric_input <U: UserNumberType> (&self, id: & str, name: & str, slider_range: [f32; 2], getter: Getter <State, UserNumber <U>>)->Value {
+  pub fn numeric_input <U: UserNumberType> (&self, id: & str, name: & str, slider_range: [f64; 2], getter: Getter <State, UserNumber <U>>)->Value {
     let current_value = getter.get (&self.state.borrow()).clone();
     self.assign_row(NumericalInputSpecification {
       state: self.state,
@@ -244,7 +244,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   }
   
   pub fn frequency_input (&self, id: & str, name: & str, getter: Getter <State, UserFrequency>)->Value {
-    self.numeric_input (id, name, [1.0f32.log2(), 20f32.log2()], getter)
+    self.numeric_input (id, name, [1.0f64.log2(), 20f64.log2()], getter)
   }
   
   pub fn checkbox_input (&self, id: & str, name: & str, getter: Getter <State, bool>)->Value {
@@ -367,12 +367,12 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
 }
 
 
-pub fn display_samples <F: FnMut(f32)->f32> (sound: & SoundDefinition, mut sampler: F)->Vec<f32> {
+pub fn display_samples <F: FnMut(f64)->f64> (sound: & SoundDefinition, mut sampler: F)->Vec<f64> {
   let num_samples = (sound.duration()*DISPLAY_SAMPLE_RATE).ceil() as usize + 1;
-  (0..num_samples).map (| sample | sampler (sample as f32/DISPLAY_SAMPLE_RATE)).collect()
+  (0..num_samples).map (| sample | sampler (sample as f64/DISPLAY_SAMPLE_RATE)).collect()
 }
 
-pub fn canvas_of_samples (samples: & [f32], default_range: [f32; 2])->Value {
+pub fn canvas_of_samples (samples: & [f64], default_range: [f64; 2])->Value {
   let canvas = js!{ return document.createElement ("canvas") ;};
   let canvas_height = 100.0;
   let context = js!{
@@ -417,7 +417,7 @@ pub fn canvas_of_samples (samples: & [f32], default_range: [f32; 2])->Value {
   for (index, &sample) in samples.iter().enumerate() {
     js!{
       var context =@{&context};
-      var first = @{index as f32 + 0.5};
+      var first = @{index as f64 + 0.5};
       var second = @{display_height (sample)};
       if (@{index == 0}) {
         context.moveTo (first, second);
