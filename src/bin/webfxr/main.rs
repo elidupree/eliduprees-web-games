@@ -21,11 +21,19 @@ use stdweb::web::TypedArray;
 
 #[macro_use]
 mod data;
+mod rendering;
 mod ui;
 mod randomization;
 pub use data::*;
+pub use rendering::*;
 pub use ui::*;
 pub use randomization::*;
+
+
+pub struct State {
+  pub sound: SoundDefinition,
+  pub rendering_state: RenderingState,
+}
 
 
 fn redraw(state: & Rc<RefCell<State>>) {
@@ -110,9 +118,10 @@ fn redraw(state: & Rc<RefCell<State>>) {
   for caller in sound.visit_callers::<Visitor>() {(caller)(&mut visitor, sound);}
   
   
-  
+  js! {window.before_render = Date.now();}
   let rendered: TypedArray <f32> = sound.render (44100).as_slice().into();
   
+  js! {console.log("rendering took this many milliseconds: " + (Date.now() - window.before_render));}
   js! {
   const rendered = @{rendered};
 const sample_rate = 44100;

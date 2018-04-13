@@ -3,7 +3,7 @@ use std::str::FromStr;
 use serde::{Serialize};
 use serde::de::DeserializeOwned;
 
-//use super::*;
+use super::*;
 
 
 pub const TURN: f32 = ::std::f32::consts::PI*2.0;
@@ -332,10 +332,6 @@ signals_definitions! {
   }),
 }
 
-pub struct State {
-  pub sound: SoundDefinition,
-}
-
 
 impl Waveform {
   pub fn sample (&self, phase: f32)->f32 {
@@ -413,59 +409,4 @@ impl Envelope {
 
 impl SoundDefinition {
   pub fn duration(&self)->f32 {self.envelope.duration()}
-  pub fn render (&self, sample_rate: u32)-> Vec<f32> {
-    let num_frames = (self.duration()*sample_rate as f32).ceil() as u32;
-    let mut wave_phase = 0.0;
-    let mut bitcrush_phase = 1.0;
-    let mut last_used_sample = 0.0;
-    let frame_duration = 1.0/sample_rate as f32;
-    let mut frames = Vec::with_capacity (num_frames as usize);
-    
-    // BFXR uses first-order digital RC low/high pass filters.
-    // Personally, I always end up feeling like the rolloff isn't steep enough.
-    // So I chain multiples of them together.
-    const FILTER_ITERATIONS: usize = 3;
-    let mut lowpass_filter_state = [0.0; FILTER_ITERATIONS];
-    let mut highpass_filter_state = [0.0; FILTER_ITERATIONS];
-    let mut highpass_filter_prev_input = [0.0; FILTER_ITERATIONS];
-    
-    for index in 0..num_frames {
-      let time = index as f32/sample_rate as f32;
-      
-      let mut sample = self.waveform.sample (wave_phase)*self.envelope.sample (time)*self.volume.sample (time).exp2();
-      
-      //note: the formulas for the filter cutoff are based on a first-order filter, so they are not exactly correct for this. TODO fix
-      let lowpass_filter_frequency = self.log_lowpass_filter_cutoff.sample (time).exp2();
-      let dt = 1.0/sample_rate as f32;
-      let rc = 1.0/(TURN*lowpass_filter_frequency);
-      let lowpass_filter_constant = dt/(dt + rc);
-      for iteration in 0..FILTER_ITERATIONS {
-        lowpass_filter_state [iteration] = lowpass_filter_state [iteration] + lowpass_filter_constant * (sample - lowpass_filter_state [iteration]);
-        sample = lowpass_filter_state [iteration];
-      }
-      let highpass_filter_frequency = self.log_highpass_filter_cutoff.sample (time).exp2();
-      let rc = 1.0/(TURN*highpass_filter_frequency);
-      let highpass_filter_constant = rc/(rc + dt);
-      for iteration in 0..FILTER_ITERATIONS {
-        highpass_filter_state [iteration] = highpass_filter_constant * (
-          highpass_filter_state [iteration] + (sample - highpass_filter_prev_input [iteration]));
-        highpass_filter_prev_input [iteration] = sample;
-        sample = highpass_filter_state [iteration];
-      }
-      
-      if bitcrush_phase >= 1.0 {
-        bitcrush_phase -= 1.0;
-        if bitcrush_phase >1.0 {bitcrush_phase = 1.0;}
-        last_used_sample = sample; 
-      }
-      frames.push (last_used_sample) ;
-      
-      let frequency = self.log_frequency.sample(time).exp2();
-      let bitcrush_frequency = self.log_bitcrush_frequency.sample(time).exp2();
-      wave_phase += frequency*frame_duration;
-      bitcrush_phase += bitcrush_frequency*frame_duration;
-    }
-    
-    frames
-  }
 }
