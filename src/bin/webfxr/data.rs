@@ -8,6 +8,7 @@ use super::*;
 
 
 pub const DISPLAY_SAMPLE_RATE: f64 = 50.0;
+pub const MAX_RENDER_LENGTH: f64 = 10.0;
 
 pub fn min (first: f64, second: f64)->f64 {if first < second {first} else {second}}
 pub fn max (first: f64, second: f64)->f64 {if first > second {first} else {second}}

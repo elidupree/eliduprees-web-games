@@ -316,6 +316,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
       js!{
         var canvas = @{self.assign_row (rendered.canvas.clone()) };
         canvas[0].height =@{input_height};
+        canvas[0].width =@{MAX_RENDER_LENGTH*DISPLAY_SAMPLE_RATE};
         @{& container}.append (canvas);
       }
     }
@@ -389,7 +390,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
 
 
 pub fn display_samples <F: FnMut(f64)->f64> (sample_rate: f64, duration: f64, mut sampler: F)->Vec<f64> {
-  let duration = min (duration, 10.0);
+  let duration = min (duration, MAX_RENDER_LENGTH);
   let num_samples = (duration*sample_rate).ceil() as usize + 1;
   (0..num_samples).map (| sample | sampler (sample as f64/sample_rate)).collect()
 }

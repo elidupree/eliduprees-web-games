@@ -127,7 +127,7 @@ impl RenderedSamples {
 impl RenderingState {
   pub fn final_samples (&self)->& RenderedSamples {& self.after_bitcrush}
   pub fn new (sound: & SoundDefinition)->RenderingState {
-    let num_samples = (sound.duration()*sound.sample_rate() as f64).ceil() as usize;
+    let num_samples = (min(MAX_RENDER_LENGTH, sound.duration())*sound.sample_rate() as f64).ceil() as usize;
     let supersamples_per_sample = 1;
     js! {
       window.webfxr_play_buffer = audio.createBuffer (1, @{num_samples as f64}, @{sound.sample_rate() as f64});
