@@ -13,6 +13,7 @@ extern crate derivative;
 extern crate nalgebra;
 extern crate rand;
 extern crate ordered_float;
+extern crate array_ext;
 
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -20,6 +21,7 @@ use stdweb::Value;
 use stdweb::unstable::TryInto;
 use stdweb::web::{self, TypedArray};
 use std::time::{Instant, Duration};
+pub use array_ext::Array;
 pub use eliduprees_web_games::*;
 
 #[macro_use]

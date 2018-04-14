@@ -2,7 +2,7 @@ use std::rc::Rc;
 use std::str::FromStr;
 use serde::{Serialize};
 use serde::de::DeserializeOwned;
-use rand::Rng;
+use rand::{Rng, IsaacRng, SeedableRng};
 
 use super::*;
 
@@ -354,6 +354,10 @@ signals_definitions! {
   }),
 }
 
+pub fn generator_for_time (time: f64)->IsaacRng {
+  let whatever = (time*1_000_000_000.0).floor() as i64 as u64;
+  IsaacRng::from_seed (Array::from_fn (| index | (whatever >> (index*8)) as u8))
+}
 
 impl Waveform {
   pub fn sample (&self, phase: f64)->f64 {
@@ -362,7 +366,9 @@ impl Waveform {
       Waveform::Square => if phase.fract() < 0.5 {0.5} else {-0.5},
       Waveform::Triangle => 1.0 - (phase.fract()-0.5).abs()*4.0,
       Waveform::Sawtooth => 1.0 - phase.fract()*2.0,
-      Waveform::WhiteNoise => rand::thread_rng().gen_range(-1.0, 1.0),
+      Waveform::WhiteNoise => {
+        generator_for_time (phase).gen_range(-1.0, 1.0)
+      },
     }
   }
 }
