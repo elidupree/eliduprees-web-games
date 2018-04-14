@@ -279,6 +279,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   
     //let range = self.info.untyped.difference_slider_range;
     let info = self.info.untyped.clone();
+    let duration = sound.duration();
     let buttons = self.assign_row(js!{
       return $("<select>", {class: "add_effect_buttons"}).append (
         $("<option>", {selected: true}).text("Add effect..."),
@@ -288,9 +289,9 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
       ).on("change", function(event) {
         @{input_callback_gotten (self.state, self.info.getter.clone(), move | signal, index: i32 | {
           match index {
-            1 => signal.effects.push (random_jump_effect (&mut rand::thread_rng(), &info)),
-            2 => signal.effects.push (random_slide_effect (&mut rand::thread_rng(), &info)),
-            3 => signal.effects.push (random_oscillation_effect (&mut rand::thread_rng(), &info)),
+            1 => signal.effects.push (random_jump_effect (&mut rand::thread_rng(), duration, &info)),
+            2 => signal.effects.push (random_slide_effect (&mut rand::thread_rng(), duration, &info)),
+            3 => signal.effects.push (random_oscillation_effect (&mut rand::thread_rng(), duration, &info)),
             _ => return false,
           }
           true
