@@ -389,6 +389,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
 
 
 pub fn display_samples <F: FnMut(f64)->f64> (sample_rate: f64, duration: f64, mut sampler: F)->Vec<f64> {
+  let duration = min (duration, 10.0);
   let num_samples = (duration*sample_rate).ceil() as usize + 1;
   (0..num_samples).map (| sample | sampler (sample as f64/sample_rate)).collect()
 }
