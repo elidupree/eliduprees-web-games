@@ -33,10 +33,14 @@ pub use ui::*;
 pub use randomization::*;
 
 
+pub struct Playback {
+  start_audio_time: f64,
+}
+
 pub struct State {
   pub sound: SoundDefinition,
   pub rendering_state: RenderingState,
-  pub playback_started: Option <f64>,
+  pub playback_state: Option <Playback>,
 }
 
 
@@ -164,17 +168,17 @@ fn render_loop (state: Rc<RefCell<State>>) {
 fn play (state: &mut State) {
   let rendered_duration = state.rendering_state.final_samples().samples.len() as f64/state.sound.sample_rate() as f64;
   let now = js!{return audio.currentTime;}.try_into().unwrap();
-  let (offset, duration) = match state.playback_started {
+  let (offset, duration) = match state.playback_state {
     None => {
-      state.playback_started = Some(now);
+      state.playback_state = Some(Playback {start_audio_time: now});
       (0.0, rendered_duration)
     },
-    Some (time) => {
-      let tentative_offset = now - time;
+    Some (ref mut playback) => {
+      let tentative_offset = now - playback.start_audio_time;
       if tentative_offset < rendered_duration {
         (tentative_offset, rendered_duration - tentative_offset)
       } else {
-        state.playback_started = Some(now);
+        playback.start_audio_time = now;
         (0.0, rendered_duration)
       }
     }
@@ -200,7 +204,7 @@ fn main() {
       log_highpass_filter_cutoff: Signal::constant (UserNumber::from_rendered (20.0_f64.log2())),
     },
     rendering_state: Default::default(),
-    playback_started: None,
+    playback_state: None,
   }));
   
 
