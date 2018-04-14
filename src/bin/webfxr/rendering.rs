@@ -96,8 +96,6 @@ pub struct RenderingState {
   pub bitcrush_last_used_sample: f64,
   pub after_bitcrush: RenderedSamples,
   
-  pub after_envelope: RenderedSamples,
-  
   pub constants: RenderingStateConstants,
 }
 
@@ -127,7 +125,7 @@ impl RenderedSamples {
   }
 }
 impl RenderingState {
-  pub fn final_samples (&self)->& RenderedSamples {& self.after_envelope}
+  pub fn final_samples (&self)->& RenderedSamples {& self.after_bitcrush}
   pub fn new (sound: & SoundDefinition)->RenderingState {
     let num_samples = (sound.duration()*sound.sample_rate() as f64).ceil() as usize;
     let supersamples_per_sample = 1;
@@ -149,7 +147,7 @@ impl RenderingState {
   fn superstep (&mut self, sound: & SoundDefinition) {
     let time = self.next_supersample as f64*self.constants.supersample_duration;
     
-    let mut sample = sound.waveform.sample (self.wave_phase);
+    let mut sample = sound.waveform.sample (self.wave_phase)*sound.envelope.sample (time).exp2();
     self.after_frequency.push (sample, &self.constants);
     
     sample *= sound.volume.sample (time).exp2();
@@ -171,9 +169,6 @@ impl RenderingState {
     }
     sample = self.bitcrush_last_used_sample;
     self.after_bitcrush.push (sample, &self.constants);
-        
-    sample *= sound.envelope.sample (time).exp2();
-    self.after_envelope.push (sample, &self.constants);
     
       
     let frequency = sound.log_frequency.sample(time).exp2();
