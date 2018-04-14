@@ -147,7 +147,7 @@ impl RenderingState {
   fn superstep (&mut self, sound: & SoundDefinition) {
     let time = self.next_supersample as f64*self.constants.supersample_duration;
     
-    let mut sample = sound.waveform.sample (self.wave_phase)*sound.envelope.sample (time).exp2();
+    let mut sample = sound.waveform.sample (self.wave_phase)*sound.envelope.sample (time);
     self.after_frequency.push (sample, &self.constants);
     
     sample *= sound.volume.sample (time).exp2();
