@@ -90,7 +90,7 @@ pub fn waveform_input (state: &Rc<RefCell<State>>, id: & str, name: & str, gette
 
 
 
-//fn round_step (input: f32, step: f32)->f32 {(input*step).round()/step}
+//fn round_step (input: f64, step: f64)->f64 {(input*step).round()/step}
 
 pub struct RadioInputSpecification <'a, T: 'a, F> {
   pub state: & 'a Rc<RefCell<State>>,
@@ -137,7 +137,7 @@ pub struct NumericalInputSpecification <'a, T: UserNumberType, F> {
   pub state: & 'a Rc<RefCell<State>>,
   pub id: & 'a str,
   pub name: & 'a str,
-  pub slider_range: [f32; 2],
+  pub slider_range: [f64; 2],
   pub current_value: UserNumber <T>,
   pub input_callback: F,
 }
@@ -167,7 +167,7 @@ impl <'a, F: 'static + Fn (UserNumber <T>)->bool, T: UserNumberType> NumericalIn
     
     let range_overrides = js!{return function () {
         var value = @{&range_input}[0].valueAsNumber;
-        var source = @{{let value_type = value_type.clone(); move | value: f64 | value_type.approximate_from_rendered (value as f32)}} (value);
+        var source = @{{let value_type = value_type.clone(); move | value: f64 | value_type.approximate_from_rendered (value)}} (value);
         // immediately update the number input with the range input, even though the actual data editing is debounced.
         @{&number_input}.val(source);
         @{&update}(source);
@@ -206,8 +206,7 @@ impl <'a, F: 'static + Fn (UserNumber <T>)->bool, T: UserNumberType> NumericalIn
 
 pub struct SignalEditorSpecification <'a, T: UserNumberType> {
   pub state: & 'a Rc<RefCell<State>>,
-  pub info: &'a SignalInfo,
-  pub getter: Getter <State, Signal <T>>,
+  pub info: &'a TypedSignalInfo<T>,
   pub rows: &'a mut u32,
 }
 
@@ -217,7 +216,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     element
   }
 
-  pub fn numeric_input <U: UserNumberType> (&self, id: & str, name: & str, slider_range: [f32; 2], getter: Getter <State, UserNumber <U>>)->Value {
+  pub fn numeric_input <U: UserNumberType> (&self, id: & str, name: & str, slider_range: [f64; 2], getter: Getter <State, UserNumber <U>>)->Value {
     let current_value = getter.get (&self.state.borrow()).clone();
     self.assign_row(NumericalInputSpecification {
       state: self.state,
@@ -237,15 +236,15 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   }
   
   pub fn value_input (&self, id: & str, name: & str, getter: Getter <State, UserNumber <T>>)->Value {
-    self.numeric_input (id, name, self.info.slider_range, getter)
+    self.numeric_input (id, name, self.info.untyped.slider_range, getter)
   }
   
   pub fn difference_input (&self, id: & str, name: & str, getter: Getter <State, UserNumber <T::DifferenceType>>)->Value {
-    self.numeric_input (id, name, [-self.info.difference_slider_range, self.info.difference_slider_range], getter)
+    self.numeric_input (id, name, [-self.info.untyped.difference_slider_range, self.info.untyped.difference_slider_range], getter)
   }
   
   pub fn frequency_input (&self, id: & str, name: & str, getter: Getter <State, UserFrequency>)->Value {
-    self.numeric_input (id, name, [1.0f32.log2(), 20f32.log2()], getter)
+    self.numeric_input (id, name, [1.0f64.log2(), 20f64.log2()], getter)
   }
   
   pub fn checkbox_input (&self, id: & str, name: & str, getter: Getter <State, bool>)->Value {
@@ -259,33 +258,35 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   pub fn render (self) {
     
       let guard = self.state.borrow();
-    let signal = self.getter.get (& guard);
+      let sound = & guard.sound;
+    let signal = self.info.getter.get (& guard);
     let first_row = *self.rows;
       
   let container = js!{ return $("#panels");};
   
-  //js!{@{& container}.append (@{self.info.name} + ": ");}
+  //js!{@{& container}.append (@{self.info.untyped.name} + ": ");}
   
   let initial_value_input = self.value_input (
-    & format! ("{}_initial", & self.info.id),
-    self.info.name,
-    self.getter.clone() + getter! (signal => signal.initial_value)
+    & format! ("{}_initial", & self.info.untyped.id),
+    self.info.untyped.name,
+    self.info.getter.clone() + getter! (signal => signal.initial_value)
   );
   
   js!{@{& container}.append (@{&initial_value_input})}
+  let input_height = js!{ return @{&initial_value_input}.outerHeight()};
   let label = self.assign_row(js!{ return @{initial_value_input}.children("label");});
   js!{@{label}.append(":").appendTo(@{& container}).addClass("toplevel_input_label")}
   
-    //let range = self.info.difference_slider_range;
-    let info = self.info.clone();
+    //let range = self.info.untyped.difference_slider_range;
+    let info = self.info.untyped.clone();
     let buttons = self.assign_row(js!{
       return $("<select>", {class: "add_effect_buttons"}).append (
         $("<option>", {selected: true}).text("Add effect..."),
-        $("<option>").text(@{self.info.name}+" jump"),
-        $("<option>").text(@{self.info.name}+" slide"),
-        $("<option>").text(@{self.info.name}+" oscillation")
+        $("<option>").text(@{self.info.untyped.name}+" jump"),
+        $("<option>").text(@{self.info.untyped.name}+" slide"),
+        $("<option>").text(@{self.info.untyped.name}+" oscillation")
       ).on("change", function(event) {
-        @{input_callback_gotten (self.state, self.getter.clone(), move | signal, index: i32 | {
+        @{input_callback_gotten (self.state, self.info.getter.clone(), move | signal, index: i32 | {
           match index {
             1 => signal.effects.push (random_jump_effect (&mut rand::thread_rng(), &info)),
             2 => signal.effects.push (random_slide_effect (&mut rand::thread_rng(), &info)),
@@ -299,13 +300,20 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     
     js!{ @{& container}.append (@{buttons}); }
 
-    
+    if let Some(rendered) = (self.info.rendered_getter)(&guard) {
+      js!{
+        var canvas = @{self.assign_row (rendered.canvas.clone()) };
+        canvas[0].height =@{input_height};
+        @{& container}.append (canvas);
+      }
+    }
+      
   *self.rows += 1;
     
   for (index, effect) in signal.effects.iter().enumerate() {
-    let effect_getter = self.getter.clone() + getter!(signal => signal.effects [index]);
+    let effect_getter = self.info.getter.clone() + getter!(signal => signal.effects [index]);
     let delete_button = button_input ("Delete",
-      input_callback_gotten_nullary (self.state, self.getter.clone(), move | signal | {
+      input_callback_gotten_nullary (self.state, self.info.getter.clone(), move | signal | {
         signal.effects.remove (index);
         true
       })
@@ -320,12 +328,12 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
         ])*) => {
         match *effect {
           $(SignalEffect::$Variant {..} => {
-            let header = self.assign_row(js!{ return jQuery("<div>", {class: "signal_effect effect_header"}).append (@{self.info.name}+" "+@{$variant_name}+": ",@{delete_button})});
+            let header = self.assign_row(js!{ return jQuery("<div>", {class: "signal_effect effect_header"}).append (@{self.info.untyped.name}+" "+@{$variant_name}+": ",@{delete_button})});
             js!{@{& container}.append (@{header});}
             *self.rows += 1;
             $(
               js!{@{& container}.append (@{self.$input_method(
-                & format! ("{}_{}_{}", & self.info.id, index, stringify! ($field)),
+                & format! ("{}_{}_{}", & self.info.untyped.id, index, stringify! ($field)),
                 $name,
                 effect_getter.clone() + variant_field_getter! (SignalEffect::$Variant => $field)
               )}.addClass("signal_effect input"))}
@@ -357,29 +365,23 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   }
   
     if signal.effects.len() > 0 {
-      js!{ @{& container}.append (@{canvas_of_samples (& display_samples (& guard.sound, | time | signal.sample (time)), self.info.slider_range)}.css("grid-row", @{first_row + 1}+" / "+@{*self.rows})); }
+      let sample_rate = 500.0;
+      let samples = display_samples (sample_rate, max (sound.duration(), signal.draw_through_time()), | time | signal.sample (time));
+      let canvas = canvas_of_samples (& samples, sample_rate, self.info.untyped.slider_range, sound.duration());
+      js!{ @{& container}.append (@{canvas}.css("grid-row", @{first_row + 1}+" / "+@{*self.rows})); }
     }
+    
     js!{ @{& container}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{first_row}+" / "+@{*self.rows})); }
   }
 }
 
 
-pub fn display_samples <F: FnMut(f32)->f32> (sound: & SoundDefinition, mut sampler: F)->Vec<f32> {
-  let num_samples = (sound.duration()*DISPLAY_SAMPLE_RATE).ceil() as usize + 1;
-  (0..num_samples).map (| sample | sampler (sample as f32/DISPLAY_SAMPLE_RATE)).collect()
+pub fn display_samples <F: FnMut(f64)->f64> (sample_rate: f64, duration: f64, mut sampler: F)->Vec<f64> {
+  let num_samples = (duration*sample_rate).ceil() as usize + 1;
+  (0..num_samples).map (| sample | sampler (sample as f64/sample_rate)).collect()
 }
 
-pub fn canvas_of_samples (samples: & [f32], default_range: [f32; 2])->Value {
-  let canvas = js!{ return document.createElement ("canvas") ;};
-  let canvas_height = 100.0;
-  let context = js!{
-    var canvas = @{& canvas};
-    canvas.width = @{samples.len() as f64};
-    canvas.height = @{canvas_height};
-    var context = canvas.getContext ("2d") ;
-    return context;
-  };
-  
+pub fn canvas_of_samples (samples: & [f64], sample_rate: f64, default_range: [f64; 2], target_duration: f64)->Value {
   let min_sample = *samples.iter().min_by_key (| value | OrderedFloat (**value)).unwrap();
   let max_sample = *samples.iter().max_by_key (| value | OrderedFloat (**value)).unwrap();
   let default_range_size = default_range [1] - default_range [0];
@@ -388,13 +390,28 @@ pub fn canvas_of_samples (samples: & [f32], default_range: [f32; 2])->Value {
   let draw_min = min_sample < default_range [0] - 0.0001*default_range_size;
   let draw_max = max_sample > default_range [1] + 0.0001*default_range_size;
   let range_displayed = max_displayed - min_displayed;
+  let duration_displayed = samples.len() as f64/sample_rate;
+  let draw_duration = duration_displayed > target_duration + 0.01;
   
+  let canvas_height = 100.0;
   let display_height = | sample | (max_displayed - sample)/range_displayed*canvas_height;
+  let display_x_time = | time | time*DISPLAY_SAMPLE_RATE;
+  let display_x = | index | display_x_time((index as f64 + 0.5)/sample_rate);
+  
+  let canvas = js!{ return document.createElement ("canvas") ;};
+  
+  let context = js!{
+    var canvas = @{& canvas};
+    canvas.width = @{duration_displayed*DISPLAY_SAMPLE_RATE};
+    canvas.height = @{canvas_height};
+    var context = canvas.getContext ("2d") ;
+    return context;
+  };
   
   js!{
     var canvas = @{& canvas};
     var context =@{&context};
-    context.strokeStyle = "rgb(128,128,128)";
+    context.strokeStyle = "rgb(128,0,0)";
     context.stroke();
     if (@{draw_min}) {
       context.beginPath();
@@ -408,13 +425,19 @@ pub fn canvas_of_samples (samples: & [f32], default_range: [f32; 2])->Value {
       context.lineTo (canvas.width,@{display_height (default_range [1])});
       context.stroke();
     }
+    if (@{draw_duration}) {
+      context.beginPath();
+      context.moveTo (@{display_x_time(target_duration)},0);
+      context.lineTo (@{display_x_time(target_duration)},canvas.height);
+      context.stroke();
+    }
     context.beginPath();
   }
     
   for (index, &sample) in samples.iter().enumerate() {
     js!{
       var context =@{&context};
-      var first = @{index as f32 + 0.5};
+      var first = @{display_x(index)};
       var second = @{display_height (sample)};
       if (@{index == 0}) {
         context.moveTo (first, second);

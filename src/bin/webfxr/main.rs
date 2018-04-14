@@ -17,18 +17,36 @@ extern crate ordered_float;
 use std::rc::Rc;
 use std::cell::RefCell;
 use stdweb::Value;
-use stdweb::web::TypedArray;
+use stdweb::unstable::TryInto;
+use stdweb::web::{self, TypedArray};
+use std::time::{Instant, Duration};
+pub use eliduprees_web_games::*;
 
 #[macro_use]
 mod data;
+mod rendering;
 mod ui;
 mod randomization;
 pub use data::*;
+pub use rendering::*;
 pub use ui::*;
 pub use randomization::*;
 
 
+pub struct State {
+  pub sound: SoundDefinition,
+  pub rendering_state: RenderingState,
+  pub playback_started: Option <f64>,
+}
+
+
 fn redraw(state: & Rc<RefCell<State>>) {
+  {
+    let mut guard = state.borrow_mut();
+    let state = &mut*guard;
+    state.rendering_state = RenderingState::new (& state.sound);
+  }
+  {
   let guard = state.borrow();
   let sound = & guard.sound;
   
@@ -38,7 +56,8 @@ fn redraw(state: & Rc<RefCell<State>>) {
     element
   }
   
-  let envelope_samples = display_samples (sound, | time | sound.envelope.sample (time));
+  let sample_rate = 500.0;
+  let envelope_samples = display_samples (sample_rate, sound.duration(), | time | sound.envelope.sample (time));
   
   macro_rules! add_envelope_input {
   ($variable: ident, $name: expr, $range: expr) => {
@@ -86,7 +105,7 @@ fn redraw(state: & Rc<RefCell<State>>) {
   
 
   js!{$("#panels").append (
-    @{canvas_of_samples (&envelope_samples, [0.0, 1.0])}
+    @{canvas_of_samples (&envelope_samples, sample_rate, [0.0, 1.0], sound.duration())}
     .css("grid-row", @{rows}+" / span 3")
   );}
   js!{ $("#panels").prepend ($("<div>", {class:"input_region"}).css("grid-row", @{rows}+" / span 3")); }
@@ -96,11 +115,10 @@ fn redraw(state: & Rc<RefCell<State>>) {
   
   struct Visitor <'a> (& 'a Rc<RefCell<State>>, & 'a mut u32);
   impl<'a> SignalVisitor for Visitor<'a> {
-    fn visit <T: UserNumberType> (&mut self, info: &SignalInfo, _signal: & Signal <T>, getter: Getter <State, Signal <T>>) {
+    fn visit <T: UserNumberType> (&mut self, info: & TypedSignalInfo <T>, _signal: & Signal <T>) {
       SignalEditorSpecification {
     state: self.0,
     info: info,
-    getter: getter,
     rows: self.1,
   }.render();
     }
@@ -109,16 +127,60 @@ fn redraw(state: & Rc<RefCell<State>>) {
   let mut visitor = Visitor (state, &mut rows);
   for caller in sound.visit_callers::<Visitor>() {(caller)(&mut visitor, sound);}
   
+  //js! {window.before_render = Date.now();}
+  //let rendered: TypedArray <f64> = sound.render (44100).as_slice().into();
   
+  //js! {console.log("rendering took this many milliseconds: " + (Date.now() - window.before_render));}
   
-  let rendered: TypedArray <f32> = sound.render (44100).as_slice().into();
+  }
   
+  render_loop (state.clone());
+}
+
+
+fn render_loop (state: Rc<RefCell<State>>) {
+  let mut unfinished;
+  
+  {
+    let mut guard = state.borrow_mut();
+    let start = Instant::now();
+    
+    loop {
+      { let state = &mut*guard; unfinished = state.rendering_state.step(& state.sound); }
+      //if !unfinished {play (&mut guard);}
+      let elapsed = start.elapsed();
+      if elapsed.as_secs() > 0 || elapsed.subsec_nanos() > 5_000_000 {
+        break;
+      }
+    }
+    play (&mut guard);
+  }
+  
+  if unfinished {
+    web::window().request_animation_frame (move | _time | render_loop (state));
+  }
+}
+
+fn play (state: &mut State) {
+  let rendered_duration = state.rendering_state.final_samples().samples.len() as f64/state.sound.sample_rate() as f64;
+  let now = js!{return audio.currentTime;}.try_into().unwrap();
+  let (offset, duration) = match state.playback_started {
+    None => {
+      state.playback_started = Some(now);
+      (0.0, rendered_duration)
+    },
+    Some (time) => {
+      let tentative_offset = now - time;
+      if tentative_offset < rendered_duration {
+        (tentative_offset, rendered_duration - tentative_offset)
+      } else {
+        state.playback_started = Some(now);
+        (0.0, rendered_duration)
+      }
+    }
+  };
   js! {
-  const rendered = @{rendered};
-const sample_rate = 44100;
-  const buffer = audio.createBuffer (1, rendered.length, sample_rate);
-  buffer.copyToChannel (rendered, 0);
-  play_buffer (buffer);
+    play_buffer (window.webfxr_play_buffer,@{offset},@{duration});
   }  
 }
 
@@ -131,12 +193,14 @@ fn main() {
     sound: SoundDefinition {
       waveform: Waveform::Sine,
       envelope: Envelope {attack: UserNumber::from_rendered (0.1), sustain: UserNumber::from_rendered (0.5), decay: UserNumber::from_rendered (0.5)},
-      log_frequency: Signal::constant (UserNumber::from_rendered (220.0_f32.log2())),
+      log_frequency: Signal::constant (UserNumber::from_rendered (220.0_f64.log2())),
       volume: Signal::constant (UserNumber::from_rendered (-4.0)),
-      log_bitcrush_frequency: Signal::constant (UserNumber::from_rendered (44100.0_f32.log2())),
-      log_lowpass_filter_cutoff: Signal::constant (UserNumber::from_rendered (44100.0_f32.log2())),
-      log_highpass_filter_cutoff: Signal::constant (UserNumber::from_rendered (20.0_f32.log2())),
-    }
+      log_bitcrush_frequency: Signal::constant (UserNumber::from_rendered (44100.0_f64.log2())),
+      log_lowpass_filter_cutoff: Signal::constant (UserNumber::from_rendered (44100.0_f64.log2())),
+      log_highpass_filter_cutoff: Signal::constant (UserNumber::from_rendered (20.0_f64.log2())),
+    },
+    rendering_state: Default::default(),
+    playback_started: None,
   }));
   
 
