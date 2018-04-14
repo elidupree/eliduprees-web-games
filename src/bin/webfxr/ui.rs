@@ -78,7 +78,8 @@ pub fn waveform_input (state: &Rc<RefCell<State>>, id: & str, name: & str, gette
       (Waveform::Sine, "Sine"),
       (Waveform::Square, "Square"),
       (Waveform::Triangle, "Triangle"),
-      (Waveform::Sawtooth, "Sawtooth"), 
+      (Waveform::Sawtooth, "Sawtooth"),
+      (Waveform::WhiteNoise, "White noise"),
     ],
     current_value: current_value,
     input_callback: input_callback_gotten (state, getter, | target, value: Waveform | {

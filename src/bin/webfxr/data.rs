@@ -2,6 +2,7 @@ use std::rc::Rc;
 use std::str::FromStr;
 use serde::{Serialize};
 use serde::de::DeserializeOwned;
+use rand::Rng;
 
 use super::*;
 
@@ -210,6 +211,7 @@ pub enum Waveform {
   Square,
   Triangle,
   Sawtooth,
+  WhiteNoise,
 }
 
 js_serializable! (Waveform) ;
@@ -360,6 +362,7 @@ impl Waveform {
       Waveform::Square => if phase.fract() < 0.5 {0.5} else {-0.5},
       Waveform::Triangle => 1.0 - (phase.fract()-0.5).abs()*4.0,
       Waveform::Sawtooth => 1.0 - phase.fract()*2.0,
+      Waveform::WhiteNoise => rand::thread_rng().gen_range(-1.0, 1.0),
     }
   }
 }
