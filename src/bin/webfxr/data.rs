@@ -368,7 +368,7 @@ impl Waveform {
       Waveform::Triangle => 1.0 - (phase.fract()-0.5).abs()*4.0,
       Waveform::Sawtooth => 1.0 - phase.fract()*2.0,
       Waveform::WhiteNoise => {
-        generator_for_time (phase).gen_range(-1.0, 1.0)
+        /*generator_for_time (phase)*/rand::thread_rng().gen_range(-1.0, 1.0)
       },
     }
   }
