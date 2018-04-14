@@ -272,6 +272,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   );
   
   js!{@{& container}.append (@{&initial_value_input})}
+  let input_height = js!{ return @{&initial_value_input}.outerHeight()};
   let label = self.assign_row(js!{ return @{initial_value_input}.children("label");});
   js!{@{label}.append(":").appendTo(@{& container}).addClass("toplevel_input_label")}
   
@@ -299,7 +300,11 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     js!{ @{& container}.append (@{buttons}); }
 
     if let Some(rendered) = (self.info.rendered_getter)(&guard) {
-      js!{ @{& container}.append (@{self.assign_row (rendered.canvas.clone()) }); }
+      js!{
+        var canvas = @{self.assign_row (rendered.canvas.clone()) };
+        canvas[0].height =@{input_height};
+        @{& container}.append (canvas);
+      }
     }
       
   *self.rows += 1;
