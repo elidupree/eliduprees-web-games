@@ -108,13 +108,17 @@ impl RenderedSamples {
       self.samples.push ((self.unprocessed_supersamples.drain(..).sum::<f64>() / constants.supersamples_per_sample as f64) as f32);
       if self.samples.len() % constants.samples_per_illustrated == 0 {
         let value = root_mean_square (& self.samples [self.samples.len()-constants.samples_per_illustrated..]);
+        // assume that root-mean-square only goes up to 0.5
+        let value = value*2.0;
+        // convert to log scale
+        //let value = 1.0 - (value).log2()*(OCTAVES_TO_DECIBELS/DEFAULT_DECIBEL_BASE) as f32;
         js!{
           var canvas = @{&self.canvas}[0];
           var context = @{&self.context};
           context.fillStyle = "rgb(0,0,0)";
-          // assume that root-mean-square only goes up to 0.5;
+          
           // on the other hand, the radius should range from 0 to 0.5
-          var radius = canvas.height*@{value};
+          var radius = canvas.height*@{value}*0.5;
           context.fillRect (@{self.illustration.len() as f64}, canvas.height*0.5 - radius, 1, radius*2);
         }
         self.illustration.push (value);

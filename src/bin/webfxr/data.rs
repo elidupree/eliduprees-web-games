@@ -100,8 +100,8 @@ impl UserNumberType for $Enum {
 }
 
 
-const OCTAVES_TO_DECIBELS: f64 = 3.0102999;
-const DEFAULT_DECIBEL_BASE: f64 = -40.0;
+pub const OCTAVES_TO_DECIBELS: f64 = 3.0102999;
+pub const DEFAULT_DECIBEL_BASE: f64 = -40.0;
 
 zero_information_number_type!{
   FrequencyType, Frequency, "Hz",
