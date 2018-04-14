@@ -258,6 +258,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   pub fn render (self) {
     
       let guard = self.state.borrow();
+      let sound = & guard.sound;
     let signal = self.info.getter.get (& guard);
     let first_row = *self.rows;
       
@@ -364,7 +365,10 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   }
   
     if signal.effects.len() > 0 {
-      js!{ @{& container}.append (@{canvas_of_samples (& display_samples (& guard.sound, | time | signal.sample (time)), self.info.untyped.slider_range)}.css("grid-row", @{first_row + 1}+" / "+@{*self.rows})); }
+      let sample_rate = 500.0;
+      let samples = display_samples (sample_rate, max (sound.duration(), signal.draw_through_time()), | time | signal.sample (time));
+      let canvas = canvas_of_samples (& samples, sample_rate, self.info.untyped.slider_range, sound.duration());
+      js!{ @{& container}.append (@{canvas}.css("grid-row", @{first_row + 1}+" / "+@{*self.rows})); }
     }
     
     js!{ @{& container}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{first_row}+" / "+@{*self.rows})); }
@@ -372,22 +376,12 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
 }
 
 
-pub fn display_samples <F: FnMut(f64)->f64> (sound: & SoundDefinition, mut sampler: F)->Vec<f64> {
-  let num_samples = (sound.duration()*DISPLAY_SAMPLE_RATE).ceil() as usize + 1;
-  (0..num_samples).map (| sample | sampler (sample as f64/DISPLAY_SAMPLE_RATE)).collect()
+pub fn display_samples <F: FnMut(f64)->f64> (sample_rate: f64, duration: f64, mut sampler: F)->Vec<f64> {
+  let num_samples = (duration*sample_rate).ceil() as usize + 1;
+  (0..num_samples).map (| sample | sampler (sample as f64/sample_rate)).collect()
 }
 
-pub fn canvas_of_samples (samples: & [f64], default_range: [f64; 2])->Value {
-  let canvas = js!{ return document.createElement ("canvas") ;};
-  let canvas_height = 100.0;
-  let context = js!{
-    var canvas = @{& canvas};
-    canvas.width = @{samples.len() as f64};
-    canvas.height = @{canvas_height};
-    var context = canvas.getContext ("2d") ;
-    return context;
-  };
-  
+pub fn canvas_of_samples (samples: & [f64], sample_rate: f64, default_range: [f64; 2], target_duration: f64)->Value {
   let min_sample = *samples.iter().min_by_key (| value | OrderedFloat (**value)).unwrap();
   let max_sample = *samples.iter().max_by_key (| value | OrderedFloat (**value)).unwrap();
   let default_range_size = default_range [1] - default_range [0];
@@ -396,13 +390,28 @@ pub fn canvas_of_samples (samples: & [f64], default_range: [f64; 2])->Value {
   let draw_min = min_sample < default_range [0] - 0.0001*default_range_size;
   let draw_max = max_sample > default_range [1] + 0.0001*default_range_size;
   let range_displayed = max_displayed - min_displayed;
+  let duration_displayed = samples.len() as f64/sample_rate;
+  let draw_duration = duration_displayed > target_duration + 0.01;
   
+  let canvas_height = 100.0;
   let display_height = | sample | (max_displayed - sample)/range_displayed*canvas_height;
+  let display_x_time = | time | time*DISPLAY_SAMPLE_RATE;
+  let display_x = | index | display_x_time((index as f64 + 0.5)/sample_rate);
+  
+  let canvas = js!{ return document.createElement ("canvas") ;};
+  
+  let context = js!{
+    var canvas = @{& canvas};
+    canvas.width = @{duration_displayed*DISPLAY_SAMPLE_RATE};
+    canvas.height = @{canvas_height};
+    var context = canvas.getContext ("2d") ;
+    return context;
+  };
   
   js!{
     var canvas = @{& canvas};
     var context =@{&context};
-    context.strokeStyle = "rgb(128,128,128)";
+    context.strokeStyle = "rgb(128,0,0)";
     context.stroke();
     if (@{draw_min}) {
       context.beginPath();
@@ -416,13 +425,19 @@ pub fn canvas_of_samples (samples: & [f64], default_range: [f64; 2])->Value {
       context.lineTo (canvas.width,@{display_height (default_range [1])});
       context.stroke();
     }
+    if (@{draw_duration}) {
+      context.beginPath();
+      context.moveTo (@{display_x_time(target_duration)},0);
+      context.lineTo (@{display_x_time(target_duration)},canvas.height);
+      context.stroke();
+    }
     context.beginPath();
   }
     
   for (index, &sample) in samples.iter().enumerate() {
     js!{
       var context =@{&context};
-      var first = @{index as f64 + 0.5};
+      var first = @{display_x(index)};
       var second = @{display_height (sample)};
       if (@{index == 0}) {
         context.moveTo (first, second);

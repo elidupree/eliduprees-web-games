@@ -56,7 +56,8 @@ fn redraw(state: & Rc<RefCell<State>>) {
     element
   }
   
-  let envelope_samples = display_samples (sound, | time | sound.envelope.sample (time));
+  let sample_rate = 500.0;
+  let envelope_samples = display_samples (sample_rate, sound.duration(), | time | sound.envelope.sample (time));
   
   macro_rules! add_envelope_input {
   ($variable: ident, $name: expr, $range: expr) => {
@@ -104,7 +105,7 @@ fn redraw(state: & Rc<RefCell<State>>) {
   
 
   js!{$("#panels").append (
-    @{canvas_of_samples (&envelope_samples, [0.0, 1.0])}
+    @{canvas_of_samples (&envelope_samples, sample_rate, [0.0, 1.0], sound.duration())}
     .css("grid-row", @{rows}+" / span 3")
   );}
   js!{ $("#panels").prepend ($("<div>", {class:"input_region"}).css("grid-row", @{rows}+" / span 3")); }

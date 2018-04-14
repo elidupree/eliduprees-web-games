@@ -385,6 +385,13 @@ impl<T: UserNumberType> SignalEffect <T> {
       SignalEffect::Oscillation {size, ..} => [-size.rendered.abs(), size.rendered.abs()],
     }
   }
+  pub fn draw_through_time (&self)->f64 {
+    match self.clone() {
+      SignalEffect::Jump {time, ..} => time.rendered + 0.1,
+      SignalEffect::Slide {start, duration, ..} => start.rendered + duration.rendered + 0.1,
+      SignalEffect::Oscillation {frequency, ..} => 1.1/frequency.rendered.exp2(),
+    }
+  }
 }
 
 impl<T: UserNumberType> Signal<T> {
@@ -405,6 +412,14 @@ impl<T: UserNumberType> Signal<T> {
       let range = effect.range();
       result [0] += range [0];
       result [1] += range [1];
+    }
+    result
+  }
+  
+  pub fn draw_through_time (&self)->f64 {
+    let mut result = 0.0;
+    for effect in self.effects.iter() {
+      result = max (result, effect.draw_through_time());
     }
     result
   }
