@@ -127,6 +127,9 @@ impl RenderingState {
   pub fn new (sound: & SoundDefinition)->RenderingState {
     let num_samples = (sound.duration()*sound.sample_rate() as f64).ceil() as usize;
     let supersamples_per_sample = 8;
+    js! {
+      window.webfxr_play_buffer = audio.createBuffer (1, @{num_samples as f64}, @{sound.sample_rate() as f64});
+    }  
     RenderingState {
       constants: RenderingStateConstants {
         num_samples: num_samples,
@@ -177,10 +180,25 @@ impl RenderingState {
   }
   pub fn step (&mut self, sound: & SoundDefinition)->bool {
     if self.next_supersample == self.constants.num_supersamples {return false;}
-    for _ in 0..(self.constants.supersamples_per_sample*self.constants.samples_per_illustrated) {
+    
+    let batch_samples = self.constants.samples_per_illustrated;
+    let batch_supersamples = batch_samples*self.constants.supersamples_per_sample;
+    for _ in 0..batch_supersamples {
       self.superstep(sound);
       if self.next_supersample == self.constants.num_supersamples {return false;}
     }
+    
+    
+    
+    let final_samples = &self.final_samples().samples;
+    let batch_start = final_samples.len() - batch_samples;
+    let rendered_slice = &final_samples[batch_start..];
+    let rendered: TypedArray <f32> = rendered_slice.into();
+    js! {
+      const rendered = @{rendered};
+      window.webfxr_play_buffer.copyToChannel (rendered, 0, @{batch_start as f64 });
+    }  
+    
     true
   }
 }

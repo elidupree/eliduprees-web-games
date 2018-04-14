@@ -17,6 +17,7 @@ extern crate ordered_float;
 use std::rc::Rc;
 use std::cell::RefCell;
 use stdweb::Value;
+use stdweb::unstable::TryInto;
 use stdweb::web::{self, TypedArray};
 use std::time::{Instant, Duration};
 pub use eliduprees_web_games::*;
@@ -35,6 +36,7 @@ pub use randomization::*;
 pub struct State {
   pub sound: SoundDefinition,
   pub rendering_state: RenderingState,
+  pub playback_started: Option <f64>,
 }
 
 
@@ -144,12 +146,13 @@ fn render_loop (state: Rc<RefCell<State>>) {
     
     loop {
       { let state = &mut*guard; unfinished = state.rendering_state.step(& state.sound); }
-      if !unfinished {play (& guard);}
+      //if !unfinished {play (&mut guard);}
       let elapsed = start.elapsed();
       if elapsed.as_secs() > 0 || elapsed.subsec_nanos() > 5_000_000 {
         break;
       }
     }
+    play (&mut guard);
   }
   
   if unfinished {
@@ -157,15 +160,26 @@ fn render_loop (state: Rc<RefCell<State>>) {
   }
 }
 
-fn play (state: &State) {
-  //println!("{:?}", &state.rendering_state.final_samples().samples);
-  let rendered: TypedArray <f32> = state.rendering_state.final_samples().samples.as_slice().into();
+fn play (state: &mut State) {
+  let rendered_duration = state.rendering_state.final_samples().samples.len() as f64/state.sound.sample_rate() as f64;
+  let now = js!{return audio.currentTime;}.try_into().unwrap();
+  let (offset, duration) = match state.playback_started {
+    None => {
+      state.playback_started = Some(now);
+      (0.0, rendered_duration)
+    },
+    Some (time) => {
+      let tentative_offset = now - time;
+      if tentative_offset < rendered_duration {
+        (tentative_offset, rendered_duration - tentative_offset)
+      } else {
+        state.playback_started = Some(now);
+        (0.0, rendered_duration)
+      }
+    }
+  };
   js! {
-  const rendered = @{rendered};
-  const sample_rate = @{state.sound.sample_rate() as f64};
-  const buffer = audio.createBuffer (1, rendered.length, sample_rate);
-  buffer.copyToChannel (rendered, 0);
-  play_buffer (buffer);
+    play_buffer (window.webfxr_play_buffer,@{offset},@{duration});
   }  
 }
 
@@ -185,6 +199,7 @@ fn main() {
       log_highpass_filter_cutoff: Signal::constant (UserNumber::from_rendered (20.0_f64.log2())),
     },
     rendering_state: Default::default(),
+    playback_started: None,
   }));
   
 
