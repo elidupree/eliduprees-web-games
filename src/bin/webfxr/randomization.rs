@@ -10,13 +10,13 @@ pub fn random_time_logarithmic <G: Rng>(generator: &mut G, min: f64, max: f64)->
 }
 
 pub fn random_waveform <G: Rng>(generator: &mut G)->Waveform {
-  match generator.gen_range (0, 4) {
-    0 => Waveform::Sine,
-    1 => Waveform::Square,
-    2 => Waveform::Triangle,
-    3 => Waveform::Sawtooth,
-    _ => unreachable!(),
-  }
+  generator.choose(&[
+    Waveform::Sine,
+    Waveform::Square,
+    Waveform::Triangle,
+    Waveform::Sawtooth,
+    Waveform::WhiteNoise,
+  ]).unwrap().clone()
 }
 pub fn random_envelope <G: Rng>(generator: &mut G)->Envelope {
   Envelope {
