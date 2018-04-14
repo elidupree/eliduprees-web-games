@@ -224,6 +224,7 @@ pub enum SignalEffect <T: UserNumberType> {
 
 #[derive (Default)]
 pub struct Signal <T: UserNumberType> {
+  pub enabled: bool,
   pub initial_value: UserNumber<T>,
   pub effects: Vec<SignalEffect <T>>,
 }
@@ -242,6 +243,7 @@ pub struct SignalInfo {
   pub slider_range: [f64; 2],
   pub difference_slider_range: f64,
   pub average_effects: f64,
+  pub can_disable: bool,
 }
 
 #[derive (Clone)]
@@ -314,6 +316,7 @@ signals_definitions! {
     slider_range: [20f64.log2(), 5000f64.log2()],
     difference_slider_range: 2.0,
     average_effects: 2.0,
+    can_disable: false,
   }),
   (volume, VolumeType, |state| Some(&state.rendering_state.after_volume), SignalInfo {
     id: "volume",
@@ -321,6 +324,7 @@ signals_definitions! {
     slider_range: [DEFAULT_DECIBEL_BASE/OCTAVES_TO_DECIBELS,0.0],
     difference_slider_range: 2.0,
     average_effects: 0.7,
+    can_disable: false,
   }),
   (log_lowpass_filter_cutoff, FrequencyType, |state| Some(&state.rendering_state.after_lowpass), SignalInfo {
     id: "lowpass",
@@ -328,6 +332,7 @@ signals_definitions! {
     slider_range: [20f64.log2(), 48000f64.log2()],
     difference_slider_range: 5.0,
     average_effects: 0.7,
+    can_disable: true,
   }),
   (log_highpass_filter_cutoff, FrequencyType, |state| Some(&state.rendering_state.after_highpass), SignalInfo {
     id: "highpass",
@@ -335,6 +340,7 @@ signals_definitions! {
     slider_range: [10f64.log2(), 20000f64.log2()],
     difference_slider_range: 5.0,
     average_effects: 0.7,
+    can_disable: true,
   }),
   (log_bitcrush_frequency, FrequencyType, |state| Some(&state.rendering_state.after_bitcrush), SignalInfo {
     id: "bitcrush_frequency",
@@ -342,6 +348,7 @@ signals_definitions! {
     slider_range: [20f64.log2(), 48000f64.log2()],
     difference_slider_range: 5.0,
     average_effects: 0.7,
+    can_disable: true,
   }),
 }
 
@@ -397,6 +404,7 @@ impl<T: UserNumberType> SignalEffect <T> {
 impl<T: UserNumberType> Signal<T> {
   pub fn constant(value: UserNumber <T>)->Self {
     Signal {
+      enabled: false,
       initial_value: value,
       effects: Vec::new(),
     }

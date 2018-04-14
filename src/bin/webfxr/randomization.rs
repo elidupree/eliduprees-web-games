@@ -26,12 +26,16 @@ pub fn random_envelope <G: Rng>(generator: &mut G)->Envelope {
   }
 }
 pub fn random_signal <G: Rng, T: UserNumberType>(generator: &mut G, duration: f64, info: & SignalInfo)->Signal <T> {
+  let enabled = generator.gen() && info.can_disable;
   let mut effects = Vec::new() ;
-  let num_effects = distributions::poisson::Poisson::new(info.average_effects).sample (generator);
-  for _ in 0..num_effects {
-    effects.push (random_signal_effect (generator, duration, info));
+  if enabled || !info.can_disable {
+    let num_effects = distributions::poisson::Poisson::new(info.average_effects).sample (generator);
+    for _ in 0..num_effects {
+      effects.push (random_signal_effect (generator, duration, info));
+    }
   }
   Signal {
+    enabled: enabled,
     initial_value: UserNumber::from_rendered (generator.gen_range (info.slider_range [0], info.slider_range [1])),
     effects: effects,
   }

@@ -274,7 +274,17 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   
   js!{@{& container}.append (@{&initial_value_input})}
   let input_height = js!{ return @{&initial_value_input}.outerHeight()};
-  let label = self.assign_row(js!{ return @{initial_value_input}.children("label");});
+  let mut label = self.assign_row(js!{ return @{initial_value_input}.children("label");});
+  if self.info.untyped.can_disable {
+    js!{@{label}.remove();}
+    let toggle = self.checkbox_input (
+      & format! ("{}_enabled", & self.info.untyped.id),
+      self.info.untyped.name,
+      self.info.getter.clone() + getter! (signal => signal.enabled)
+    );
+    js!{@{&toggle}.appendTo(@{& container}).addClass("signal_toggle")}
+    label = self.assign_row(js!{ return @{toggle}.children("label");});
+  }
   js!{@{label}.append(":").appendTo(@{& container}).addClass("toplevel_input_label")}
   
     //let range = self.info.untyped.difference_slider_range;

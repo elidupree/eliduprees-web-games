@@ -153,28 +153,36 @@ impl RenderingState {
     sample *= sound.volume.sample (time).exp2();
     self.after_volume.push (sample, &self.constants);
     
-    let lowpass_filter_frequency = sound.log_lowpass_filter_cutoff.sample (time).exp2();
-    sample = self.lowpass_state.apply (sample, lowpass_filter_frequency, self.constants.supersample_duration);
-    self.after_lowpass.push (sample, &self.constants);
-    
-    let highpass_filter_frequency = sound.log_highpass_filter_cutoff.sample (time).exp2();
-    sample = self.highpass_state.apply (sample, highpass_filter_frequency, self.constants.supersample_duration);
-    self.after_highpass.push (sample, &self.constants);
-
-    
-    if self.bitcrush_phase >= 1.0 {
-      self.bitcrush_phase -= 1.0;
-      if self.bitcrush_phase >1.0 {self.bitcrush_phase = 1.0;}
-      self.bitcrush_last_used_sample = sample; 
+    if sound.log_lowpass_filter_cutoff.enabled {
+      let lowpass_filter_frequency = sound.log_lowpass_filter_cutoff.sample (time).exp2();
+      sample = self.lowpass_state.apply (sample, lowpass_filter_frequency, self.constants.supersample_duration);
+      self.after_lowpass.push (sample, &self.constants);
     }
-    sample = self.bitcrush_last_used_sample;
+    
+    if sound.log_highpass_filter_cutoff.enabled {
+      let highpass_filter_frequency = sound.log_highpass_filter_cutoff.sample (time).exp2();
+      sample = self.highpass_state.apply (sample, highpass_filter_frequency, self.constants.supersample_duration);
+      self.after_highpass.push (sample, &self.constants);
+    }
+
+    if sound.log_bitcrush_frequency.enabled {
+      if self.bitcrush_phase >= 1.0 {
+        self.bitcrush_phase -= 1.0;
+        if self.bitcrush_phase >1.0 {self.bitcrush_phase = 1.0;}
+        self.bitcrush_last_used_sample = sample; 
+      }
+      sample = self.bitcrush_last_used_sample;
+      
+     
+      let bitcrush_frequency = sound.log_bitcrush_frequency.sample(time).exp2();
+      self.bitcrush_phase += bitcrush_frequency*self.constants.supersample_duration;
+    }
+    // hack: outside the conditional because it's also the final samples
     self.after_bitcrush.push (sample, &self.constants);
     
-      
     let frequency = sound.log_frequency.sample(time).exp2();
-    let bitcrush_frequency = sound.log_bitcrush_frequency.sample(time).exp2();
     self.wave_phase += frequency*self.constants.supersample_duration;
-    self.bitcrush_phase += bitcrush_frequency*self.constants.supersample_duration;
+    
     self.next_supersample += 1;
   }
   pub fn step (&mut self, sound: & SoundDefinition)->bool {
