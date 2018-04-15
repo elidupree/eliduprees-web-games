@@ -92,8 +92,8 @@ pub fn menu_input <T: 'static + Eq + Clone> (state: &Rc<RefCell<State>>, getter:
   menu
 }
 
-pub fn waveform_input (state: &Rc<RefCell<State>>, _id: & str, name: & str, getter: Getter <State, Waveform>)->Value {
-  /*let current_value = getter.get (&state.borrow()).clone();
+pub fn waveform_input (state: &Rc<RefCell<State>>, id: & str, name: & str, getter: Getter <State, Waveform>)->Value {
+  let current_value = getter.get (&state.borrow()).clone();
   RadioInputSpecification {
     state: state, id: id, name: name,
     options: &[
@@ -108,8 +108,8 @@ pub fn waveform_input (state: &Rc<RefCell<State>>, _id: & str, name: & str, gett
       *target = value;
       true
     }),
-  }.render()*/
-  let result = js!{return $("<div>", {class: "labeled_input radio"}).append (
+  }.render()
+  /*let result = js!{return $("<div>", {class: "labeled_input radio"}).append (
     $("<label>", {text:@{name} + ": "}),
     @{menu_input (state, getter, &[
       (Waveform::Sine, "Sine"),
@@ -119,7 +119,7 @@ pub fn waveform_input (state: &Rc<RefCell<State>>, _id: & str, name: & str, gett
       (Waveform::WhiteNoise, "White noise"),
     ])}
   );};
-  result
+  result*/
 }
 
 
