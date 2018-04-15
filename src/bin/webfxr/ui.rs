@@ -82,7 +82,7 @@ pub fn menu_input <T: 'static + Eq + Clone> (state: &Rc<RefCell<State>>, getter:
   }
   js!{@{& menu}.on("change", function(event) {
     @{input_callback_gotten (state, getter, move | target, index: i32 | {
-      if let Some(value) = values.get ((index - 1) as usize) {
+      if let Some(value) = values.get (index as usize) {
         *target = value.clone();
         return true
       }
