@@ -70,8 +70,30 @@ pub fn checkbox_input (state: &Rc<RefCell<State>>, id: & str, name: & str, gette
   result
 }
 
-pub fn waveform_input (state: &Rc<RefCell<State>>, id: & str, name: & str, getter: Getter <State, Waveform>)->Value {
+pub fn menu_input <T: 'static + Eq + Clone> (state: &Rc<RefCell<State>>, getter: Getter <State, T>, options: & [(T, &str)])->Value {
   let current_value = getter.get (&state.borrow()).clone();
+  let menu = js!{
+    return $("<select>");
+  };
+  let mut values = Vec::with_capacity (options.len());
+  for & (ref value, name) in options.iter() {
+    values.push (value.clone());
+    js!{@{& menu}.append ($("<option>", {selected:@{*value == current_value}}).text(@{name}));}
+  }
+  js!{@{& menu}.on("change", function(event) {
+    @{input_callback_gotten (state, getter, move | target, index: i32 | {
+      if let Some(value) = values.get ((index - 1) as usize) {
+        *target = value.clone();
+        return true
+      }
+      false
+    })}(event.target.selectedIndex)
+  })};
+  menu
+}
+
+pub fn waveform_input (state: &Rc<RefCell<State>>, _id: & str, name: & str, getter: Getter <State, Waveform>)->Value {
+  /*let current_value = getter.get (&state.borrow()).clone();
   RadioInputSpecification {
     state: state, id: id, name: name,
     options: &[
@@ -86,7 +108,18 @@ pub fn waveform_input (state: &Rc<RefCell<State>>, id: & str, name: & str, gette
       *target = value;
       true
     }),
-  }.render()
+  }.render()*/
+  let result = js!{return $("<div>", {class: "labeled_input radio"}).append (
+    $("<label>", {text:@{name} + ": "}),
+    @{menu_input (state, getter, &[
+      (Waveform::Sine, "Sine"),
+      (Waveform::Square, "Square"),
+      (Waveform::Triangle, "Triangle"),
+      (Waveform::Sawtooth, "Sawtooth"),
+      (Waveform::WhiteNoise, "White noise"),
+    ])}
+  );};
+  result
 }
 
 
