@@ -70,6 +70,23 @@ pub fn checkbox_input (state: &Rc<RefCell<State>>, id: & str, name: & str, gette
   result
 }
 
+pub fn checkbox_meta_input (state: &Rc<RefCell<State>>, id: & str, name: & str, getter: Getter <State, bool>)->Value {
+  let current_value = getter.get (&state.borrow()).clone();
+  let state = state.clone() ;
+  let callback = move | value: bool | {
+    *getter.get_mut (&mut state.borrow_mut()) = value;
+    true
+  };
+  let result: Value = js!{
+    var input;
+    return $("<div>", {class: "labeled_input checkbox"}).append (
+      input = $("<input>", {type: "checkbox", id: @{id}, checked:@{current_value}}).click (function() {@{callback}(input.prop ("checked"));}),
+      $("<label>", {"for": @{id}, text: @{name}})
+    );
+  };
+  result
+}
+
 pub fn menu_input <T: 'static + Eq + Clone> (state: &Rc<RefCell<State>>, getter: Getter <State, T>, options: & [(T, &str)])->Value {
   let current_value = getter.get (&state.borrow()).clone();
   let menu = js!{

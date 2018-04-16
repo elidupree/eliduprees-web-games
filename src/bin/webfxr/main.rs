@@ -50,6 +50,7 @@ pub struct State {
   pub sound: SoundDefinition,
   pub rendering_state: RenderingState,
   pub playback_state: Option <Playback>,
+  pub loop_playback: bool,
 }
 
 
@@ -96,14 +97,20 @@ fn redraw(state: & Rc<RefCell<State>>) {
     }
   }
     
-  js!{$("#panels").empty();}      
-  let randomize_button = assign_row (rows, button_input ("Play",
+  js!{$("#panels").empty();}  
+  
+      
+  let play_button = assign_row (rows, button_input ("Play",
     { let state = state.clone(); move || {
       play (&mut state.borrow_mut(), Rc::new (| state | state.final_samples()));
       false
     }}
   ));
-  js!{$("#panels").append (@{randomize_button});}
+  js!{$("#panels").append (@{play_button});}
+  rows += 1;
+  
+  let loop_button = assign_row (rows, checkbox_meta_input (state, "loop", "Loop", getter! (state => state.loop_playback)));
+  js!{$("#panels").append (@{loop_button});}
   rows += 1;
       
   let randomize_button = assign_row (rows, button_input ("Randomize",
@@ -193,13 +200,18 @@ fn render_loop (state: Rc<RefCell<State>>) {
     
     match state.playback_state.clone() {
       Some(playback) => {
-        let samples = (playback.samples_getter) (&state.rendering_state);
         let now: f64 = js!{return audio.currentTime;}.try_into().unwrap();
         let offset = now - playback.start_audio_time;
         if offset > state.sound.duration() {
-          samples.redraw (None, & state.rendering_state.constants);
-          state.playback_state = None;
+          if state.loop_playback {
+            play (state, playback.samples_getter);
+          } else {
+            let samples = (playback.samples_getter) (&state.rendering_state);
+            samples.redraw (None, & state.rendering_state.constants);
+            state.playback_state = None;
+          }
         } else {
+          let samples = (playback.samples_getter) (&state.rendering_state);
           samples.redraw (Some(offset), & state.rendering_state.constants);
         }
       }
@@ -246,6 +258,7 @@ fn main() {
     },
     rendering_state: Default::default(),
     playback_state: None,
+    loop_playback: false,
   }));
   
 
