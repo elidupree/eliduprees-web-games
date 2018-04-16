@@ -211,8 +211,15 @@ fn render_loop (state: Rc<RefCell<State>>) {
 }
 
 fn play (state: &mut State, getter: SamplesGetter) {
-  let now: f64 = js!{return audio.currentTime;}.try_into().unwrap();
   let samples = (getter) (&state.rendering_state);
+  if let Some(ref playback) = state.playback_state {
+    let old_samples = (playback.samples_getter) (&state.rendering_state);
+    if old_samples.serial_number != samples.serial_number {
+      old_samples.redraw (None, & state.rendering_state.constants);
+    }
+  }
+
+  let now: f64 = js!{return audio.currentTime;}.try_into().unwrap();
   state.playback_state = Some(Playback {
     start_audio_time: now,
     samples_getter: getter,
