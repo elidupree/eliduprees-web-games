@@ -345,7 +345,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     
     js!{ @{& container}.append (@{buttons}); }
 
-    if let Some(rendered) = (self.info.rendered_getter)(&guard) {
+    if let Some(rendered) = (self.info.rendered_getter)(&guard.rendering_state) {
       js!{
         var canvas = @{self.assign_row (rendered.canvas.clone()) };
         canvas[0].height =@{input_height};

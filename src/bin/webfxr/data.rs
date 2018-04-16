@@ -199,7 +199,7 @@ pub struct SignalInfo {
 pub struct TypedSignalInfo<T: UserNumberType> {
   pub untyped: SignalInfo,
   pub getter: Getter <State, Signal <T>>,
-  pub rendered_getter: Rc<Fn(& State)->Option <& RenderedSamples>>,
+  pub rendered_getter: Rc<Fn(& RenderingState)->Option <& RenderedSamples>>,
 }
 
 pub trait SignalVisitor {
@@ -259,7 +259,7 @@ pub struct SoundDefinition {
 }
 
 signals_definitions! {
-  (log_frequency, FrequencyType, |state| Some(&state.rendering_state.after_frequency), SignalInfo {
+  (log_frequency, FrequencyType, |state| Some(&state.after_frequency), SignalInfo {
     id: "frequency",
     name: "Frequency",
     slider_range: [20f64.log2(), 5000f64.log2()],
@@ -267,7 +267,7 @@ signals_definitions! {
     average_effects: 2.0,
     can_disable: false,
   }),
-  (volume, VolumeType, |state| Some(&state.rendering_state.after_volume), SignalInfo {
+  (volume, VolumeType, |state| Some(&state.after_volume), SignalInfo {
     id: "volume",
     name: "Volume",
     slider_range: [DEFAULT_DECIBEL_BASE/OCTAVES_TO_DECIBELS,0.0],
@@ -275,7 +275,7 @@ signals_definitions! {
     average_effects: 0.7,
     can_disable: false,
   }),
-  (log_lowpass_filter_cutoff, FrequencyType, |state| Some(&state.rendering_state.after_lowpass), SignalInfo {
+  (log_lowpass_filter_cutoff, FrequencyType, |state| Some(&state.after_lowpass), SignalInfo {
     id: "lowpass",
     name: "Low-pass filter cutoff",
     slider_range: [20f64.log2(), 48000f64.log2()],
@@ -283,7 +283,7 @@ signals_definitions! {
     average_effects: 0.7,
     can_disable: true,
   }),
-  (log_highpass_filter_cutoff, FrequencyType, |state| Some(&state.rendering_state.after_highpass), SignalInfo {
+  (log_highpass_filter_cutoff, FrequencyType, |state| Some(&state.after_highpass), SignalInfo {
     id: "highpass",
     name: "High-pass filter cutoff",
     slider_range: [10f64.log2(), 20000f64.log2()],
@@ -291,7 +291,7 @@ signals_definitions! {
     average_effects: 0.7,
     can_disable: true,
   }),
-  (log_bitcrush_frequency, FrequencyType, |state| Some(&state.rendering_state.after_bitcrush), SignalInfo {
+  (log_bitcrush_frequency, FrequencyType, |state| Some(&state.after_bitcrush), SignalInfo {
     id: "bitcrush_frequency",
     name: "Bitcrush frequency",
     slider_range: [20f64.log2(), 48000f64.log2()],

@@ -39,8 +39,11 @@ pub use ui::*;
 pub use randomization::*;
 
 
+type SamplesGetter = Rc<Fn(& RenderingState)->& RenderedSamples>;
+#[derive (Clone)]
 pub struct Playback {
   start_audio_time: f64,
+  samples_getter: SamplesGetter,
 }
 
 pub struct State {
@@ -96,7 +99,7 @@ fn redraw(state: & Rc<RefCell<State>>) {
   js!{$("#panels").empty();}      
   let randomize_button = assign_row (rows, button_input ("Play",
     { let state = state.clone(); move || {
-      play (&mut state.borrow_mut(), true);
+      play (&mut state.borrow_mut(), Rc::new (| state | state.final_samples()));
       false
     }}
   ));
@@ -152,18 +155,18 @@ fn redraw(state: & Rc<RefCell<State>>) {
   
   }
   
-  render_loop (state.clone());
+  play (&mut state.borrow_mut(), Rc::new (| state | state.final_samples()));
 }
 
 
 fn render_loop (state: Rc<RefCell<State>>) {
-  let mut unfinished;
+  let mut unfinished = true;
   
   {
     let mut guard = state.borrow_mut();
     let start = Instant::now();
     
-    loop {
+    while unfinished {
       { let state = &mut*guard; unfinished = state.rendering_state.step(& state.sound); }
       //if !unfinished {play (&mut guard);}
       let elapsed = start.elapsed();
@@ -171,35 +174,39 @@ fn render_loop (state: Rc<RefCell<State>>) {
         break;
       }
     }
+    
     let rendered_duration = guard.rendering_state.final_samples().samples.len() as f64/guard.sound.sample_rate() as f64;
     if !(unfinished && rendered_duration < 0.2) {
-      play (&mut guard, false);
+      let state = &mut *guard;
+      let now: f64 = js!{return audio.currentTime;}.try_into().unwrap();
+      match state.playback_state.clone() {
+        Some(playback) => {
+          let tentative_offset = now - playback.start_audio_time;
+          if tentative_offset < rendered_duration {
+            js! {
+              play_buffer (@{&(playback.samples_getter) (&state.rendering_state).audio_buffer},@{tentative_offset},@{rendered_duration - tentative_offset});
+            }
+          } else {
+            state.playback_state = None;
+          }
+        }
+        None => (),
+      }
     }
   }
   
-  if unfinished {
-    web::window().request_animation_frame (move | _time | render_loop (state));
-  }
+  web::window().request_animation_frame (move | _time | render_loop (state));
 }
 
-fn play (state: &mut State, restart: bool) {
-  let rendered_duration = state.rendering_state.final_samples().samples.len() as f64/state.sound.sample_rate() as f64;
-  let now = js!{return audio.currentTime;}.try_into().unwrap();
-  let (offset, duration) = if restart || state.playback_state.is_none() {
-    state.playback_state = Some(Playback {start_audio_time: now});
-    (0.0, rendered_duration)
-  } else {
-    let playback = state.playback_state.as_mut().unwrap();
-    let tentative_offset = now - playback.start_audio_time;
-    if tentative_offset < rendered_duration {
-      (tentative_offset, rendered_duration - tentative_offset)
-    } else {
-      playback.start_audio_time = now;
-      (0.0, rendered_duration)
-    }
-  };
+fn play (state: &mut State, getter: SamplesGetter) {
+  let now: f64 = js!{return audio.currentTime;}.try_into().unwrap();
+  let samples = (getter) (&state.rendering_state);
+  state.playback_state = Some(Playback {
+    start_audio_time: now,
+    samples_getter: getter,
+  });
   js! {
-    play_buffer (window.webfxr_play_buffer,@{offset},@{duration});
+    play_buffer (@{&samples.audio_buffer});
   }  
 }
 
@@ -225,6 +232,7 @@ fn main() {
 
   
   redraw(&state);
+  render_loop (state.clone());
     
   stdweb::event_loop();
 }

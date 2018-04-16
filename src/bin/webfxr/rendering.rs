@@ -48,21 +48,30 @@ impl HighpassFilterState {
 
 
 pub struct RenderedSamples {
+  pub serial_number: SerialNumber,
   pub unprocessed_supersamples: Vec<f64>,
   pub samples: Vec<f32>,
   pub illustration: Vec<f32>,
   pub canvas: Value,
   pub context: Value,
+  pub audio_buffer: Value,
 }
 impl Default for RenderedSamples {
   fn default()->Self {
     let canvas = js!{ return $("<canvas>"); };
     let context = js!{ return @{&canvas}[0].getContext ("2d"); };
     RenderedSamples {
+      serial_number: Default::default(),
       unprocessed_supersamples: Vec::new(),
       samples: Vec::new(),
       illustration: Vec::new(),
-      canvas: canvas, context: context
+      canvas: canvas, context: context,
+      audio_buffer: js!{
+        if (window.webfxr_num_samples) {
+          console.log("b", window.webfxr_num_samples , window.webfxr_sample_rate); return audio.createBuffer (1, window.webfxr_num_samples, window.webfxr_sample_rate);
+        }
+        return undefined;
+      },
     }
   }
 }
@@ -104,8 +113,10 @@ impl RenderedSamples {
     self.unprocessed_supersamples.push (value);
     if self.unprocessed_supersamples.len() == constants.supersamples_per_sample {
       self.samples.push ((self.unprocessed_supersamples.drain(..).sum::<f64>() / constants.supersamples_per_sample as f64) as f32);
-      if self.samples.len() % constants.samples_per_illustrated == 0 {
-        let value = root_mean_square (& self.samples [self.samples.len()-constants.samples_per_illustrated..]);
+      if self.samples.len() % constants.samples_per_illustrated == 0 || self.samples.len() == constants.num_samples {
+        let batch_start = ((self.samples.len()-1) / constants.samples_per_illustrated) * constants.samples_per_illustrated;
+        let rendered_slice = & self.samples [batch_start..];
+        let value = root_mean_square (rendered_slice);
         // assume that root-mean-square only goes up to 0.5
         let value = value*2.0;
         // convert to log scale
@@ -120,6 +131,12 @@ impl RenderedSamples {
           context.fillRect (@{self.illustration.len() as f64}, canvas.height*0.5 - radius, 1, radius*2);
         }
         self.illustration.push (value);
+        
+        let rendered: TypedArray <f32> = rendered_slice.into();
+        js! {
+          const rendered = @{rendered};
+          @{&self.audio_buffer}.copyToChannel (rendered, 0, @{batch_start as f64});
+        }  
       }
     }
   }
@@ -128,10 +145,8 @@ impl RenderingState {
   pub fn final_samples (&self)->& RenderedSamples {& self.after_bitcrush}
   pub fn new (sound: & SoundDefinition)->RenderingState {
     let num_samples = (min(MAX_RENDER_LENGTH, sound.duration())*sound.sample_rate() as f64).ceil() as usize;
+    js! { window.webfxr_num_samples = @{num_samples as f64}; window.webfxr_sample_rate = @{sound.sample_rate() as f64}; console.log("a", window.webfxr_num_samples , window.webfxr_sample_rate);} 
     let supersamples_per_sample = 1;
-    js! {
-      window.webfxr_play_buffer = audio.createBuffer (1, @{num_samples as f64}, @{sound.sample_rate() as f64});
-    }  
     RenderingState {
       constants: RenderingStateConstants {
         num_samples: num_samples,
@@ -143,6 +158,7 @@ impl RenderingState {
       bitcrush_phase: 1.0,
       .. Default::default()
     }
+     
   }
   fn superstep (&mut self, sound: & SoundDefinition) {
     let time = self.next_supersample as f64*self.constants.supersample_duration;
@@ -194,17 +210,6 @@ impl RenderingState {
       self.superstep(sound);
       if self.next_supersample == self.constants.num_supersamples {return false;}
     }
-    
-    
-    
-    let final_samples = &self.final_samples().samples;
-    let batch_start = final_samples.len() - batch_samples;
-    let rendered_slice = &final_samples[batch_start..];
-    let rendered: TypedArray <f32> = rendered_slice.into();
-    js! {
-      const rendered = @{rendered};
-      window.webfxr_play_buffer.copyToChannel (rendered, 0, @{batch_start as f64 });
-    }  
     
     true
   }

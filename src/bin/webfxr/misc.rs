@@ -1,5 +1,6 @@
 
 use std::rc::Rc;
+use std::cell::Cell;
 
 
 //use super::*;
@@ -7,6 +8,22 @@ use std::rc::Rc;
 
 pub fn min (first: f64, second: f64)->f64 {if first < second {first} else {second}}
 pub fn max (first: f64, second: f64)->f64 {if first > second {first} else {second}}
+
+
+#[derive (Clone, PartialEq, Eq)]
+pub struct SerialNumber (pub u64);
+
+impl Default for SerialNumber {
+  fn default()->Self {
+    thread_local! {static NEXT_SERIAL_NUMBER: Cell<u64> = Cell::new (0);}
+    NEXT_SERIAL_NUMBER.with (| next | {
+      let this = next.get();
+      next.set (this + 1);
+      SerialNumber (this)
+    })
+  }
+}
+
 
 #[derive (Derivative)]
 #[derivative (Clone (bound =""))]
