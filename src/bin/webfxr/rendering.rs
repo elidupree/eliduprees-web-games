@@ -78,6 +78,7 @@ impl Default for RenderedSamples {
 #[derive (Default)]
 pub struct RenderingStateConstants {
   pub num_samples: usize,
+  pub sample_rate: usize,
   pub supersamples_per_sample: usize,
   pub num_supersamples: usize,
   pub supersample_duration: f64,
@@ -121,16 +122,9 @@ impl RenderedSamples {
         let value = value*2.0;
         // convert to log scale
         //let value = 1.0 - (value).log2()*(OCTAVES_TO_DECIBELS/DEFAULT_DECIBEL_BASE) as f32;
-        js!{
-          var canvas = @{&self.canvas}[0];
-          var context = @{&self.context};
-          context.fillStyle = "rgb(0,0,0)";
-          
-          // on the other hand, the radius should range from 0 to 0.5
-          var radius = canvas.height*@{value}*0.5;
-          context.fillRect (@{self.illustration.len() as f64}, canvas.height*0.5 - radius, 1, radius*2);
-        }
+        
         self.illustration.push (value);
+        self.draw_line (self.illustration.len() - 1) ;
         
         let rendered: TypedArray <f32> = rendered_slice.into();
         js! {
@@ -138,6 +132,40 @@ impl RenderedSamples {
           @{&self.audio_buffer}.copyToChannel (rendered, 0, @{batch_start as f64});
         }  
       }
+    }
+  }
+  
+  pub fn draw_line (&self, index: usize) {
+    let value = self.illustration [index];
+    js!{
+      var canvas = @{&self.canvas}[0];
+      var context = @{&self.context};
+      context.fillStyle = "rgb(0,0,0)";
+          
+      // the radius should range from 0 to 0.5
+      var radius = canvas.height*@{value}*0.5;
+      context.fillRect (@{index as f64}, canvas.height*0.5 - radius, 1, radius*2);
+    }
+  }
+  
+  pub fn redraw (&self, playback_position: Option <f64>, constants: & RenderingStateConstants) {
+    js!{
+      var canvas = @{&self.canvas}[0];
+      var context = @{&self.context};
+      context.clearRect (0, 0, canvas.width, canvas.height);
+    }
+    for index in 0..self.illustration.len() {
+      self.draw_line (index);
+    }
+    if let Some(playback_position) = playback_position {
+    let index = (playback_position*constants.sample_rate as f64/constants.samples_per_illustrated as f64).floor();
+    js!{
+      var canvas = @{&self.canvas}[0];
+      var context = @{&self.context};
+      context.fillStyle = "rgb(255,255,0)";
+      
+      context.fillRect (@{index as f64}, 0, 1, canvas.height);
+    }
     }
   }
 }
@@ -150,6 +178,7 @@ impl RenderingState {
     RenderingState {
       constants: RenderingStateConstants {
         num_samples: num_samples,
+        sample_rate: sound.sample_rate(),
         supersamples_per_sample: supersamples_per_sample,
         num_supersamples: num_samples*supersamples_per_sample,
         supersample_duration: 1.0/((sound.sample_rate()*supersamples_per_sample) as f64),
@@ -201,16 +230,17 @@ impl RenderingState {
     
     self.next_supersample += 1;
   }
-  pub fn step (&mut self, sound: & SoundDefinition)->bool {
-    if self.next_supersample == self.constants.num_supersamples {return false;}
+  pub fn step (&mut self, sound: & SoundDefinition) {
+    if self.finished() {return;}
     
     let batch_samples = self.constants.samples_per_illustrated;
     let batch_supersamples = batch_samples*self.constants.supersamples_per_sample;
     for _ in 0..batch_supersamples {
       self.superstep(sound);
-      if self.next_supersample == self.constants.num_supersamples {return false;}
+      if self.finished() {return;}
     }
-    
-    true
+  }
+  pub fn finished (&self)->bool {
+    self.next_supersample == self.constants.num_supersamples
   }
 }

@@ -160,38 +160,50 @@ fn redraw(state: & Rc<RefCell<State>>) {
 
 
 fn render_loop (state: Rc<RefCell<State>>) {
-  let mut unfinished = true;
-  
   {
     let mut guard = state.borrow_mut();
+    let state = &mut*guard;
     let start = Instant::now();
     
-    while unfinished {
-      { let state = &mut*guard; unfinished = state.rendering_state.step(& state.sound); }
-      //if !unfinished {play (&mut guard);}
+    let already_finished = state.rendering_state.finished();
+    
+    while !state.rendering_state.finished() {
+      { state.rendering_state.step(& state.sound); }
       let elapsed = start.elapsed();
       if elapsed.as_secs() > 0 || elapsed.subsec_nanos() > 5_000_000 {
         break;
       }
     }
     
-    let rendered_duration = guard.rendering_state.final_samples().samples.len() as f64/guard.sound.sample_rate() as f64;
-    if !(unfinished && rendered_duration < 0.2) {
-      let state = &mut *guard;
-      let now: f64 = js!{return audio.currentTime;}.try_into().unwrap();
-      match state.playback_state.clone() {
-        Some(playback) => {
+    let rendered_duration = state.rendering_state.final_samples().samples.len() as f64/state.sound.sample_rate() as f64;
+    if (state.rendering_state.finished() || rendered_duration > 0.2) && !already_finished {
+      match state.playback_state {
+        Some(ref playback) => {
+          let now: f64 = js!{return audio.currentTime;}.try_into().unwrap();
           let tentative_offset = now - playback.start_audio_time;
           if tentative_offset < rendered_duration {
             js! {
               play_buffer (@{&(playback.samples_getter) (&state.rendering_state).audio_buffer},@{tentative_offset},@{rendered_duration - tentative_offset});
             }
-          } else {
-            state.playback_state = None;
           }
         }
         None => (),
       }
+    }
+    
+    match state.playback_state.clone() {
+      Some(playback) => {
+        let samples = (playback.samples_getter) (&state.rendering_state);
+        let now: f64 = js!{return audio.currentTime;}.try_into().unwrap();
+        let offset = now - playback.start_audio_time;
+        if offset > state.sound.duration() {
+          samples.redraw (None, & state.rendering_state.constants);
+          state.playback_state = None;
+        } else {
+          samples.redraw (Some(offset), & state.rendering_state.constants);
+        }
+      }
+      None => (),
     }
   }
   
