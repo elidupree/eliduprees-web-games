@@ -24,11 +24,15 @@ use std::time::{Instant, Duration};
 pub use array_ext::Array;
 pub use eliduprees_web_games::*;
 
+
+#[macro_use]
+mod misc;
 #[macro_use]
 mod data;
 mod rendering;
 mod ui;
 mod randomization;
+pub use misc::*;
 pub use data::*;
 pub use rendering::*;
 pub use ui::*;
