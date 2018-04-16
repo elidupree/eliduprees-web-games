@@ -68,7 +68,7 @@ impl Default for RenderedSamples {
       canvas: canvas, context: context,
       audio_buffer: js!{
         if (window.webfxr_num_samples) {
-          console.log("b", window.webfxr_num_samples , window.webfxr_sample_rate); return audio.createBuffer (1, window.webfxr_num_samples, window.webfxr_sample_rate);
+          return audio.createBuffer (1, window.webfxr_num_samples, window.webfxr_sample_rate);
         }
         return undefined;
       },
@@ -145,7 +145,7 @@ impl RenderingState {
   pub fn final_samples (&self)->& RenderedSamples {& self.after_bitcrush}
   pub fn new (sound: & SoundDefinition)->RenderingState {
     let num_samples = (min(MAX_RENDER_LENGTH, sound.duration())*sound.sample_rate() as f64).ceil() as usize;
-    js! { window.webfxr_num_samples = @{num_samples as f64}; window.webfxr_sample_rate = @{sound.sample_rate() as f64}; console.log("a", window.webfxr_num_samples , window.webfxr_sample_rate);} 
+    js! { window.webfxr_num_samples = @{num_samples as f64}; window.webfxr_sample_rate = @{sound.sample_rate() as f64}; } 
     let supersamples_per_sample = 1;
     RenderingState {
       constants: RenderingStateConstants {

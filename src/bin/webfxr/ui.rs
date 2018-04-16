@@ -345,12 +345,21 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     
     js!{ @{& container}.append (@{buttons}); }
 
-    if let Some(rendered) = (self.info.rendered_getter)(&guard.rendering_state) {
+    if let Some(ref rendered_getter) = self.info.rendered_getter {
+      let rendered = (rendered_getter) (& guard.rendering_state);
       js!{
         var canvas = @{self.assign_row (rendered.canvas.clone()) };
         canvas[0].height =@{input_height};
         canvas[0].width =@{MAX_RENDER_LENGTH*DISPLAY_SAMPLE_RATE};
         @{& container}.append (canvas);
+        canvas.click (function() {@{{
+          let state = self.state.clone() ;
+          let getter = rendered_getter.clone();
+          move || {
+            let mut guard = state.borrow_mut() ;
+            play (&mut guard, getter.clone());
+          }
+        }}();});
       }
     }
       
