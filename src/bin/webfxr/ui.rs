@@ -12,12 +12,60 @@ pub fn input_callback<T, F> (state: &Rc<RefCell<State>>, callback: F)->impl (Fn 
     F: Fn(&mut State, T)->bool {
   let state = state.clone();
   move |arg: T| {
-    let success = (callback)(&mut state.borrow_mut(), arg);
-    if success {
+    let mut sound_changed = false;
+    {
+      let mut guard = state.borrow_mut();
+      let state = &mut*guard;
+      (callback)(state, arg);
+      if state.sound != state.undo_history [state.undo_position] {
+        sound_changed = true;
+        state.undo_history.split_off (state.undo_position + 1);
+        state.undo_history.push_back (state.sound.clone());
+        if state.undo_history.len() <= 1000 {
+          state.undo_position += 1;
+        } else {
+          state.undo_history.pop_front();
+        }
+      }
+    }
+    if sound_changed {
       redraw (&state);
     }
-    success
+    sound_changed
   }
+}
+
+pub fn undo (state: &Rc<RefCell<State>>)->bool {
+  let mut sound_changed = false;
+  {
+    let mut guard = state.borrow_mut();
+    let state = &mut*guard;
+    if state.undo_position > 0 {
+      state.undo_position -= 1;
+      state.sound = state.undo_history [state.undo_position].clone();
+      sound_changed = true;
+    }
+  }
+  if sound_changed {
+    redraw (&state);
+  }
+  sound_changed
+}
+pub fn redo (state: &Rc<RefCell<State>>)->bool {
+  let mut sound_changed = false;
+  {
+    let mut guard = state.borrow_mut();
+    let state = &mut*guard;
+    if state.undo_position + 1 < state.undo_history.len() {
+      state.undo_position += 1;
+      state.sound = state.undo_history [state.undo_position].clone();
+      sound_changed = true;
+    }
+  }
+  if sound_changed {
+    redraw (&state);
+  }
+  sound_changed
 }
 
 pub fn input_callback_nullary<F> (state: &Rc<RefCell<State>>, callback: F)->impl (Fn ()->bool)

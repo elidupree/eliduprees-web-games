@@ -17,6 +17,7 @@ extern crate array_ext;
 
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use stdweb::Value;
 use stdweb::unstable::TryInto;
 use stdweb::web::{self, TypedArray};
@@ -48,6 +49,8 @@ pub struct Playback {
 
 pub struct State {
   pub sound: SoundDefinition,
+  pub undo_history: VecDeque <SoundDefinition>,
+  pub undo_position: usize,
   pub rendering_state: RenderingState,
   pub playback_state: Option <Playback>,
   pub loop_playback: bool,
@@ -111,6 +114,24 @@ fn redraw(state: & Rc<RefCell<State>>) {
   
   let loop_button = assign_row (rows, checkbox_meta_input (state, "loop", "Loop", getter! (state => state.loop_playback)));
   js!{$("#panels").append (@{loop_button});}
+  rows += 1;
+  
+  let undo_button = assign_row (rows, button_input ("Undo",
+    { let state = state.clone(); move || {
+      undo (&state);
+      false
+    }}
+  ));
+  js!{$("#panels").append (@{undo_button});}
+  rows += 1;
+  
+  let redo_button = assign_row (rows, button_input ("Redo",
+    { let state = state.clone(); move || {
+      redo (&state);
+      false
+    }}
+  ));
+  js!{$("#panels").append (@{redo_button});}
   rows += 1;
       
   let randomize_button = assign_row (rows, button_input ("Randomize",
@@ -246,8 +267,7 @@ fn play (state: &mut State, getter: SamplesGetter) {
 fn main() {
   stdweb::initialize();
   
-  let state = Rc::new (RefCell::new (State {
-    sound: SoundDefinition {
+  let sound = SoundDefinition {
       waveform: Waveform::Sine,
       envelope: Envelope {attack: UserNumber::from_rendered (0.1), sustain: UserNumber::from_rendered (0.5), decay: UserNumber::from_rendered (0.5)},
       log_frequency: Signal::constant (UserNumber::from_rendered (220.0_f64.log2())),
@@ -255,7 +275,14 @@ fn main() {
       log_bitcrush_frequency: Signal::constant (UserNumber::from_rendered (44100.0_f64.log2())),
       log_lowpass_filter_cutoff: Signal::constant (UserNumber::from_rendered (44100.0_f64.log2())),
       log_highpass_filter_cutoff: Signal::constant (UserNumber::from_rendered (20.0_f64.log2())),
-    },
+    };
+  let mut undo_history = VecDeque::new();
+  undo_history.push_back (sound.clone()) ;
+  
+  let state = Rc::new (RefCell::new (State {
+    sound: sound,
+    undo_history: undo_history,
+    undo_position: 0,
     rendering_state: Default::default(),
     playback_state: None,
     loop_playback: false,

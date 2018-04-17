@@ -95,7 +95,7 @@ pub trait UserNumberType: 'static + Clone + PartialEq + Serialize + DeserializeO
   fn unit_name (&self)->&'static str;
   fn currently_used (_state: & State)->Self {Self::default()}
 }
-#[derive (Clone, Serialize, Deserialize)]
+#[derive (Clone, PartialEq, Serialize, Deserialize)]
 pub struct UserNumber <T: UserNumberType> {
   pub source: String,
   pub rendered: f64,
@@ -165,20 +165,23 @@ js_serializable! (Waveform) ;
 js_deserializable! (Waveform) ;
 
 
+#[derive (Clone, PartialEq, Serialize, Deserialize)]
 pub enum SignalEffect <T: UserNumberType> {
   Jump {time: UserTime, size: UserNumber<T::DifferenceType>},
   Slide {start: UserTime, duration: UserTime, size: UserNumber<T::DifferenceType>, smooth_start: bool, smooth_stop: bool},
   Oscillation {size: UserNumber<T::DifferenceType>, frequency: UserFrequency, waveform: Waveform},
 }
 
-#[derive (Default)]
+#[derive (Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct Signal <T: UserNumberType> {
   pub enabled: bool,
+  #[serde(deserialize_with = "::serde::Deserialize::deserialize")]
   pub initial_value: UserNumber<T>,
+  #[serde(deserialize_with = "::serde::Deserialize::deserialize")]
   pub effects: Vec<SignalEffect <T>>,
 }
 
-#[derive (Default)]
+#[derive (Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct Envelope {
   pub attack: UserTime,
   pub sustain: UserTime,
@@ -247,7 +250,7 @@ macro_rules! signals_definitions {
   }
 }
 
-#[derive (Default)]
+#[derive (Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct SoundDefinition {
   pub waveform: Waveform,
   pub envelope: Envelope,
