@@ -328,8 +328,8 @@ impl<T: UserNumberType> SignalEffect <T> {
     match self.clone() {
       SignalEffect::Jump {time, size} => if sample_time > time.rendered {size.rendered} else {0.0},
       SignalEffect::Slide {start, duration, size, smooth_start, smooth_stop} => {
-        if sample_time <start.rendered {0.0}
-        else if sample_time >start.rendered + duration.rendered {size.rendered}
+        if sample_time <= start.rendered {0.0}
+        else if sample_time >= start.rendered + duration.rendered {size.rendered}
         else {
           let fraction = (sample_time - start.rendered)/duration.rendered;
           let adjusted_fraction = match (smooth_start, smooth_stop) {
