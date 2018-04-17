@@ -100,7 +100,10 @@ fn redraw(state: & Rc<RefCell<State>>) {
     }
   }
     
-  js!{$("#panels").empty();}  
+  js!{
+    $("#panels").empty();
+    clear_callbacks();
+  }  
   
       
   let play_button = assign_row (rows, button_input ("Play",

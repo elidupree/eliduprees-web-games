@@ -94,10 +94,10 @@ pub fn input_callback_gotten_nullary<T, F> (state: &Rc<RefCell<State>>, getter: 
 
 pub fn button_input<F: 'static + Fn()->bool> (name: & str, callback: F)->Value {
   let result: Value = js!{
-    return $("<input>", {
+    return on ($("<input>", {
       type: "button",
       value: @{name}
-    }).click (function() {@{callback}();});
+    }), "click", function() {@{callback}();});
   };
   result
 }
@@ -111,7 +111,7 @@ pub fn checkbox_input (state: &Rc<RefCell<State>>, id: & str, name: & str, gette
   let result: Value = js!{
     var input;
     return $("<div>", {class: "labeled_input checkbox"}).append (
-      input = $("<input>", {type: "checkbox", id: @{id}, checked:@{current_value}}).click (function() {@{callback}(input.prop ("checked"));}),
+      input = on ($("<input>", {type: "checkbox", id: @{id}, checked:@{current_value}}), "click", function() {@{callback}(input.prop ("checked"));}),
       $("<label>", {"for": @{id}, text: @{name}})
     );
   };
@@ -128,7 +128,7 @@ pub fn checkbox_meta_input (state: &Rc<RefCell<State>>, id: & str, name: & str, 
   let result: Value = js!{
     var input;
     return $("<div>", {class: "labeled_input checkbox"}).append (
-      input = $("<input>", {type: "checkbox", id: @{id}, checked:@{current_value}}).click (function() {@{callback}(input.prop ("checked"));}),
+      input = on ($("<input>", {type: "checkbox", id: @{id}, checked:@{current_value}}), "click", function() {@{callback}(input.prop ("checked"));}),
       $("<label>", {"for": @{id}, text: @{name}})
     );
   };
@@ -145,7 +145,7 @@ pub fn menu_input <T: 'static + Eq + Clone> (state: &Rc<RefCell<State>>, getter:
     values.push (value.clone());
     js!{@{& menu}.append ($("<option>", {selected:@{*value == current_value}}).text(@{name}));}
   }
-  js!{@{& menu}.on("change", function(event) {
+  js!{ on (@{& menu}, "change", function(event) {
     @{input_callback_gotten (state, getter, move | target, index: i32 | {
       if let Some(value) = values.get (index as usize) {
         *target = value.clone();
@@ -222,7 +222,7 @@ impl <'a, F: 'static + Fn (T)->bool, T: Eq> RadioInputSpecification <'a, T, F>
           @{&update}(value);
         }
         @{&result}.append (
-          $("<input>", {type: "radio", id: @{self.id}+"_radios_" + @{value}, name: @{self.id}+"_radios", value: @{value}, checked: @{*value == self.current_value}}).click (choice_overrides),
+          on ($("<input>", {type: "radio", id: @{self.id}+"_radios_" + @{value}, name: @{self.id}+"_radios", value: @{value}, checked: @{*value == self.current_value}}), "click", choice_overrides),
           $("<label>", {"for": @{self.id}+"_radios_" + @{value}, text: @{name}})
         );
       }
@@ -280,8 +280,8 @@ impl <'a, F: 'static + Fn (UserNumber <T>)->bool, T: UserNumberType> NumericalIn
     
     let result: Value = js!{
       var result = $("<div>", {class: "labeled_input numeric"}).append (
-        @{&number_input}.on ("input", @{&number_overrides}),
-        @{&range_input}.on ("input", @{&range_overrides}),
+        on (@{&number_input}, "input", @{&number_overrides}),
+        on (@{&range_input}, "input", @{&range_overrides}),
         $("<label>", {"for": @{self.id}+"_numerical_number", text:@{
           format! ("{} ({})", self.name, value_type.unit_name())
         }})
@@ -289,7 +289,7 @@ impl <'a, F: 'static + Fn (UserNumber <T>)->bool, T: UserNumberType> NumericalIn
       
       @{&range_input}.val(@{self.current_value.rendered});
       
-      result.on("wheel", function (event) {
+      on (result, "wheel", function (event) {
         var value = @{&range_input}[0].valueAsNumber;
         value += (-Math.sign(event.originalEvent.deltaY) || Math.sign(event.originalEvent.deltaX) || 0)*@{slider_step*50.0};
         @{&range_input}.val (value);
@@ -390,12 +390,13 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     let info = self.info.untyped.clone();
     let duration = sound.duration();
     let buttons = self.assign_row(js!{
-      return $("<select>", {class: "add_effect_buttons"}).append (
+      var menu = $("<select>", {class: "add_effect_buttons"}).append (
         $("<option>", {selected: true}).text("Add effect..."),
         $("<option>").text(@{self.info.untyped.name}+" jump"),
         $("<option>").text(@{self.info.untyped.name}+" slide"),
         $("<option>").text(@{self.info.untyped.name}+" oscillation")
-      ).on("change", function(event) {
+      );
+      on(menu, "change", function(event) {
         @{input_callback_gotten (self.state, self.info.getter.clone(), move | signal, index: i32 | {
           match index {
             1 => signal.effects.push (random_jump_effect (&mut rand::thread_rng(), duration, &info)),
@@ -406,6 +407,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
           true
         })}(event.target.selectedIndex)
       });
+      return menu;
     });
     
     js!{ @{& container}.append (@{buttons}); }
@@ -417,7 +419,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
         canvas[0].height =@{input_height};
         canvas[0].width =@{MAX_RENDER_LENGTH*DISPLAY_SAMPLE_RATE};
         @{& container}.append (canvas);
-        canvas.click (function() {@{{
+        on (canvas, "click", function() {@{{
           let state = self.state.clone() ;
           let getter = rendered_getter.clone();
           move || {
