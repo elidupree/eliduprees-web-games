@@ -281,7 +281,7 @@ signals_definitions! {
   (log_lowpass_filter_cutoff, FrequencyType, Some(Rc::new(|state| &state.after_lowpass)), SignalInfo {
     id: "lowpass",
     name: "Low-pass filter cutoff",
-    slider_range: [20f64.log2(), 48000f64.log2()],
+    slider_range: [100f64.log2(), 20000f64.log2()],
     difference_slider_range: 5.0,
     average_effects: 0.7,
     can_disable: true,
@@ -289,7 +289,7 @@ signals_definitions! {
   (log_highpass_filter_cutoff, FrequencyType, Some(Rc::new(|state| &state.after_highpass)), SignalInfo {
     id: "highpass",
     name: "High-pass filter cutoff",
-    slider_range: [10f64.log2(), 20000f64.log2()],
+    slider_range: [20f64.log2(), 10000f64.log2()],
     difference_slider_range: 5.0,
     average_effects: 0.7,
     can_disable: true,
@@ -297,7 +297,7 @@ signals_definitions! {
   (log_bitcrush_frequency, FrequencyType, Some(Rc::new(|state| &state.after_bitcrush)), SignalInfo {
     id: "bitcrush_frequency",
     name: "Bitcrush frequency",
-    slider_range: [20f64.log2(), 48000f64.log2()],
+    slider_range: [100f64.log2(), 10000f64.log2()],
     difference_slider_range: 5.0,
     average_effects: 0.7,
     can_disable: true,
