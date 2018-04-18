@@ -232,6 +232,20 @@ impl <'a, F: 'static + Fn (T)->bool, T: Eq> RadioInputSpecification <'a, T, F>
   }
 }
 
+
+pub fn numerical_input <T: UserNumberType> (state: &Rc<RefCell<State>>, id: & str, name: & str, getter: Getter <State, UserNumber <T>>, slider_range: [f64; 2])->Value {
+  let current_value = getter.get (&state.borrow()).clone();
+  NumericalInputSpecification {
+    state: state, id: id, name: name,
+    slider_range: slider_range,
+    current_value: current_value,
+    input_callback: input_callback_gotten (state, getter, | target, value: UserNumber <T> | {
+      *target = value;
+      true
+    }),
+  }.render()
+}
+
 pub struct NumericalInputSpecification <'a, T: UserNumberType, F> {
   pub state: & 'a Rc<RefCell<State>>,
   pub id: & 'a str,

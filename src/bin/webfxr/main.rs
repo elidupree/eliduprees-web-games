@@ -167,12 +167,16 @@ fn redraw(state: & Rc<RefCell<State>>) {
   let label = assign_row(rows, js!{ return @{&waveform_input}.children("label").first();});
   js!{@{&label}.addClass("toplevel_input_label")}
   
-  let waveform_samples = display_samples (sample_rate, 3.0, | time | sound.waveform.sample (time));
+  let waveform_samples = display_samples (sample_rate, 3.0, | phase | sound.sample_waveform (0.0, phase));
   
   js!{@{grid_element}.append (
     @{assign_row(rows, canvas_of_samples (&waveform_samples, sample_rate, 40.0, [-1.0, 1.0], 3.0))}
   );}
   js!{@{grid_element}.append (@{label},@{waveform_input}.addClass("sound_waveform_input"));}
+  rows += 1;
+  js!{@{grid_element}.append (@{assign_row (rows, numerical_input (state, "harmonics", "Harmonics", getter! (state => state.sound.harmonics), [1.0, 13.0])) });}
+  rows += 1;
+  js!{@{grid_element}.append (@{assign_row (rows, numerical_input (state, "harmonics_phase_shift", "Harmonics phase shift", getter! (state => state.sound.harmonics_phase_shift), [0.0, 1.0])) });}
   rows += 1;
   
   js!{ @{grid_element}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{waveform_start}+" / "+@{rows})); }
@@ -288,8 +292,9 @@ fn main() {
   stdweb::initialize();
   
   let sound = SoundDefinition {
-      waveform: Waveform::Sine,
       envelope: Envelope {attack: UserNumber::from_rendered (0.1), sustain: UserNumber::from_rendered (0.5), decay: UserNumber::from_rendered (0.5)},
+      waveform: Waveform::Sine,
+      harmonics: UserNumber::from_rendered (1.0), harmonics_phase_shift: UserNumber::from_rendered (0.0),
       log_frequency: Signal::constant (UserNumber::from_rendered (220.0_f64.log2())),
       volume: Signal::constant (UserNumber::from_rendered (-2.0)),
       log_flanger_frequency: Signal::constant (UserNumber::from_rendered (1600.0_f64.log2())),

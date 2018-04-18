@@ -1,5 +1,7 @@
 use super::*;
 
+use rand::{Rng, IsaacRng, SeedableRng};
+
 pub fn root_mean_square (samples: & [f32])->f32{
   (samples.iter().map (| sample | sample*sample).sum::<f32>()/samples.len() as f32).sqrt()
 }
@@ -184,6 +186,45 @@ impl RenderedSamples {
     previous*(1.0 - fraction) + next*fraction
   }
 }
+
+
+
+pub fn generator_for_time (time: f64)->IsaacRng {
+  let whatever = (time*1_000_000_000.0).floor() as i64 as u64;
+  IsaacRng::from_seed (Array::from_fn (| index | (whatever >> (index*8)) as u8))
+}
+
+impl Waveform {
+  pub fn sample_simple (&self, phase: f64)->Option<f64> {
+    let fraction = phase - phase.floor();
+    Some(match *self {
+      Waveform::Sine => ((phase-0.25)*TURN).sin(),
+      Waveform::Square => if fraction < 0.5 {0.5} else {-0.5},
+      Waveform::Triangle => 1.0 - (fraction-0.5).abs()*4.0,
+      Waveform::Sawtooth => 1.0 - fraction*2.0,
+      Waveform::WhiteNoise => /*generator_for_time (phase)*/rand::thread_rng().gen_range(-1.0, 1.0),
+    })
+  }
+}
+
+impl SoundDefinition {
+  pub fn sample_waveform (&self, _time: f64, phase: f64)->f64 {
+    match self.waveform {
+      Waveform::WhiteNoise => return self.waveform.sample_simple (phase).unwrap(),
+      _=>(),
+    }
+    
+    let mut result = 0.0;
+    let harmonics = max (1.0, self.harmonics.rendered);
+    for index in 0..harmonics.ceil() as usize {
+      let harmonic = (index + 1) as f64;
+      let fraction = if harmonic <= harmonics {1.0} else {harmonics + 1.0 - harmonic};
+      result += self.waveform.sample_simple (phase*harmonic - self.harmonics_phase_shift.rendered).unwrap()*fraction/harmonic;
+    }
+    result
+  }
+}
+
 impl RenderingState {
   pub fn final_samples (&self)->& RenderedSamples {& self.after_bitcrush}
   pub fn new (sound: & SoundDefinition)->RenderingState {
@@ -207,7 +248,7 @@ impl RenderingState {
   fn superstep (&mut self, sound: & SoundDefinition) {
     let time = self.next_supersample as f64*self.constants.supersample_duration;
     
-    let mut sample = sound.waveform.sample (self.wave_phase)*sound.envelope.sample (time);
+    let mut sample = sound.sample_waveform (time, self.wave_phase)*sound.envelope.sample (time);
     self.after_frequency.push (sample, &self.constants);
     
     sample *= sound.volume.sample (time).exp2();

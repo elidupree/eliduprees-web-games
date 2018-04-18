@@ -2,7 +2,6 @@ use std::rc::Rc;
 use std::str::FromStr;
 use serde::{Serialize};
 use serde::de::DeserializeOwned;
-use rand::{Rng, IsaacRng, SeedableRng};
 
 use super::*;
 
@@ -79,6 +78,11 @@ zero_information_number_type!{
     if value.is_finite() {Some (value)} else {None}
   },
   | rendered | format!("{:.1}", rendered*OCTAVES_TO_DECIBELS)
+}
+zero_information_number_type!{
+  DimensionlessType, Raw, "dimensionless",
+  | value | Some (value),
+  | rendered | format!("{:.3}", rendered)
 }
 
 #[derive (Clone, PartialEq, Serialize, Deserialize, Derivative)]
@@ -252,8 +256,10 @@ macro_rules! signals_definitions {
 
 #[derive (Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct SoundDefinition {
-  pub waveform: Waveform,
   pub envelope: Envelope,
+  pub waveform: Waveform,
+  pub harmonics: UserNumber <DimensionlessType>,
+  pub harmonics_phase_shift: UserNumber <DimensionlessType>,
   pub log_frequency: Signal <FrequencyType>,
   pub volume: Signal <VolumeType>,
   pub log_flanger_frequency: Signal <FrequencyType>,
@@ -313,24 +319,6 @@ signals_definitions! {
   }),
 }
 
-pub fn generator_for_time (time: f64)->IsaacRng {
-  let whatever = (time*1_000_000_000.0).floor() as i64 as u64;
-  IsaacRng::from_seed (Array::from_fn (| index | (whatever >> (index*8)) as u8))
-}
-
-impl Waveform {
-  pub fn sample (&self, phase: f64)->f64 {
-    match *self {
-      Waveform::Sine => ((phase-0.25)*TURN).sin(),
-      Waveform::Square => if phase.fract() < 0.5 {0.5} else {-0.5},
-      Waveform::Triangle => 1.0 - (phase.fract()-0.5).abs()*4.0,
-      Waveform::Sawtooth => 1.0 - phase.fract()*2.0,
-      Waveform::WhiteNoise => {
-        /*generator_for_time (phase)*/rand::thread_rng().gen_range(-1.0, 1.0)
-      },
-    }
-  }
-}
 
 impl<T: UserNumberType> SignalEffect <T> {
   pub fn sample (&self, sample_time: f64)->f64 {
@@ -350,7 +338,7 @@ impl<T: UserNumberType> SignalEffect <T> {
           size.rendered*adjusted_fraction
         }
       },
-      SignalEffect::Oscillation {size, frequency, waveform} => size.rendered*waveform.sample (sample_time*frequency.rendered.exp2()),
+      SignalEffect::Oscillation {size, frequency, waveform} => size.rendered*waveform.sample_simple (sample_time*frequency.rendered.exp2()).unwrap(),
     }
   }
   pub fn range (&self)->[f64;2] {
