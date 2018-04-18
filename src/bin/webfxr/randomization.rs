@@ -112,6 +112,10 @@ pub fn random_sound <G: Rng>(generator: &mut G)->SoundDefinition {
     if volume_range[1] > -1.0 || volume_range[1] <= -2.0 {
       sound.volume = random_signal (generator, sound.duration(), &SignalInfo::volume());
     }
+    let waveform_skew_range = sound.waveform_skew.range();
+    if max (waveform_skew_range [1].abs(), waveform_skew_range [0].abs()) >5.0 {
+      sound.waveform_skew = random_signal (generator, sound.duration(), &SignalInfo::waveform_skew());
+    }
     if sound.log_lowpass_filter_cutoff.range() [0] < sound.log_frequency.range() [1] {
       let info = SignalInfo::log_lowpass_filter_cutoff();
       sound.log_lowpass_filter_cutoff = if last {Signal::constant (UserNumber::from_rendered (info.slider_range [1]))}
