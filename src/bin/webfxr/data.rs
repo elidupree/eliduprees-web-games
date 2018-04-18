@@ -321,7 +321,7 @@ pub fn generator_for_time (time: f64)->IsaacRng {
 impl Waveform {
   pub fn sample (&self, phase: f64)->f64 {
     match *self {
-      Waveform::Sine => (phase*TURN).sin(),
+      Waveform::Sine => ((phase-0.25)*TURN).sin(),
       Waveform::Square => if phase.fract() < 0.5 {0.5} else {-0.5},
       Waveform::Triangle => 1.0 - (phase.fract()-0.5).abs()*4.0,
       Waveform::Sawtooth => 1.0 - phase.fract()*2.0,
