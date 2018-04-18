@@ -109,9 +109,8 @@ pub fn checkbox_input (state: &Rc<RefCell<State>>, id: & str, name: & str, gette
     true
   });
   let result: Value = js!{
-    var input;
     return $("<div>", {class: "labeled_input checkbox"}).append (
-      input = on ($("<input>", {type: "checkbox", id: @{id}, checked:@{current_value}}), "click", function() {@{callback}(input.prop ("checked"));}),
+      on ($("<input>", {type: "checkbox", id: @{id}, checked:@{current_value}}), "click", function(event) {@{callback}($(event.target).prop ("checked"));}),
       $("<label>", {"for": @{id}, text: @{name}})
     );
   };
@@ -126,9 +125,8 @@ pub fn checkbox_meta_input (state: &Rc<RefCell<State>>, id: & str, name: & str, 
     true
   };
   let result: Value = js!{
-    var input;
     return $("<div>", {class: "labeled_input checkbox"}).append (
-      input = on ($("<input>", {type: "checkbox", id: @{id}, checked:@{current_value}}), "click", function() {@{callback}(input.prop ("checked"));}),
+      on ($("<input>", {type: "checkbox", id: @{id}, checked:@{current_value}}), "click", function(event) {@{callback}($(event.target).prop ("checked"));}),
       $("<label>", {"for": @{id}, text: @{name}})
     );
   };
@@ -264,24 +262,24 @@ impl <'a, F: 'static + Fn (UserNumber <T>)->bool, T: UserNumberType> NumericalIn
     let range_input = js!{return $("<input>", {type: "range", id: @{self.id}+"_numerical_range", value:@{self.current_value.rendered}, min:@{self.slider_range [0]}, max:@{self.slider_range [1]}, step:@{slider_step} });};
     let number_input = js!{return $("<input>", {type: "number", id: @{self.id}+"_numerical_number", value:@{displayed_value}});};
     
-    let range_overrides = js!{return function () {
-        var value = @{&range_input}[0].valueAsNumber;
+    let range_overrides = js!{return function (parent) {
+        var value = parent.children ("input[type=range]")[0].valueAsNumber;
         var source = @{{let value_type = value_type.clone(); move | value: f64 | value_type.approximate_from_rendered (value)}} (value);
         // immediately update the number input with the range input, even though the actual data editing is debounced.
-        @{&number_input}.val(source);
+        parent.children ("input[type=number]").val(source);
         @{&update}(source);
       }
 ;};
-    let number_overrides = js!{return function () {
-        @{&update}(@{&number_input}.val());
+    let number_overrides = js!{return function (parent) {
+        @{&update}(parent.children ("input[type=number]").val());
       }
 ;};
     
     
     let result: Value = js!{
-      var result = $("<div>", {class: "labeled_input numeric"}).append (
-        on (@{&number_input}, "input", @{&number_overrides}),
-        on (@{&range_input}, "input", @{&range_overrides}),
+      var result = $("<div>", {id: @{self.id}, class: "labeled_input numeric"}).append (
+        on (@{&number_input}, "input", function (event) {@{&number_overrides} ($("#"+@{self.id}))}),
+        on (@{&range_input}, "input", function (event) {@{&range_overrides} ($("#"+@{self.id}))}),
         $("<label>", {"for": @{self.id}+"_numerical_number", text:@{
           format! ("{} ({})", self.name, value_type.unit_name())
         }})
@@ -290,10 +288,11 @@ impl <'a, F: 'static + Fn (UserNumber <T>)->bool, T: UserNumberType> NumericalIn
       @{&range_input}.val(@{self.current_value.rendered});
       
       on (result, "wheel", function (event) {
-        var value = @{&range_input}[0].valueAsNumber;
+        var range_input = $("#"+@{self.id}).children ("input[type=range]");
+        var value = range_input[0].valueAsNumber;
         value += (-Math.sign(event.originalEvent.deltaY) || Math.sign(event.originalEvent.deltaX) || 0)*@{slider_step*50.0};
-        @{&range_input}.val (value);
-        @{&range_overrides}();
+        range_input.val (value);
+        @{&range_overrides}($("#"+@{self.id}));
         event.preventDefault();
       });
       return result;
