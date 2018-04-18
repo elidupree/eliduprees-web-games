@@ -307,6 +307,7 @@ pub struct SignalEditorSpecification <'a, T: UserNumberType> {
   pub state: & 'a Rc<RefCell<State>>,
   pub info: &'a TypedSignalInfo<T>,
   pub rows: &'a mut u32,
+  pub main_grid: & 'a Value,
 }
 
 impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
@@ -361,7 +362,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     let signal = self.info.getter.get (& guard);
     let first_row = *self.rows;
       
-  let container = js!{ return $("#panels");};
+  let container = self.main_grid;
   
   //js!{@{& container}.append (@{self.info.untyped.name} + ": ");}
   
@@ -520,7 +521,7 @@ pub fn canvas_of_samples (samples: & [f64], sample_rate: f64, canvas_height: f64
   let display_x_time = | time | time*DISPLAY_SAMPLE_RATE;
   let display_x = | index | display_x_time((index as f64 + 0.5)/sample_rate);
   
-  let canvas = js!{ return document.createElement ("canvas") ;};
+  let canvas = js!{ return new_canvas ();};
   
   let context = js!{
     var canvas = @{& canvas};

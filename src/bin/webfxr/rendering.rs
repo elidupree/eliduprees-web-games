@@ -58,7 +58,7 @@ pub struct RenderedSamples {
 }
 impl Default for RenderedSamples {
   fn default()->Self {
-    let canvas = js!{ return $("<canvas>"); };
+    let canvas = js!{ return $(new_canvas ()); };
     let context = js!{ return @{&canvas}[0].getContext ("2d"); };
     RenderedSamples {
       serial_number: Default::default(),
