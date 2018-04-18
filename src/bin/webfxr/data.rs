@@ -258,8 +258,8 @@ macro_rules! signals_definitions {
 pub struct SoundDefinition {
   pub envelope: Envelope,
   pub waveform: Waveform,
-  pub harmonics: UserNumber <DimensionlessType>,
-  pub harmonics_phase_shift: UserNumber <DimensionlessType>,
+  pub harmonics: Signal <DimensionlessType>,
+  pub waveform_skew: Signal <DimensionlessType>,
   pub log_frequency: Signal <FrequencyType>,
   pub volume: Signal <VolumeType>,
   pub log_flanger_frequency: Signal <FrequencyType>,
@@ -275,6 +275,22 @@ signals_definitions! {
     slider_range: [20f64.log2(), 5000f64.log2()],
     difference_slider_range: 2.0,
     average_effects: 2.0,
+    can_disable: false,
+  }),
+  (harmonics, DimensionlessType, None, SignalInfo {
+    id: "harmonics",
+    name: "Harmonics",
+    slider_range: [1.0, 13.0],
+    difference_slider_range: 5.0,
+    average_effects: 0.5,
+    can_disable: false,
+  }),
+  (waveform_skew, DimensionlessType, None, SignalInfo {
+    id: "waveform_skew",
+    name: "Waveform skew",
+    slider_range: [-5.0, 5.0],
+    difference_slider_range: 5.0,
+    average_effects: 0.7,
     can_disable: false,
   }),
   (volume, VolumeType, Some(Rc::new(|state| &state.after_volume)), SignalInfo {
