@@ -414,6 +414,9 @@ impl Envelope {
 impl SoundDefinition {
   pub fn duration(&self)->f64 {
     let mut result = self.envelope.duration();
+    if self.log_flanger_frequency.enabled {
+      result += 1.0/self.log_flanger_frequency.range() [0].exp2();
+    }
     if self.log_bitcrush_frequency.enabled {
       result += 1.0/self.log_bitcrush_frequency.range() [0].exp2();
     }
