@@ -182,7 +182,7 @@ impl RenderedSamples {
     let previous_index = scaled.floor() as isize as usize;
     let fraction = scaled.fract();
     let previous = self.samples.get (previous_index).cloned().unwrap_or (0.0) as f64;
-    let next = self.samples.get (previous_index + 1).cloned().unwrap_or (0.0) as f64;
+    let next = self.samples.get (previous_index.wrapping_add (1)).cloned().unwrap_or (0.0) as f64;
     previous*(1.0 - fraction) + next*fraction
   }
 }
