@@ -274,11 +274,11 @@ fn main() {
       waveform: Waveform::Sine,
       envelope: Envelope {attack: UserNumber::from_rendered (0.1), sustain: UserNumber::from_rendered (0.5), decay: UserNumber::from_rendered (0.5)},
       log_frequency: Signal::constant (UserNumber::from_rendered (220.0_f64.log2())),
-      volume: Signal::constant (UserNumber::from_rendered (-4.0)),
-      log_flanger_frequency: Signal::constant (UserNumber::from_rendered (44100.0_f64.log2())),
-      log_bitcrush_frequency: Signal::constant (UserNumber::from_rendered (44100.0_f64.log2())),
-      log_lowpass_filter_cutoff: Signal::constant (UserNumber::from_rendered (44100.0_f64.log2())),
-      log_highpass_filter_cutoff: Signal::constant (UserNumber::from_rendered (20.0_f64.log2())),
+      volume: Signal::constant (UserNumber::from_rendered (-2.0)),
+      log_flanger_frequency: Signal::constant (UserNumber::from_rendered (1600.0_f64.log2())),
+      log_bitcrush_frequency: Signal::constant (UserNumber::from_rendered (3600.0_f64.log2())),
+      log_lowpass_filter_cutoff: Signal::constant (UserNumber::from_rendered (2500.0_f64.log2())),
+      log_highpass_filter_cutoff: Signal::constant (UserNumber::from_rendered (600.0_f64.log2())),
     };
   let mut undo_history = VecDeque::new();
   undo_history.push_back (sound.clone()) ;
