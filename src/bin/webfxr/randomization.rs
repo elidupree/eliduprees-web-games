@@ -21,8 +21,8 @@ pub fn random_waveform <G: Rng>(generator: &mut G)->Waveform {
 pub fn random_envelope <G: Rng>(generator: &mut G)->Envelope {
   Envelope {
     attack: random_time_logarithmic (generator, 0.01, 1.0),
-    sustain: random_time_logarithmic (generator, 0.25, 1.0),
-    decay: random_time_logarithmic (generator, 0.25, 1.0),
+    sustain: random_time_logarithmic (generator, 0.05, 1.0),
+    decay: random_time_logarithmic (generator, 0.05, 1.0),
   }
 }
 pub fn random_signal <G: Rng, T: UserNumberType>(generator: &mut G, duration: f64, info: & SignalInfo)->Signal <T> {
