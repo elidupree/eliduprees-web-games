@@ -259,6 +259,7 @@ pub struct SoundDefinition {
   pub envelope: Envelope,
   pub waveform: Waveform,
   pub harmonics: Signal <DimensionlessType>,
+  pub odd_harmonics: bool,
   pub waveform_skew: Signal <DimensionlessType>,
   pub log_frequency: Signal <FrequencyType>,
   pub volume: Signal <VolumeType>,

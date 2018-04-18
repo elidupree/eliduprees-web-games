@@ -445,6 +445,16 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     }
       
   *self.rows += 1;
+  
+  if self.info.untyped.id == "harmonics" {
+    let toggle = self.checkbox_input (
+      "odd_harmonics",
+      "Odd harmonics only",
+      getter! (state => state.sound.odd_harmonics)
+    );
+    js!{@{&toggle}.appendTo(@{& container}).addClass("odd_harmonics_toggle")}
+    *self.rows += 1;
+  }
     
   for (index, effect) in signal.effects.iter().enumerate() {
     let effect_getter = self.info.getter.clone() + getter!(signal => signal.effects [index]);
