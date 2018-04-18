@@ -1,6 +1,9 @@
 "use strict";
 
 
+window.Module = window.Module || {};
+Module.TOTAL_MEMORY = 1 << 28;
+
 var panels = $("#panels");
 
 var audio = window.audio = new AudioContext();
