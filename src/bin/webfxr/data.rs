@@ -283,7 +283,7 @@ signals_definitions! {
     slider_range: [1.0, 13.0],
     difference_slider_range: 5.0,
     average_effects: 0.5,
-    can_disable: false,
+    can_disable: true,
   }),
   (waveform_skew, DimensionlessType, None, SignalInfo {
     id: "waveform_skew",
@@ -291,7 +291,7 @@ signals_definitions! {
     slider_range: [-5.0, 5.0],
     difference_slider_range: 5.0,
     average_effects: 0.7,
-    can_disable: false,
+    can_disable: true,
   }),
   (volume, VolumeType, Some(Rc::new(|state| &state.after_volume)), SignalInfo {
     id: "volume",

@@ -300,8 +300,8 @@ fn main() {
   let sound = SoundDefinition {
       envelope: Envelope {attack: UserNumber::from_rendered (0.1), sustain: UserNumber::from_rendered (0.5), decay: UserNumber::from_rendered (0.5)},
       waveform: Waveform::Sine,
-      harmonics: Signal::constant (UserNumber::from_rendered (1.0)),
-      waveform_skew: Signal::constant (UserNumber::from_rendered (0.0)),
+      harmonics: Signal::constant (UserNumber::from_rendered (3.0)),
+      waveform_skew: Signal::constant (UserNumber::from_rendered (-2.0)),
       log_frequency: Signal::constant (UserNumber::from_rendered (220.0_f64.log2())),
       volume: Signal::constant (UserNumber::from_rendered (-2.0)),
       log_flanger_frequency: Signal::constant (UserNumber::from_rendered (1600.0_f64.log2())),
