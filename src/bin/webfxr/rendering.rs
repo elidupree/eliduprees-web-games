@@ -215,7 +215,7 @@ impl SoundDefinition {
     }
     
     let mut result = 0.0;
-    let harmonics = max (1.0, self.harmonics.rendered);
+    let harmonics = max (1.0, min (100.0, self.harmonics.rendered));
     for index in 0..harmonics.ceil() as usize {
       let harmonic = (index + 1) as f64;
       let fraction = if harmonic <= harmonics {1.0} else {harmonics + 1.0 - harmonic};
