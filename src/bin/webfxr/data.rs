@@ -256,6 +256,7 @@ pub struct SoundDefinition {
   pub envelope: Envelope,
   pub log_frequency: Signal <FrequencyType>,
   pub volume: Signal <VolumeType>,
+  pub log_flanger_frequency: Signal <FrequencyType>,
   pub log_lowpass_filter_cutoff: Signal <FrequencyType>,
   pub log_highpass_filter_cutoff: Signal <FrequencyType>,
   pub log_bitcrush_frequency: Signal <FrequencyType>,
@@ -277,6 +278,14 @@ signals_definitions! {
     difference_slider_range: 2.0,
     average_effects: 0.7,
     can_disable: false,
+  }),
+  (log_flanger_frequency, FrequencyType, Some(Rc::new(|state| &state.after_flanger)), SignalInfo {
+    id: "flanger_frequency",
+    name: "Flanger frequency",
+    slider_range: [20f64.log2(), 20000f64.log2()],
+    difference_slider_range: 2.0,
+    average_effects: 0.7,
+    can_disable: true,
   }),
   (log_lowpass_filter_cutoff, FrequencyType, Some(Rc::new(|state| &state.after_lowpass)), SignalInfo {
     id: "lowpass",

@@ -94,7 +94,7 @@ pub struct RenderingState {
   
   pub after_volume: RenderedSamples,
   
-  //pub after_flanger: RenderedSamples,
+  pub after_flanger: RenderedSamples,
   
   pub lowpass_state: LowpassFilterState,
   pub after_lowpass: RenderedSamples,
@@ -168,6 +168,21 @@ impl RenderedSamples {
     }
     }
   }
+  
+  pub fn resample (&self, time: f64, constants: &RenderingStateConstants)->f64 {
+    // note: it's technically worse to use samples instead of supersamples,
+    // but storing the super samples would use more memory,
+    // and that the time of this writing, I'm not using supersampling anyway.
+    //
+    // Linear interpolation because it doesn't matter that much anyway.
+    
+    let scaled = time*constants.sample_rate as f64;
+    let previous_index = scaled.floor() as isize as usize;
+    let fraction = scaled.fract();
+    let previous = self.samples.get (previous_index).cloned().unwrap_or (0.0) as f64;
+    let next = self.samples.get (previous_index + 1).cloned().unwrap_or (0.0) as f64;
+    previous*(1.0 - fraction) + next*fraction
+  }
 }
 impl RenderingState {
   pub fn final_samples (&self)->& RenderedSamples {& self.after_bitcrush}
@@ -197,6 +212,13 @@ impl RenderingState {
     
     sample *= sound.volume.sample (time).exp2();
     self.after_volume.push (sample, &self.constants);
+    
+    if sound.log_flanger_frequency.enabled {
+      let flanger_frequency = sound.log_flanger_frequency.sample (time).exp2();
+      let flanger_offset = 1.0/flanger_frequency;
+      sample += self.after_volume.resample (time - flanger_offset, & self.constants);
+      self.after_flanger.push (sample, &self.constants);
+    }
     
     if sound.log_lowpass_filter_cutoff.enabled {
       let lowpass_filter_frequency = sound.log_lowpass_filter_cutoff.sample (time).exp2();
