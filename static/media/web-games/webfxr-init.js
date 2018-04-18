@@ -16,17 +16,23 @@ function clear_callbacks () {window.webfxr_callbacks = {};}
 function on (jQuery_object, event_name, callback) {
   const serial_number = window.webfxr_next_serial_number++;
   window.webfxr_callbacks [serial_number] = callback;
-  const data_index = event_name + "_callback_handler";
-  return jQuery_object.data (data_index, serial_number).on (event_name, function(event) {
+  const data_index = "data-" + event_name + "_callback_handler";
+  return jQuery_object.attr (data_index, serial_number).on (event_name, function(event) {
     let target = event.target;
-    let serial_number = $(target).data (data_index);
+    let serial_number = $(target).attr (data_index);
     while (serial_number === undefined) {
       target = target.parentElement;
-      serial_number = $(target).data (data_index);
+      serial_number = $(target).attr (data_index);
     }
-    console.log (data_index, serial_number, event.target);
+    //console.log (data_index, serial_number, event.target);
     return window.webfxr_callbacks [serial_number] (event);
   });
+}
+
+function new_canvas () {
+  let result = document.createElement ("canvas");
+  result.id = "canvas_" + (window.webfxr_next_serial_number++);
+  return result;
 }
 
 function play_buffer (buffer, offset, duration) {

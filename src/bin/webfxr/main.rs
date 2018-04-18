@@ -75,6 +75,12 @@ fn redraw(state: & Rc<RefCell<State>>) {
   
   let sample_rate = 500.0;
   let envelope_samples = display_samples (sample_rate, sound.duration(), | time | sound.envelope.sample (time));
+      
+  js!{clear_callbacks();}  
+  let grid_element = js!{
+    return $("<div>", {class: "main_grid"});
+  };
+  let grid_element = &grid_element;
   
   macro_rules! add_envelope_input {
   ($variable: ident, $name: expr, $range: expr) => {
@@ -95,15 +101,11 @@ fn redraw(state: & Rc<RefCell<State>>) {
     
     let label = assign_row(rows, js!{ return @{&input}.children("label");});
     js!{@{&label}.append(":").addClass("toplevel_input_label")}
-    js!{jQuery("#panels").append (@{label},@{input});}
+    js!{@{grid_element}.append (@{label},@{input});}
     rows += 1;
     }
   }
-    
-  js!{
-    $("#panels").empty();
-    clear_callbacks();
-  }  
+
   
       
   let play_button = assign_row (rows, button_input ("Play",
@@ -112,11 +114,11 @@ fn redraw(state: & Rc<RefCell<State>>) {
       false
     }}
   ));
-  js!{$("#panels").append (@{play_button});}
+  js!{@{grid_element}.append (@{play_button});}
   rows += 1;
   
   let loop_button = assign_row (rows, checkbox_meta_input (state, "loop", "Loop", getter! (state => state.loop_playback)));
-  js!{$("#panels").append (@{loop_button});}
+  js!{@{grid_element}.append (@{loop_button});}
   rows += 1;
   
   let undo_button = assign_row (rows, button_input ("Undo",
@@ -125,7 +127,7 @@ fn redraw(state: & Rc<RefCell<State>>) {
       false
     }}
   ));
-  js!{$("#panels").append (@{undo_button});}
+  js!{@{grid_element}.append (@{undo_button});}
   rows += 1;
   
   let redo_button = assign_row (rows, button_input ("Redo",
@@ -134,7 +136,7 @@ fn redraw(state: & Rc<RefCell<State>>) {
       false
     }}
   ));
-  js!{$("#panels").append (@{redo_button});}
+  js!{@{grid_element}.append (@{redo_button});}
   rows += 1;
       
   let randomize_button = assign_row (rows, button_input ("Randomize",
@@ -143,17 +145,17 @@ fn redraw(state: & Rc<RefCell<State>>) {
       true
     })
   ));
-  js!{$("#panels").append (@{randomize_button});}
+  js!{@{grid_element}.append (@{randomize_button});}
   rows += 1;
   
 
   
 
-  js!{$("#panels").append (
+  js!{@{grid_element}.append (
     @{canvas_of_samples (&envelope_samples, sample_rate, 90.0, [0.0, 1.0], sound.duration())}
     .css("grid-row", @{rows}+" / span 3")
   );}
-  js!{ $("#panels").prepend ($("<div>", {class:"input_region"}).css("grid-row", @{rows}+" / span 3")); }
+  js!{ @{grid_element}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{rows}+" / span 3")); }
   add_envelope_input!(attack, "Attack", [0.0, 1.0]);
   add_envelope_input!(sustain, "Sustain", [0.0, 3.0]);
   add_envelope_input!(decay, "Decay", [0.0, 3.0]);
@@ -167,34 +169,37 @@ fn redraw(state: & Rc<RefCell<State>>) {
   
   let waveform_samples = display_samples (sample_rate, 3.0, | time | sound.waveform.sample (time));
   
-  js!{$("#panels").append (
+  js!{@{grid_element}.append (
     @{assign_row(rows, canvas_of_samples (&waveform_samples, sample_rate, 40.0, [-1.0, 1.0], 3.0))}
   );}
-  js!{jQuery("#panels").append (@{label},@{waveform_input}.addClass("sound_waveform_input"));}
+  js!{@{grid_element}.append (@{label},@{waveform_input}.addClass("sound_waveform_input"));}
   rows += 1;
   
-  js!{ $("#panels").prepend ($("<div>", {class:"input_region"}).css("grid-row", @{waveform_start}+" / "+@{rows})); }
+  js!{ @{grid_element}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{waveform_start}+" / "+@{rows})); }
   
   
   
-  struct Visitor <'a> (& 'a Rc<RefCell<State>>, & 'a mut u32);
+  struct Visitor <'a> (& 'a Rc<RefCell<State>>, & 'a mut u32, & 'a Value);
   impl<'a> SignalVisitor for Visitor<'a> {
     fn visit <T: UserNumberType> (&mut self, info: & TypedSignalInfo <T>, _signal: & Signal <T>) {
       SignalEditorSpecification {
     state: self.0,
     info: info,
     rows: self.1,
+    main_grid: self.2,
   }.render();
     }
   }
   
-  let mut visitor = Visitor (state, &mut rows);
+  let mut visitor = Visitor (state, &mut rows, grid_element);
   for caller in sound.visit_callers::<Visitor>() {(caller)(&mut visitor, sound);}
   
   //js! {window.before_render = Date.now();}
   //let rendered: TypedArray <f64> = sound.render (44100).as_slice().into();
   
   //js! {console.log("rendering took this many milliseconds: " + (Date.now() - window.before_render));}
+  
+  js!{morphdom($(".main_grid")[0], @{grid_element}[0]);} 
   
   }
   
