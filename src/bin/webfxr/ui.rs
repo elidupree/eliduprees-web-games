@@ -386,7 +386,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   );
   
   js!{@{& container}.append (@{&initial_value_input})}
-  let input_height = js!{ return @{&initial_value_input}.outerHeight()};
+  //let input_height = js!{ return @{&initial_value_input}.outerHeight()};
   let mut label = self.assign_row(js!{ return @{initial_value_input}.children("label");});
   if self.info.untyped.can_disable {
     js!{@{label}.remove();}
@@ -430,7 +430,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
       let rendered = (rendered_getter) (& guard.rendering_state);
       js!{
         var canvas = @{self.assign_row (rendered.canvas.clone()) };
-        canvas[0].height =@{input_height};
+        canvas[0].height = 32;
         canvas[0].width =@{MAX_RENDER_LENGTH*DISPLAY_SAMPLE_RATE};
         @{& container}.append (canvas);
         on (canvas, "click", function() {@{{
