@@ -11,7 +11,7 @@ pub const MAX_RENDER_LENGTH: f64 = 10.0;
 
 
 macro_rules! zero_information_number_type {
-  ($Enum: ident, $Variant: ident, $name: expr, | $value: ident | $render: expr, | $rendered: ident | $from_rendered: expr) => {
+  ($Enum: ident, $Variant: ident, $Difference: ident, $name: expr, | $value: ident | $render: expr, | $rendered: ident | $from_rendered: expr) => {
 
 #[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Derivative)]
 #[derivative (Default)]
@@ -21,7 +21,7 @@ pub enum $Enum {
 }
 
 impl UserNumberType for $Enum {
-  type DifferenceType = IntervalType;
+  type DifferenceType = $Difference;
   fn render (&self, value: & str)->Option <f64> {
     let $value = match f64::from_str (value).ok().filter (| value | value.is_finite()) {
       None => return None,
@@ -51,7 +51,7 @@ pub const OCTAVES_TO_DECIBELS: f64 = 3.0102999;
 pub const DEFAULT_DECIBEL_BASE: f64 = -40.0;
 
 zero_information_number_type!{
-  FrequencyType, Frequency, "Hz",
+  FrequencyType, Frequency, IntervalType, "Hz",
   | value | {
     let value = value.log2();
     if value.is_finite() {Some (value)} else {None}
@@ -59,7 +59,7 @@ zero_information_number_type!{
   | rendered | format!("{:.1}", rendered.exp2())
 }
 zero_information_number_type!{
-  IntervalType, Ratio, "ratio",
+  IntervalType, Ratio, Self, "ratio",
   | value | {
     let value = value.log2();
     if value.is_finite() {Some (value)} else {None}
@@ -67,12 +67,12 @@ zero_information_number_type!{
   | rendered | format!("{:.2}", rendered.exp2())
 }
 zero_information_number_type!{
-  TimeType, Seconds, "s",
+  TimeType, Seconds, Self, "s",
   | value | Some (value),
   | rendered | format!("{:.3}", rendered)
 }
 zero_information_number_type!{
-  VolumeDifferenceType, Decibels, "dB",
+  VolumeDifferenceType, Decibels, Self, "dB",
   | value | {
     let value = value/OCTAVES_TO_DECIBELS;
     if value.is_finite() {Some (value)} else {None}
@@ -80,7 +80,7 @@ zero_information_number_type!{
   | rendered | format!("{:.1}", rendered*OCTAVES_TO_DECIBELS)
 }
 zero_information_number_type!{
-  DimensionlessType, Raw, "dimensionless",
+  DimensionlessType, Raw, Self, "dimensionless",
   | value | Some (value),
   | rendered | format!("{:.3}", rendered)
 }
