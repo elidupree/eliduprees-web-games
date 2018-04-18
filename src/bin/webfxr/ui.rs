@@ -489,7 +489,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     if signal.effects.len() > 0 {
       let sample_rate = 500.0;
       let samples = display_samples (sample_rate, max (sound.duration(), signal.draw_through_time()), | time | signal.sample (time));
-      let canvas = canvas_of_samples (& samples, sample_rate, self.info.untyped.slider_range, sound.duration());
+      let canvas = canvas_of_samples (& samples, sample_rate, 100.0, self.info.untyped.slider_range, sound.duration());
       js!{ @{& container}.append (@{canvas}.css("grid-row", @{first_row + 1}+" / "+@{*self.rows})); }
     }
     
@@ -504,7 +504,7 @@ pub fn display_samples <F: FnMut(f64)->f64> (sample_rate: f64, duration: f64, mu
   (0..num_samples).map (| sample | sampler (sample as f64/sample_rate)).collect()
 }
 
-pub fn canvas_of_samples (samples: & [f64], sample_rate: f64, default_range: [f64; 2], target_duration: f64)->Value {
+pub fn canvas_of_samples (samples: & [f64], sample_rate: f64, canvas_height: f64, default_range: [f64; 2], target_duration: f64)->Value {
   let min_sample = *samples.iter().min_by_key (| value | OrderedFloat (**value)).unwrap();
   let max_sample = *samples.iter().max_by_key (| value | OrderedFloat (**value)).unwrap();
   let default_range_size = default_range [1] - default_range [0];
@@ -516,8 +516,7 @@ pub fn canvas_of_samples (samples: & [f64], sample_rate: f64, default_range: [f6
   let duration_displayed = samples.len() as f64/sample_rate;
   let draw_duration = duration_displayed > target_duration + 0.01;
   
-  let canvas_height = 100.0;
-  let display_height = | sample | (max_displayed - sample)/range_displayed*canvas_height;
+    let display_height = | sample | (max_displayed - sample)/range_displayed*canvas_height;
   let display_x_time = | time | time*DISPLAY_SAMPLE_RATE;
   let display_x = | index | display_x_time((index as f64 + 0.5)/sample_rate);
   

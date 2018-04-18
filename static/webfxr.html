@@ -14,16 +14,16 @@ p.disclaimer {font-size: 200%; text-align: center; margin:0.4em 0.8em;}
 /*
 #panels {display: flex; justify-content: center; flex-wrap: wrap; }
 */
-#panels {display: grid; grid-template-columns: 1fr 0fr 0fr 0fr 0fr 1fr}
+#panels {display: grid; grid-template-columns: 1fr 0fr 0fr 0fr 0fr 1fr;}
 .signal_toggle {grid-column: 2 / span 1; }
-.labeled_input.numeric, .effect_header {grid-column: 3 / span 1; white-space:nowrap;}
-.sound_waveform_input {grid-column: 3 / span 2; white-space:nowrap;}
+.labeled_input.numeric, .effect_header {grid-column: 3 / span 1; white-space: nowrap;}
+.sound_waveform_input {grid-column: 3 / span 2; }
 .add_effect_buttons {grid-column: 4 / span 1; width: 8em;}
 .signal_effect {grid-column: 3 / span 2 !important; }
 .toplevel_input_label {grid-column: 1 / span 1; text-align: right; align-self: center;}
 .input_region {border: 0.125em solid #ccc; border-width: 0.0625em 0; grid-column: 1 / -1; }
 .input_region:nth-child(odd) {background-color:#eee; }
-#panels canvas {grid-column: 5 / span 1;}
+#panels canvas {grid-column: 5 / span 1; align-self: center; }
 .panel {margin:0.8em; padding:0.8em; background-color:#eee;}
 .panel .labeled_input {margin:0.2em;}
 .panel label {margin-left: 0.2em; margin-right: 0.6em;}

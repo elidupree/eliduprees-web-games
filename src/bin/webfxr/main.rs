@@ -150,7 +150,7 @@ fn redraw(state: & Rc<RefCell<State>>) {
   
 
   js!{$("#panels").append (
-    @{canvas_of_samples (&envelope_samples, sample_rate, [0.0, 1.0], sound.duration())}
+    @{canvas_of_samples (&envelope_samples, sample_rate, 90.0, [0.0, 1.0], sound.duration())}
     .css("grid-row", @{rows}+" / span 3")
   );}
   js!{ $("#panels").prepend ($("<div>", {class:"input_region"}).css("grid-row", @{rows}+" / span 3")); }
@@ -164,6 +164,12 @@ fn redraw(state: & Rc<RefCell<State>>) {
   let waveform_input = assign_row (rows, waveform_input (state, "waveform", "Waveform", getter! (state => state.sound.waveform)));
   let label = assign_row(rows, js!{ return @{&waveform_input}.children("label").first();});
   js!{@{&label}.addClass("toplevel_input_label")}
+  
+  let waveform_samples = display_samples (sample_rate, 3.0, | time | sound.waveform.sample (time));
+  
+  js!{$("#panels").append (
+    @{assign_row(rows, canvas_of_samples (&waveform_samples, sample_rate, 40.0, [-1.0, 1.0], 3.0))}
+  );}
   js!{jQuery("#panels").append (@{label},@{waveform_input}.addClass("sound_waveform_input"));}
   rows += 1;
   
