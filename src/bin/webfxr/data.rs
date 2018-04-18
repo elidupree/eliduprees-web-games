@@ -403,6 +403,12 @@ impl Envelope {
 }
 
 impl SoundDefinition {
-  pub fn duration(&self)->f64 {self.envelope.duration()}
+  pub fn duration(&self)->f64 {
+    let mut result = self.envelope.duration();
+    if self.log_bitcrush_frequency.enabled {
+      result += 1.0/self.log_bitcrush_frequency.range() [0].exp2();
+    }
+    result
+  }
   pub fn sample_rate (&self)->usize {44100}
 }
