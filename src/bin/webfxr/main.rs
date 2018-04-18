@@ -54,14 +54,19 @@ pub struct State {
   pub rendering_state: RenderingState,
   pub playback_state: Option <Playback>,
   pub loop_playback: bool,
+  pub waveform_canvas: Value,
 }
 
 
 fn redraw(state: & Rc<RefCell<State>>) {
+  let waveform_canvas;
   {
     let mut guard = state.borrow_mut();
     let state = &mut*guard;
     state.rendering_state = RenderingState::new (& state.sound);
+    
+    waveform_canvas = js!{ return $(new_canvas());};
+    state.waveform_canvas = waveform_canvas.clone();
   }
   {
   let guard = state.borrow();
@@ -167,11 +172,8 @@ fn redraw(state: & Rc<RefCell<State>>) {
   let label = assign_row(rows, js!{ return @{&waveform_input}.children("label").first();});
   js!{@{&label}.addClass("toplevel_input_label")}
   
-  let waveform_samples = display_samples (sample_rate, 3.0, | phase | sound.sample_waveform (0.0, phase));
-  
-  js!{@{grid_element}.append (
-    @{assign_row(rows, canvas_of_samples (&waveform_samples, sample_rate, 40.0, [-1.0, 1.0], 3.0))}
-  );}
+  js!{@{grid_element}.append (@{assign_row(rows, waveform_canvas)});}
+  redraw_waveform_canvas (& guard, 0.0);
   js!{@{grid_element}.append (@{label},@{waveform_input}.addClass("sound_waveform_input"));}
   rows += 1;
   
@@ -206,6 +208,13 @@ fn redraw(state: & Rc<RefCell<State>>) {
   play (&mut state.borrow_mut(), Rc::new (| state | state.final_samples()));
 }
 
+
+fn redraw_waveform_canvas (state: & State, time: f64) {
+  let sample_rate = 500.0;
+  let waveform_samples = display_samples (sample_rate, 3.0, | phase | state.sound.sample_waveform (time, phase));
+  
+  draw_samples (state.waveform_canvas.clone(), &waveform_samples, sample_rate, 40.0, [-1.0, 1.0], 3.0);
+}
 
 fn render_loop (state: Rc<RefCell<State>>) {
   {
@@ -254,6 +263,7 @@ fn render_loop (state: Rc<RefCell<State>>) {
         } else {
           let samples = (playback.samples_getter) (&state.rendering_state);
           samples.redraw (Some(offset), & state.rendering_state.constants);
+          redraw_waveform_canvas (state, offset);
         }
       }
       None => (),
@@ -309,6 +319,7 @@ fn main() {
     rendering_state: Default::default(),
     playback_state: None,
     loop_playback: false,
+    waveform_canvas: Value::Undefined,
   }));
   
 

@@ -519,6 +519,12 @@ pub fn display_samples <F: FnMut(f64)->f64> (sample_rate: f64, duration: f64, mu
 }
 
 pub fn canvas_of_samples (samples: & [f64], sample_rate: f64, canvas_height: f64, default_range: [f64; 2], target_duration: f64)->Value {
+  let canvas = js!{ return $(new_canvas ());};
+  draw_samples (canvas.clone(), samples, sample_rate, canvas_height, default_range, target_duration);
+  canvas
+}
+
+pub fn draw_samples (canvas: Value, samples: & [f64], sample_rate: f64, canvas_height: f64, default_range: [f64; 2], target_duration: f64) {
   let min_sample = *samples.iter().min_by_key (| value | OrderedFloat (**value)).unwrap();
   let max_sample = *samples.iter().max_by_key (| value | OrderedFloat (**value)).unwrap();
   let default_range_size = default_range [1] - default_range [0];
@@ -530,14 +536,14 @@ pub fn canvas_of_samples (samples: & [f64], sample_rate: f64, canvas_height: f64
   let duration_displayed = samples.len() as f64/sample_rate;
   let draw_duration = duration_displayed > target_duration + 0.01;
   
-    let display_height = | sample | (max_displayed - sample)/range_displayed*canvas_height;
+  let display_height = | sample | (max_displayed - sample)/range_displayed*canvas_height;
   let display_x_time = | time | time*DISPLAY_SAMPLE_RATE;
   let display_x = | index | display_x_time((index as f64 + 0.5)/sample_rate);
   
-  let canvas = js!{ return new_canvas ();};
+  
   
   let context = js!{
-    var canvas = @{& canvas};
+    var canvas = @{& canvas}[0];
     canvas.width = @{duration_displayed*DISPLAY_SAMPLE_RATE};
     canvas.height = @{canvas_height};
     var context = canvas.getContext ("2d") ;
@@ -545,7 +551,7 @@ pub fn canvas_of_samples (samples: & [f64], sample_rate: f64, canvas_height: f64
   };
   
   js!{
-    var canvas = @{& canvas};
+    var canvas = @{& canvas}[0];
     var context =@{&context};
     context.strokeStyle = "rgb(128,0,0)";
     context.stroke();
@@ -588,7 +594,4 @@ pub fn canvas_of_samples (samples: & [f64], sample_rate: f64, canvas_height: f64
     context.strokeStyle = "rgb(0,0,0)";
     context.stroke();
   }
-  
-  let result: Value = js!{return $(@{& canvas});};
-  result
 }
