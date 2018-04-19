@@ -83,7 +83,7 @@ fn redraw(state: & Rc<RefCell<State>>) {
       
   js!{clear_callbacks();}  
   let grid_element = js!{
-    return $("<div>", {class: "main_grid"});
+    return $("<div>", {id: "main_grid", class: "main_grid"});
   };
   let grid_element = &grid_element;
   
