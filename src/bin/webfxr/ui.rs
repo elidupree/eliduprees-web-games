@@ -7,9 +7,9 @@ use ordered_float::OrderedFloat;
 use super::*;
 
 
-pub fn input_callback<T, F> (state: &Rc<RefCell<State>>, callback: F)->impl (Fn (T)->bool)
+pub fn input_callback<T, F> (state: &Rc<RefCell<State>>, callback: F)->impl (Fn (T))
   where
-    F: Fn(&mut State, T)->bool {
+    F: Fn(&mut State, T) {
   let state = state.clone();
   move |arg: T| {
     let mut sound_changed = false;
@@ -29,13 +29,12 @@ pub fn input_callback<T, F> (state: &Rc<RefCell<State>>, callback: F)->impl (Fn 
       }
     }
     if sound_changed {
-      redraw (&state);
+      update_for_changed_sound (&state);
     }
-    sound_changed
   }
 }
 
-pub fn undo (state: &Rc<RefCell<State>>)->bool {
+pub fn undo (state: &Rc<RefCell<State>>) {
   let mut sound_changed = false;
   {
     let mut guard = state.borrow_mut();
@@ -47,11 +46,10 @@ pub fn undo (state: &Rc<RefCell<State>>)->bool {
     }
   }
   if sound_changed {
-    redraw (&state);
+    update_for_changed_sound (&state);
   }
-  sound_changed
 }
-pub fn redo (state: &Rc<RefCell<State>>)->bool {
+pub fn redo (state: &Rc<RefCell<State>>) {
   let mut sound_changed = false;
   {
     let mut guard = state.borrow_mut();
@@ -63,36 +61,35 @@ pub fn redo (state: &Rc<RefCell<State>>)->bool {
     }
   }
   if sound_changed {
-    redraw (&state);
+    update_for_changed_sound (&state);
   }
-  sound_changed
 }
 
-pub fn input_callback_nullary<F> (state: &Rc<RefCell<State>>, callback: F)->impl (Fn ()->bool)
+pub fn input_callback_nullary<F> (state: &Rc<RefCell<State>>, callback: F)->impl (Fn ())
   where
-    F: Fn(&mut State)->bool {
+    F: Fn(&mut State) {
   let hack = input_callback (state, move | state,()| (callback)(state));
   move || {
     (hack)(())
   }
 }
 
-pub fn input_callback_gotten<T, U, F> (state: &Rc<RefCell<State>>, getter: Getter <State, T>, callback: F)->impl (Fn (U)->bool)
+pub fn input_callback_gotten<T, U, F> (state: &Rc<RefCell<State>>, getter: Getter <State, T>, callback: F)->impl (Fn (U))
   where
-    F: Fn(&mut T, U)->bool {
+    F: Fn(&mut T, U) {
   let getter = getter.clone();
   input_callback (state, move | state, arg | (callback)(getter.get_mut (state), arg))
 }
 
-pub fn input_callback_gotten_nullary<T, F> (state: &Rc<RefCell<State>>, getter: Getter <State, T>, callback: F)->impl (Fn ()->bool)
+pub fn input_callback_gotten_nullary<T, F> (state: &Rc<RefCell<State>>, getter: Getter <State, T>, callback: F)->impl (Fn ())
   where
-    F: Fn(&mut T)->bool {
+    F: Fn(&mut T) {
   let getter = getter.clone();
   input_callback_nullary (state, move | state | (callback)(getter.get_mut (state)))
 }
 
 
-pub fn button_input<F: 'static + Fn()->bool> (name: & str, callback: F)->Value {
+pub fn button_input<F: 'static + Fn()> (name: & str, callback: F)->Value {
   let result: Value = js!{
     return on ($("<input>", {
       type: "button",
@@ -104,26 +101,7 @@ pub fn button_input<F: 'static + Fn()->bool> (name: & str, callback: F)->Value {
 
 pub fn checkbox_input (state: &Rc<RefCell<State>>, id: & str, name: & str, getter: Getter <State, bool>)->Value {
   let current_value = getter.get (&state.borrow()).clone();
-  let callback = input_callback_gotten (state, getter, | target, value: bool | {
-    *target = value;
-    true
-  });
-  let result: Value = js!{
-    return $("<div>", {class: "labeled_input checkbox"}).append (
-      on ($("<input>", {type: "checkbox", id: @{id}, checked:@{current_value}}), "click", function(event) {@{callback}($(event.target).prop ("checked"));}),
-      $("<label>", {"for": @{id}, text: @{name}})
-    );
-  };
-  result
-}
-
-pub fn checkbox_meta_input (state: &Rc<RefCell<State>>, id: & str, name: & str, getter: Getter <State, bool>)->Value {
-  let current_value = getter.get (&state.borrow()).clone();
-  let state = state.clone() ;
-  let callback = move | value: bool | {
-    *getter.get_mut (&mut state.borrow_mut()) = value;
-    true
-  };
+  let callback = input_callback_gotten (state, getter, | target, value: bool | *target = value);
   let result: Value = js!{
     return $("<div>", {class: "labeled_input checkbox"}).append (
       on ($("<input>", {type: "checkbox", id: @{id}, checked:@{current_value}}), "click", function(event) {@{callback}($(event.target).prop ("checked"));}),
@@ -147,9 +125,7 @@ pub fn menu_input <T: 'static + Eq + Clone> (state: &Rc<RefCell<State>>, getter:
     @{input_callback_gotten (state, getter, move | target, index: i32 | {
       if let Some(value) = values.get (index as usize) {
         *target = value.clone();
-        return true
       }
-      false
     })}(event.target.selectedIndex)
   })};
   menu
@@ -167,10 +143,7 @@ pub fn waveform_input (state: &Rc<RefCell<State>>, id: & str, name: & str, gette
       (Waveform::WhiteNoise, "White noise"),
     ],
     current_value: current_value,
-    input_callback: input_callback_gotten (state, getter, | target, value: Waveform | {
-      *target = value;
-      true
-    }),
+    input_callback: input_callback_gotten (state, getter, | target, value: Waveform | *target = value),
   }.render()
   /*let result = js!{return $("<div>", {class: "labeled_input radio"}).append (
     $("<label>", {text:@{name} + ": "}),
@@ -198,7 +171,7 @@ pub struct RadioInputSpecification <'a, T: 'a, F> {
   pub input_callback: F,
 }
 
-impl <'a, F: 'static + Fn (T)->bool, T: Eq> RadioInputSpecification <'a, T, F>
+impl <'a, F: 'static + Fn (T), T: Eq> RadioInputSpecification <'a, T, F>
   where
     T: JsSerialize,
     T: TryFrom<Value>,
@@ -237,10 +210,7 @@ pub fn numerical_input <T: UserNumberType> (state: &Rc<RefCell<State>>, id: & st
     state: state, id: id, name: name,
     slider_range: slider_range,
     current_value: current_value,
-    input_callback: input_callback_gotten (state, getter, | target, value: UserNumber <T> | {
-      *target = value;
-      true
-    }),
+    input_callback: input_callback_gotten (state, getter, | target, value: UserNumber <T> | *target = value),
   }.render()
 }
 
@@ -253,7 +223,7 @@ pub struct NumericalInputSpecification <'a, T: UserNumberType, F> {
   pub input_callback: F,
 }
 
-impl <'a, F: 'static + Fn (UserNumber <T>)->bool, T: UserNumberType> NumericalInputSpecification<'a, T, F> {
+impl <'a, F: 'static + Fn (UserNumber <T>), T: UserNumberType> NumericalInputSpecification<'a, T, F> {
   pub fn render (self)->Value {
     let value_type = T::currently_used (&self.state.borrow());
     let displayed_value = if value_type == self.current_value.value_type {self.current_value.source.clone()} else {value_type.approximate_from_rendered (self.current_value.rendered)};
@@ -261,11 +231,8 @@ impl <'a, F: 'static + Fn (UserNumber <T>)->bool, T: UserNumberType> NumericalIn
     let input_callback = self.input_callback;
     let update_callback = { let value_type = value_type.clone(); move | value: String |{
           if let Some(value) = UserNumber::new (value_type.clone(), value) {
-            if (input_callback)(value) {
-              return true;
-            }
+            (input_callback)(value);
           }
-          false
         }};
     let update = js!{return _.debounce(function(value) {
         var success = @{update_callback} (value);
@@ -337,10 +304,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
       name: name, 
       slider_range: slider_range,
       current_value: current_value,
-      input_callback: input_callback (self.state, move | state, value: UserNumber <U> | {
-        *getter.get_mut (state) = value;
-        true
-      }),
+      input_callback: input_callback (self.state, move | state, value: UserNumber <U> | *getter.get_mut (state) = value),
     }.render())
   }
 
@@ -419,10 +383,9 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
             1 => signal.effects.push (random_jump_effect (&mut rand::thread_rng(), duration, &info)),
             2 => signal.effects.push (random_slide_effect (&mut rand::thread_rng(), duration, &info)),
             3 => signal.effects.push (random_oscillation_effect (&mut rand::thread_rng(), duration, &info)),
-            _ => return false,
+            _ => return,
           }
           js!{ update_class_hidden ($(".main_grid"),@{&effects_class}, false); }
-          true
         })}(event.target.selectedIndex)
       });
       return menu;
@@ -470,10 +433,8 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
         if effects_hidden {"Show"} else {"Hide"},
         signal.effects.len() as i32,
         if signal.effects.len() == 1 {"effect"} else {"effects"},
-      ), move || {
-      js!{ update_class_hidden ($(".main_grid"),@{&effects_class}, "toggle"); }
-      false
-    }));
+      ), move || {js!{ update_class_hidden ($(".main_grid"),@{&effects_class}, "toggle"); };}
+    ));
     js!{@{&view_toggle}.appendTo(@{& container}).addClass("view_toggle")}
     *self.rows += 1;
   }
@@ -481,10 +442,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   for (index, effect) in signal.effects.iter().enumerate() {
     let effect_getter = self.info.getter.clone() + getter!(signal => signal.effects [index]);
     let delete_button = button_input ("Delete",
-      input_callback_gotten_nullary (self.state, self.info.getter.clone(), move | signal | {
-        signal.effects.remove (index);
-        true
-      })
+      input_callback_gotten_nullary (self.state, self.info.getter.clone(), move | signal | {signal.effects.remove (index);})
     );
     macro_rules! effect_editors {
       (

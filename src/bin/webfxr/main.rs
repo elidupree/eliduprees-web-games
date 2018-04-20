@@ -58,12 +58,23 @@ pub struct State {
 }
 
 
+
+fn update_for_changed_sound (state: & Rc<RefCell<State>>) {
+  restart_rendering (state);
+  redraw (state);
+}
+
+fn restart_rendering (state: & Rc<RefCell<State>>) {
+  let mut guard = state.borrow_mut();
+  let state = &mut*guard;
+  state.rendering_state = RenderingState::new (& state.sound);
+}
+
 fn redraw(state: & Rc<RefCell<State>>) {
   let waveform_canvas;
   {
     let mut guard = state.borrow_mut();
     let state = &mut*guard;
-    state.rendering_state = RenderingState::new (& state.sound);
     
     waveform_canvas = js!{ return $(new_canvas());};
     state.waveform_canvas = waveform_canvas.clone();
@@ -89,20 +100,13 @@ fn redraw(state: & Rc<RefCell<State>>) {
   
   macro_rules! add_envelope_input {
   ($variable: ident, $name: expr, $range: expr) => {
-    let input = assign_row(rows, NumericalInputSpecification {
-    state: state,
-    id: stringify! ($variable),
-    name: $name, 
-    slider_range: $range,
-    current_value: sound.envelope.$variable.clone(),
-    input_callback: input_callback (state, move | state, value: UserTime | {
-      if value.rendered >= 0.0 && value.rendered <= 30.0 {
-        state.sound.envelope.$variable = value;
-        return true
-      }
-      false
-    }),
-  }.render());
+    let input = assign_row(rows, numerical_input (
+      state,
+      stringify! ($variable),
+      $name, 
+      getter! (state => state.sound.envelope.$variable),
+      $range
+    ));
     
     let label = assign_row(rows, js!{ return @{&input}.children("label");});
     js!{@{&label}.append(":").addClass("toplevel_input_label")}
@@ -116,20 +120,18 @@ fn redraw(state: & Rc<RefCell<State>>) {
   let play_button = assign_row (rows, button_input ("Play",
     { let state = state.clone(); move || {
       play (&mut state.borrow_mut(), Rc::new (| state | state.final_samples()));
-      false
     }}
   ));
   js!{@{grid_element}.append (@{play_button});}
   rows += 1;
   
-  let loop_button = assign_row (rows, checkbox_meta_input (state, "loop", "Loop", getter! (state => state.loop_playback)));
+  let loop_button = assign_row (rows, checkbox_input (state, "loop", "Loop", getter! (state => state.loop_playback)));
   js!{@{grid_element}.append (@{loop_button});}
   rows += 1;
   
   let undo_button = assign_row (rows, button_input ("Undo",
     { let state = state.clone(); move || {
       undo (&state);
-      false
     }}
   ));
   js!{@{grid_element}.append (@{undo_button});}
@@ -138,7 +140,6 @@ fn redraw(state: & Rc<RefCell<State>>) {
   let redo_button = assign_row (rows, button_input ("Redo",
     { let state = state.clone(); move || {
       redo (&state);
-      false
     }}
   ));
   js!{@{grid_element}.append (@{redo_button});}
@@ -147,7 +148,6 @@ fn redraw(state: & Rc<RefCell<State>>) {
   let randomize_button = assign_row (rows, button_input ("Randomize",
     input_callback_nullary (state, move | state | {
       state.sound = random_sound (&mut rand::thread_rng());
-      true
     })
   ));
   js!{@{grid_element}.append (@{randomize_button});}
@@ -325,7 +325,7 @@ fn main() {
   
 
   
-  redraw(&state);
+  update_for_changed_sound(&state);
   render_loop (state.clone());
     
   stdweb::event_loop();
