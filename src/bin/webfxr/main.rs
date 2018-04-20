@@ -120,18 +120,14 @@ fn redraw(state: & Rc<RefCell<State>>) {
   js!{@{grid_element}.append (@{loop_button});}
   rows += 1;
   
-  let undo_button = assign_row (rows, button_input ("Undo",
-    { let state = state.clone(); move || {
-      undo (&state);
-    }}
+  let undo_button = assign_row (rows, button_input ("Undo (z)",
+    { let state = state.clone(); move || undo (&state) }
   ));
   js!{@{grid_element}.append (@{undo_button});}
   rows += 1;
   
-  let redo_button = assign_row (rows, button_input ("Redo",
-    { let state = state.clone(); move || {
-      redo (&state);
-    }}
+  let redo_button = assign_row (rows, button_input ("Redo (shift-Z)",
+    { let state = state.clone(); move || redo (&state) }
   ));
   js!{@{grid_element}.append (@{redo_button});}
   rows += 1;
@@ -329,7 +325,18 @@ fn main() {
     effects_shown: HashSet::new(),
   }));
   
-
+  js!{ $(document.body).on ("keydown", function(event) {
+    //if (event.ctrlKey || event.metaKey) {
+      if (event.key === "z") {
+        @{{ let state = state.clone(); move || undo (&state) }}();
+        event.preventDefault();
+      }
+      if (event.key === "Z" || event.key === "y") {
+        @{{ let state = state.clone(); move || redo (&state) }}();
+        event.preventDefault();
+      }
+    //}
+  });}
   
   update_for_changed_sound(&state);
   render_loop (state.clone());
