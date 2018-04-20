@@ -273,7 +273,7 @@ signals_definitions! {
   (log_frequency, FrequencyType, Some(Rc::new(|state| &state.after_frequency)), SignalInfo {
     id: "frequency",
     name: "Frequency",
-    slider_range: [20f64.log2(), 5000f64.log2()],
+    slider_range: [20f64.log2(), 2000f64.log2()],
     difference_slider_range: 2.0,
     average_effects: 2.0,
     can_disable: false,
