@@ -51,12 +51,15 @@ impl HighpassFilterState {
   }
 }
 
-
+pub struct IllustrationLine {
+  pub root_mean_square: f32,
+  pub clipping: bool,
+}
 pub struct RenderedSamples {
   pub serial_number: SerialNumber,
   pub unprocessed_supersamples: Vec<f64>,
   pub samples: Vec<f32>,
-  pub illustration: Vec<f32>,
+  pub illustration: Vec<IllustrationLine>,
   pub canvas: Value,
   pub context: Value,
   pub audio_buffer: Value,
@@ -123,12 +126,8 @@ impl RenderedSamples {
         let batch_start = ((self.samples.len()-1) / constants.samples_per_illustrated) * constants.samples_per_illustrated;
         let rendered_slice = & self.samples [batch_start..];
         let value = root_mean_square (rendered_slice);
-        // assume that root-mean-square only goes up to 0.5
-        let value = value*2.0;
-        // convert to log scale
-        //let value = 1.0 - (value).log2()*(OCTAVES_TO_DECIBELS/DEFAULT_DECIBEL_BASE) as f32;
         
-        self.illustration.push (value);
+        self.illustration.push (IllustrationLine {root_mean_square: value, clipping: rendered_slice.iter().any (| value | value.abs() > 1.0)});
         self.draw_line (self.illustration.len() - 1) ;
         
         let rendered: TypedArray <f32> = rendered_slice.into();
@@ -141,14 +140,16 @@ impl RenderedSamples {
   }
   
   pub fn draw_line (&self, index: usize) {
-    let value = self.illustration [index];
+    let line = &self.illustration [index];
+    // assume that root-mean-square only goes up to 0.5; the radius should also range from 0 to 0.5
+    let radius = line.root_mean_square;
+    
     js!{
       var canvas = @{&self.canvas}[0];
       var context = @{&self.context};
-      context.fillStyle = "rgb(0,0,0)";
-          
-      // the radius should range from 0 to 0.5
-      var radius = canvas.height*@{value}*0.5;
+      context.fillStyle = @{line.clipping} ? "rgb(255,0,0)" : "rgb(0,0,0)";
+      
+      var radius = canvas.height*@{radius};
       context.fillRect (@{index as f64}, canvas.height*0.5 - radius, 1, radius*2);
     }
   }
