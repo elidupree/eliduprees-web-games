@@ -100,24 +100,13 @@ fn redraw(state: & Rc<RefCell<State>>) {
   };
   let grid_element = &grid_element;
   
-  macro_rules! add_envelope_input {
-  ($variable: ident, $name: expr, $range: expr) => {
-    let input = assign_row(rows, numerical_input (
-      state,
-      stringify! ($variable),
-      $name, 
-      getter! (state => state.sound.envelope.$variable),
-      $range
-    ));
-    
-    let label = assign_row(rows, js!{ return @{&input}.children("label");});
-    js!{@{&label}.append(":").addClass("toplevel_input_label")}
-    js!{@{grid_element}.append (@{label},@{input});}
-    rows += 1;
-    }
-  }
-
   
+
+  let final_samples = guard.rendering_state.final_samples();
+  let main_canvas = final_samples.canvas.clone();
+  setup_rendered_canvas (state, Rc::new (| state | state.final_samples()), 100);
+  js!{@{grid_element}.append (@{main_canvas}.css("grid-row", @{rows}+" / span 5"));}
+  //rows += 1;
       
   let play_button = assign_row (rows, button_input ("Play",
     { let state = state.clone(); move || {
@@ -157,6 +146,22 @@ fn redraw(state: & Rc<RefCell<State>>) {
   
 
   
+  macro_rules! add_envelope_input {
+  ($variable: ident, $name: expr, $range: expr) => {
+    let input = assign_row(rows, numerical_input (
+      state,
+      stringify! ($variable),
+      $name, 
+      getter! (state => state.sound.envelope.$variable),
+      $range
+    ));
+    
+    let label = assign_row(rows, js!{ return @{&input}.children("label");});
+    js!{@{&label}.append(":").addClass("toplevel_input_label")}
+    js!{@{grid_element}.append (@{label},@{input});}
+    rows += 1;
+    }
+  }
 
   js!{@{grid_element}.append (
     @{canvas_of_samples (&envelope_samples, sample_rate, 90.0, [0.0, 1.0], sound.duration())}

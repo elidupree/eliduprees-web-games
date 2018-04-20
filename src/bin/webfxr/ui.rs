@@ -395,21 +395,8 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   
     if let Some(ref rendered_getter) = self.info.rendered_getter {
       let rendered = (rendered_getter) (& guard.rendering_state);
-      js!{
-        var canvas = @{self.assign_row (rendered.canvas.clone()) };
-        canvas[0].height = 32;
-        canvas[0].width =@{MAX_RENDER_LENGTH*DISPLAY_SAMPLE_RATE};
-        @{& container}.append (canvas);
-        on (canvas, "click", function() {@{{
-          let state = self.state.clone() ;
-          let getter = rendered_getter.clone();
-          move || {
-            let mut guard = state.borrow_mut() ;
-            play (&mut guard, getter.clone());
-          }
-        }}();});
-      }
-      rendered.redraw (None, & guard.rendering_state.constants);
+      setup_rendered_canvas (self.state, rendered_getter.clone(), 32);
+      js!{@{& container}.append (@{self.assign_row (rendered.canvas.clone())});}
     }
       
   *self.rows += 1;
@@ -591,4 +578,23 @@ pub fn draw_samples (canvas: Value, samples: & [f64], sample_rate: f64, canvas_h
     context.strokeStyle = "rgb(0,0,0)";
     context.stroke();
   }
+}
+
+pub fn setup_rendered_canvas (state: &Rc<RefCell<State>>, rendered_getter: SamplesGetter, height: i32) {
+  let guard = state.borrow();
+  let rendered = (rendered_getter) (& guard.rendering_state);
+  js!{
+    var canvas = @{rendered.canvas.clone()};
+    canvas[0].height =@{height};
+    canvas[0].width =@{MAX_RENDER_LENGTH*DISPLAY_SAMPLE_RATE};
+    on (canvas, "click", function() {@{{
+      let state = state.clone() ;
+      let getter = rendered_getter.clone();
+      move || {
+        let mut guard = state.borrow_mut() ;
+        play (&mut guard, getter.clone());
+      }
+    }}();});
+  }
+  rendered.redraw (None, & guard.rendering_state.constants);
 }

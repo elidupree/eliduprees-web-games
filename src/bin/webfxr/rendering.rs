@@ -114,6 +114,8 @@ pub struct RenderingState {
   pub bitcrush_last_used_sample: f64,
   pub after_bitcrush: RenderedSamples,
   
+  pub final_samples: RenderedSamples,
+  
   pub constants: RenderingStateConstants,
 }
 
@@ -239,7 +241,7 @@ impl SoundDefinition {
 }
 
 impl RenderingState {
-  pub fn final_samples (&self)->& RenderedSamples {& self.after_bitcrush}
+  pub fn final_samples (&self)->& RenderedSamples {& self.final_samples}
   pub fn new (sound: & SoundDefinition)->RenderingState {
     let num_samples = (min(MAX_RENDER_LENGTH, sound.duration())*sound.sample_rate() as f64).ceil() as usize;
     js! { window.webfxr_num_samples = @{num_samples as f64}; window.webfxr_sample_rate = @{sound.sample_rate() as f64}; } 
@@ -293,13 +295,13 @@ impl RenderingState {
         self.bitcrush_last_used_sample = sample; 
       }
       sample = self.bitcrush_last_used_sample;
-      
+      self.after_bitcrush.push (sample, &self.constants);
      
       let bitcrush_frequency = sound.log_bitcrush_frequency.sample(time).exp2();
       self.bitcrush_phase += bitcrush_frequency*self.constants.supersample_duration;
     }
-    // hack: outside the conditional because it's also the final samples
-    self.after_bitcrush.push (sample, &self.constants);
+    
+    self.final_samples.push (sample, &self.constants) ;
     
     let frequency = sound.log_frequency.sample(time).exp2();
     self.wave_phase += frequency*self.constants.supersample_duration;
