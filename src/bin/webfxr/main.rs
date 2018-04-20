@@ -17,7 +17,7 @@ extern crate array_ext;
 
 use std::rc::Rc;
 use std::cell::RefCell;
-use std::collections::VecDeque;
+use std::collections::{VecDeque, HashSet};
 use stdweb::Value;
 use stdweb::unstable::TryInto;
 use stdweb::web::{self, TypedArray};
@@ -55,6 +55,7 @@ pub struct State {
   pub playback_state: Option <Playback>,
   pub loop_playback: bool,
   pub waveform_canvas: Value,
+  pub effects_shown: HashSet <&'static str>,
 }
 
 
@@ -62,6 +63,7 @@ pub struct State {
 fn update_for_changed_sound (state: & Rc<RefCell<State>>) {
   restart_rendering (state);
   redraw (state);
+  play (&mut state.borrow_mut(), Rc::new (| state | state.final_samples()));
 }
 
 fn restart_rendering (state: & Rc<RefCell<State>>) {
@@ -204,8 +206,6 @@ fn redraw(state: & Rc<RefCell<State>>) {
   js!{morphdom($(".main_grid")[0], @{grid_element}[0]);} 
   
   }
-  
-  play (&mut state.borrow_mut(), Rc::new (| state | state.final_samples()));
 }
 
 
@@ -321,6 +321,7 @@ fn main() {
     playback_state: None,
     loop_playback: false,
     waveform_canvas: Value::Undefined,
+    effects_shown: HashSet::new(),
   }));
   
 

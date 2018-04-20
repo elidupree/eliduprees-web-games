@@ -342,8 +342,6 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   let container = self.main_grid;
   
   //js!{@{& container}.append (@{self.info.untyped.name} + ": ");}
-  let effects_class = format! ("{}_effects", & self.info.untyped.id);
-  let effects_class = & effects_class;
   
   let initial_value_input = self.value_input (
     & format! ("{}_initial", & self.info.untyped.id),
@@ -369,7 +367,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     //let range = self.info.untyped.difference_slider_range;
     let info = self.info.untyped.clone();
     let duration = sound.duration();
-    let effects_class = effects_class.clone();
+    let getter = self.info.getter.clone();
     let buttons = self.assign_row(js!{
       var menu = $("<select>", {class: "add_effect_buttons"}).append (
         $("<option>", {selected: true}).text("Add effect..."),
@@ -378,14 +376,15 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
         $("<option>").text(@{self.info.untyped.name}+" oscillation")
       );
       on(menu, "change", function(event) {
-        @{input_callback_gotten (self.state, self.info.getter.clone(), move | signal, index: i32 | {
+        @{input_callback (self.state, move | state, index: i32 | {
+          state.effects_shown.insert (info.id);
+          let signal = getter.get_mut (state);
           match index {
             1 => signal.effects.push (random_jump_effect (&mut rand::thread_rng(), duration, &info)),
             2 => signal.effects.push (random_slide_effect (&mut rand::thread_rng(), duration, &info)),
             3 => signal.effects.push (random_oscillation_effect (&mut rand::thread_rng(), duration, &info)),
             _ => return,
           }
-          js!{ update_class_hidden ($(".main_grid"),@{&effects_class}, false); }
         })}(event.target.selectedIndex)
       });
       return menu;
@@ -424,22 +423,29 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     *self.rows += 1;
   }
   
-  let effects_hidden = js!{ return class_is_hidden (@{effects_class});}.try_into().unwrap();
+  let effects_shown = guard.effects_shown.contains (self.info.untyped.id);
   
   if signal.effects.len() > 0 {
-    let effects_class = effects_class.clone();
+    let id = self.info.untyped.id.clone();
     let view_toggle = self.assign_row (button_input (
       & format! ("{} {} {}... ▼",
-        if effects_hidden {"Show"} else {"Hide"},
+        if effects_shown {"Hide"} else {"Show"},
         signal.effects.len() as i32,
         if signal.effects.len() == 1 {"effect"} else {"effects"},
-      ), move || {js!{ update_class_hidden ($(".main_grid"),@{&effects_class}, "toggle"); };}
+      ),
+      {let state = self.state.clone(); move || {
+        {
+          let mut guard = state.borrow_mut();
+          if !guard.effects_shown.insert (id) {guard.effects_shown.remove (id);}
+        }
+        redraw (& state);
+      }}
     ));
     js!{@{&view_toggle}.appendTo(@{& container}).addClass("view_toggle")}
     *self.rows += 1;
   }
     
-  for (index, effect) in signal.effects.iter().enumerate() {
+  if effects_shown {for (index, effect) in signal.effects.iter().enumerate() {
     let effect_getter = self.info.getter.clone() + getter!(signal => signal.effects [index]);
     let delete_button = button_input ("Delete",
       input_callback_gotten_nullary (self.state, self.info.getter.clone(), move | signal | {signal.effects.remove (index);})
@@ -454,7 +460,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
         ])*) => {
         match *effect {
           $(SignalEffect::$Variant {..} => {
-            let header = self.assign_row(js!{ return jQuery("<div>", {class: "signal_effect effect_header "+@{effects_class}}).append (@{self.info.untyped.name}+" "+@{$variant_name}+": ",@{delete_button})});
+            let header = self.assign_row(js!{ return jQuery("<div>", {class: "signal_effect effect_header"}).append (@{self.info.untyped.name}+" "+@{$variant_name}+": ",@{delete_button})});
             js!{@{& container}.append (@{header});}
             *self.rows += 1;
             $(
@@ -462,7 +468,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
                 & format! ("{}_{}_{}", & self.info.untyped.id, index, stringify! ($field)),
                 $name,
                 effect_getter.clone() + variant_field_getter! (SignalEffect::$Variant => $field)
-              )}.addClass("signal_effect input "+@{effects_class}))}
+              )}.addClass("signal_effect input"))}
               *self.rows += 1;
             )*
           },)*
@@ -488,17 +494,16 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
         (waveform, "Waveform", waveform_input)
       ]
     }
-  }
+  }}
   
     if signal.effects.len() > 0 {
       let sample_rate = 500.0;
       let samples = display_samples (sample_rate, max (sound.duration(), signal.draw_through_time()), | time | signal.sample (time));
-      let canvas = canvas_of_samples (& samples, sample_rate, if effects_hidden {32.0} else {100.0}, self.info.untyped.slider_range, sound.duration());
+      let canvas = canvas_of_samples (& samples, sample_rate, if effects_shown {100.0} else {32.0}, self.info.untyped.slider_range, sound.duration());
       js!{ @{& container}.append (@{canvas}.css("grid-row", @{first_row + 1}+" / "+@{*self.rows})); }
     }
     
     js!{ @{& container}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{first_row}+" / "+@{*self.rows})); }
-    js!{ update_class_hidden (@{& container},@{effects_class}); }
   }
 }
 

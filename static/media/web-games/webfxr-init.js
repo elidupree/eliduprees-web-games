@@ -46,21 +46,3 @@ function play_buffer (buffer, offset, duration) {
   audio_source.start (audio.currentTime, offset, duration);
 }
 
-
-window.hidden_classes = {};
-window.class_is_hidden = function (cssclass) {
-  let data = window.hidden_classes [cssclass];
-  if (data === undefined) {return true;}
-  return data;
-}
-window.update_class_hidden = function (container, cssclass, force) {
-  if (force !== undefined) {
-    if (force === "toggle") { window.hidden_classes [cssclass] = !class_is_hidden (cssclass);}
-    else { window.hidden_classes [cssclass] = force;}
-  }
-  let hidden = class_is_hidden (cssclass);
-  let members = container.find ("." + cssclass);
-  if (hidden) {members.hide() ;}
-  else {members.show() ;}
-};
-
