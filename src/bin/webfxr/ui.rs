@@ -409,6 +409,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
           }
         }}();});
       }
+      rendered.redraw (None, & guard.rendering_state.constants);
     }
       
   *self.rows += 1;
