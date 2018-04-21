@@ -221,8 +221,8 @@ impl SoundDefinition {
     }
     
     let mut result = 0.0;
-    let harmonics = if self.harmonics.enabled {max (1.0, min (100.0, self.harmonics.sample (time)))} else {1.0};
-    let skew = logistic_curve (self.waveform_skew.sample (time));
+    let harmonics = if self.harmonics.enabled {max (1.0, min (100.0, self.harmonics.sample (time, true)))} else {1.0};
+    let skew = logistic_curve (self.waveform_skew.sample (time, true));
     for index in 0..harmonics.ceil() as usize {
       let mut harmonic = (index + 1) as f64;
       let fraction = if harmonic <= harmonics {1.0} else {harmonics + 1.0 - harmonic};
@@ -241,10 +241,17 @@ impl SoundDefinition {
 }
 
 
+const SMOOTH_TIME: f64 = 0.001;
+
 impl<T: UserNumberType> SignalEffect <T> {
-  pub fn sample (&self, sample_time: f64)->f64 {
+  pub fn sample (&self, sample_time: f64, smooth: bool)->f64 {
     match self.clone() {
-      SignalEffect::Jump {time, size} => if sample_time > time.rendered {size.rendered} else {0.0},
+      SignalEffect::Jump {time, size} => {
+        if smooth && sample_time > time.rendered && sample_time < time.rendered + SMOOTH_TIME {
+          size.rendered*(sample_time - time.rendered)/SMOOTH_TIME
+        }
+        else if sample_time > time.rendered {size.rendered} else {0.0}
+      },
       SignalEffect::Slide {start, duration, size, smooth_start, smooth_stop} => {
         if sample_time <= start.rendered {0.0}
         else if sample_time >= start.rendered + duration.rendered {size.rendered}
@@ -259,7 +266,31 @@ impl<T: UserNumberType> SignalEffect <T> {
           size.rendered*adjusted_fraction
         }
       },
-      SignalEffect::Oscillation {size, frequency, waveform} => size.rendered*waveform.sample_simple (sample_time*frequency.rendered.exp2()).unwrap(),
+      SignalEffect::Oscillation {size, frequency, waveform} => {
+        let frequency = frequency.rendered.exp2();
+        let phase = sample_time*frequency;
+        if smooth && frequency < 100.0 {
+          let smooth_phase = SMOOTH_TIME*frequency;
+          let phase = phase - phase.floor();
+          if waveform == Waveform::Square {
+            if phase < smooth_phase {
+              return size.rendered*(0.5 - phase/smooth_phase);
+            }
+            let phase_into_second_half = phase - 0.5;
+            if phase_into_second_half >= 0.0 && phase_into_second_half < smooth_phase {
+              return size.rendered*(phase_into_second_half/(smooth_phase*2.0) - 0.5);
+            }
+          }
+          if waveform == Waveform::Sawtooth {
+            if phase < smooth_phase {
+              return size.rendered*(2.0*phase/smooth_phase - 1.0);
+            } else {
+              return size.rendered*(1.0 - 2.0*(phase-smooth_phase)/(1.0-smooth_phase));
+            }
+          }
+        }
+        size.rendered*waveform.sample_simple (phase).unwrap()
+      },
     }
   }
   pub fn range (&self)->[f64;2] {
@@ -305,24 +336,24 @@ impl RenderingState {
     let mut sample = sound.sample_waveform (time, self.wave_phase)*sound.envelope.sample (time);
     self.after_frequency.push (sample, &self.constants);
     
-    sample *= sound.volume.sample (time).exp2();
+    sample *= sound.volume.sample (time, true).exp2();
     self.after_volume.push (sample, &self.constants);
     
     if sound.log_flanger_frequency.enabled {
-      let flanger_frequency = sound.log_flanger_frequency.sample (time).exp2();
+      let flanger_frequency = sound.log_flanger_frequency.sample (time, true).exp2();
       let flanger_offset = 1.0/flanger_frequency;
       sample += self.after_volume.resample (time - flanger_offset, & self.constants);
       self.after_flanger.push (sample, &self.constants);
     }
     
     if sound.log_lowpass_filter_cutoff.enabled {
-      let lowpass_filter_frequency = sound.log_lowpass_filter_cutoff.sample (time).exp2();
+      let lowpass_filter_frequency = sound.log_lowpass_filter_cutoff.sample (time, false).exp2();
       sample = self.lowpass_state.apply (sample, lowpass_filter_frequency, self.constants.supersample_duration);
       self.after_lowpass.push (sample, &self.constants);
     }
     
     if sound.log_highpass_filter_cutoff.enabled {
-      let highpass_filter_frequency = sound.log_highpass_filter_cutoff.sample (time).exp2();
+      let highpass_filter_frequency = sound.log_highpass_filter_cutoff.sample (time, false).exp2();
       sample = self.highpass_state.apply (sample, highpass_filter_frequency, self.constants.supersample_duration);
       self.after_highpass.push (sample, &self.constants);
     }
@@ -336,13 +367,13 @@ impl RenderingState {
       sample = self.bitcrush_last_used_sample;
       self.after_bitcrush.push (sample, &self.constants);
      
-      let bitcrush_frequency = sound.log_bitcrush_frequency.sample(time).exp2();
+      let bitcrush_frequency = sound.log_bitcrush_frequency.sample(time, false).exp2();
       self.bitcrush_phase += bitcrush_frequency*self.constants.supersample_duration;
     }
     
     self.final_samples.push (sample, &self.constants) ;
     
-    let frequency = sound.log_frequency.sample(time).exp2();
+    let frequency = sound.log_frequency.sample(time, false).exp2();
     self.wave_phase += frequency*self.constants.supersample_duration;
     
     self.next_supersample += 1;

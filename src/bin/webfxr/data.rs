@@ -346,8 +346,8 @@ impl<T: UserNumberType> Signal<T> {
     }
   }
 
-  pub fn sample (&self, time: f64)->f64 {
-    self.initial_value.rendered + self.effects.iter().map (| effect | effect.sample (time)).sum::<f64>()
+  pub fn sample (&self, time: f64, smooth: bool)->f64 {
+    self.initial_value.rendered + self.effects.iter().map (| effect | effect.sample (time, smooth)).sum::<f64>()
   }
   
   pub fn range (&self)->[f64;2] {
