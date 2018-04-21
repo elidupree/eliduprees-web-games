@@ -253,10 +253,12 @@ impl<T: UserNumberType> SignalEffect <T> {
         else if sample_time > time.rendered {size.rendered} else {0.0}
       },
       SignalEffect::Slide {start, duration, size, smooth_start, smooth_stop} => {
+        let mut duration = duration.rendered;
+        if smooth {duration = max (duration, SMOOTH_TIME) ;}
         if sample_time <= start.rendered {0.0}
-        else if sample_time >= start.rendered + duration.rendered {size.rendered}
+        else if sample_time >= start.rendered + duration {size.rendered}
         else {
-          let fraction = (sample_time - start.rendered)/duration.rendered;
+          let fraction = (sample_time - start.rendered)/duration;
           let adjusted_fraction = match (smooth_start, smooth_stop) {
             (false, false) => fraction,
             (true, false) => fraction*fraction,
