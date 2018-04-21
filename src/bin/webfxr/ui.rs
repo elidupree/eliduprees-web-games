@@ -187,16 +187,11 @@ impl <'a, F: 'static + Fn (T), T: Eq> RadioInputSpecification <'a, T, F>
     };
     
     for &(ref value, name) in self.options.iter() {
-      js!{
-        function choice_overrides() {
-          var value = $("input:radio[name="+@{self.id}+"_radios]:checked").val();
-          @{&update}(value);
-        }
-        @{&result}.append (
-          on ($("<input>", {type: "radio", id: @{self.id}+"_radios_" + @{value}, name: @{self.id}+"_radios", value: @{value}, checked: @{*value == self.current_value}}), "click", choice_overrides),
-          $("<label>", {"for": @{self.id}+"_radios_" + @{value}, text: @{name}})
-        );
+      let input = js!{ return on ($("<input>", {type: "button", id: @{self.id}+"_radios_" + @{&value}, value: @{name}}), "click", function() {@{& update} (@{&value})});};
+      if *value == self.current_value {
+        js!{ @{&input}.addClass("down"); }
       }
+      js!{ @{&result}.append (@{input}); }
     }
     
     result
