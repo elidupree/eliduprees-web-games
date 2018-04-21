@@ -287,8 +287,15 @@ impl <'a, F: 'static + Fn (UserNumber <T>), T: UserNumberType> NumericalInputSpe
         if (isNaN (value)) {var value = range_input[0].valueAsNumber;}
         //console.log (event.originalEvent.deltaY);
         var increment = ((-event.originalEvent.deltaY) || event.originalEvent.deltaX || 0)*@{slider_step*0.5};
-        if (@{slider_step == 1.0}) {increment = Math.sign (increment);}
-        value += increment;
+        if (@{slider_step == 1.0}) {
+          if (increment > 0) {
+            value = Math.floor(value) + 1;
+          }
+          if (increment < 0) {
+            value = Math.ceil(value) - 1;
+          }
+        }
+        else {value += increment;}
         var source = @{{let value_type = value_type.clone(); move | value: f64 | value_type.approximate_from_rendered (value)}} (value);
         range_input.val (value);
         number_input.val(source);
