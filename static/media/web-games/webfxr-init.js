@@ -46,3 +46,12 @@ function play_buffer (buffer, offset, duration) {
   audio_source.start (audio.currentTime, offset, duration);
 }
 
+
+$(document.body).on ("wheel", function() {
+  window.webfxr_scrolling = true;
+  window.webfxr_last_scroll = Date.now();
+});
+$(document.body).on ("mousemove", function() {
+  if (window.webfxr_last_scroll < Date.now() - 500) {window.webfxr_scrolling = false;}
+});
+

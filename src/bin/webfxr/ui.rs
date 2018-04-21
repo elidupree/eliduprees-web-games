@@ -280,6 +280,7 @@ impl <'a, F: 'static + Fn (UserNumber <T>), T: UserNumberType> NumericalInputSpe
     };
     js! {
       on (@{&result}, "wheel", function (event) {
+        if (window.webfxr_scrolling) {return;}
         var parent = $("#"+@{self.id});
         var number_input = parent.children ("input[type=number]");
         var value = @{to_rendered_callback} (number_input.val());
@@ -301,6 +302,7 @@ impl <'a, F: 'static + Fn (UserNumber <T>), T: UserNumberType> NumericalInputSpe
         number_input.val(source);
         @{& number_overrides}(parent);
         event.preventDefault();
+        event.stopPropagation();
       });
     };
     result
