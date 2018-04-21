@@ -33,7 +33,8 @@ function on (jQuery_object, event_name, callback) {
 }
 
 function new_canvas () {
-  let result = document.createElement ("canvas");
+  const result = document.createElement ("canvas");
+  const parent = $("<div>", {class: "canvas_wrapper"}).append (result);
   result.id = "canvas_" + (window.webfxr_next_serial_number++);
   return result;
 }

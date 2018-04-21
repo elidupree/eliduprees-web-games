@@ -424,7 +424,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     if let Some(ref rendered_getter) = self.info.rendered_getter {
       let rendered = (rendered_getter) (& guard.rendering_state);
       setup_rendered_canvas (self.state, rendered_getter.clone(), 32);
-      js!{@{& container}.append (@{self.assign_row (rendered.canvas.clone())});}
+      js!{@{& container}.append (@{self.assign_row (js!{ return @{rendered.canvas.clone()}.parent()})});}
     }
       
   *self.rows += 1;
@@ -516,7 +516,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
       let sample_rate = 500.0;
       let samples = display_samples (sample_rate, max (sound.duration(), signal.draw_through_time()), | time | signal.sample (time, false));
       let canvas = canvas_of_samples (& samples, sample_rate, if effects_shown {100.0} else {32.0}, self.info.untyped.slider_range, sound.duration());
-      js!{ @{& container}.append (@{canvas}.css("grid-row", @{first_row + 1}+" / "+@{*self.rows})); }
+      js!{ @{& container}.append (@{canvas}.parent().css("grid-row", @{first_row + 1}+" / "+@{*self.rows})); }
     }
     
     js!{ @{& container}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{first_row}+" / "+@{*self.rows})); }

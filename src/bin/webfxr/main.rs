@@ -105,7 +105,7 @@ fn redraw(state: & Rc<RefCell<State>>) {
   let final_samples = guard.rendering_state.final_samples();
   let main_canvas = final_samples.canvas.clone();
   setup_rendered_canvas (state, Rc::new (| state | state.final_samples()), 100);
-  js!{@{grid_element}.append (@{main_canvas}.css("grid-row", @{rows}+" / span 5"));}
+  js!{@{grid_element}.append (@{main_canvas}.parent().css("grid-row", @{rows}+" / span 5"));}
   //rows += 1;
       
   let play_button = assign_row (rows, button_input ("Play",
@@ -160,7 +160,7 @@ fn redraw(state: & Rc<RefCell<State>>) {
   }
 
   js!{@{grid_element}.append (
-    @{canvas_of_samples (&envelope_samples, sample_rate, 90.0, [0.0, 1.0], sound.duration())}
+    @{canvas_of_samples (&envelope_samples, sample_rate, 90.0, [0.0, 1.0], sound.duration())}.parent()
     .css("grid-row", @{rows}+" / span 3")
   );}
   js!{ @{grid_element}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{rows}+" / span 3")); }
@@ -175,7 +175,7 @@ fn redraw(state: & Rc<RefCell<State>>) {
   let label = assign_row(rows, js!{ return @{&waveform_input}.children("label").first();});
   js!{@{&label}.addClass("toplevel_input_label")}
   
-  js!{@{grid_element}.append (@{assign_row(rows, waveform_canvas)});}
+  js!{@{grid_element}.append (@{assign_row(rows, js!{ return @{waveform_canvas}.parent()})});}
   redraw_waveform_canvas (& guard, 0.0);
   js!{@{grid_element}.append (@{label},@{waveform_input}.addClass("sound_waveform_input"));}
   rows += 1;
