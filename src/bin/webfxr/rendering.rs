@@ -240,6 +240,45 @@ impl SoundDefinition {
   }
 }
 
+
+impl<T: UserNumberType> SignalEffect <T> {
+  pub fn sample (&self, sample_time: f64)->f64 {
+    match self.clone() {
+      SignalEffect::Jump {time, size} => if sample_time > time.rendered {size.rendered} else {0.0},
+      SignalEffect::Slide {start, duration, size, smooth_start, smooth_stop} => {
+        if sample_time <= start.rendered {0.0}
+        else if sample_time >= start.rendered + duration.rendered {size.rendered}
+        else {
+          let fraction = (sample_time - start.rendered)/duration.rendered;
+          let adjusted_fraction = match (smooth_start, smooth_stop) {
+            (false, false) => fraction,
+            (true, false) => fraction*fraction,
+            (false, true) => fraction*(2.0-fraction),
+            (true, true) => fraction*fraction*(3.0 - 2.0*fraction),
+          };
+          size.rendered*adjusted_fraction
+        }
+      },
+      SignalEffect::Oscillation {size, frequency, waveform} => size.rendered*waveform.sample_simple (sample_time*frequency.rendered.exp2()).unwrap(),
+    }
+  }
+  pub fn range (&self)->[f64;2] {
+    match self.clone() {
+      SignalEffect::Jump {size, ..} => [min (0.0, size.rendered), max (0.0, size.rendered)],
+      SignalEffect::Slide {size, ..} => [min (0.0, size.rendered), max (0.0, size.rendered)],
+      SignalEffect::Oscillation {size, ..} => [-size.rendered.abs(), size.rendered.abs()],
+    }
+  }
+  pub fn draw_through_time (&self)->f64 {
+    match self.clone() {
+      SignalEffect::Jump {time, ..} => time.rendered + 0.1,
+      SignalEffect::Slide {start, duration, ..} => start.rendered + duration.rendered + 0.1,
+      SignalEffect::Oscillation {frequency, ..} => 1.1/frequency.rendered.exp2(),
+    }
+  }
+}
+
+
 impl RenderingState {
   pub fn final_samples (&self)->& RenderedSamples {& self.final_samples}
   pub fn new (sound: & SoundDefinition)->RenderingState {
