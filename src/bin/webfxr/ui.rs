@@ -209,6 +209,7 @@ pub fn numerical_input <T: UserNumberType> (state: &Rc<RefCell<State>>, id: & st
   NumericalInputSpecification {
     state: state, id: id, name: name,
     slider_range: slider_range,
+    slider_step: 0.0,
     current_value: current_value,
     input_callback: input_callback_gotten (state, getter, | target, value: UserNumber <T> | *target = value),
   }.render()
@@ -219,6 +220,7 @@ pub struct NumericalInputSpecification <'a, T: UserNumberType, F> {
   pub id: & 'a str,
   pub name: & 'a str,
   pub slider_range: [f64; 2],
+  pub slider_step: f64,
   pub current_value: UserNumber <T>,
   pub input_callback: F,
 }
@@ -227,12 +229,18 @@ impl <'a, F: 'static + Fn (UserNumber <T>), T: UserNumberType> NumericalInputSpe
   pub fn render (self)->Value {
     let value_type = T::currently_used (&self.state.borrow());
     let displayed_value = if value_type == self.current_value.value_type {self.current_value.source.clone()} else {value_type.approximate_from_rendered (self.current_value.rendered)};
-    let slider_step = (self.slider_range [1] - self.slider_range [0])/1000.0;
+    let slider_step = if self.slider_step != 0.0 { self.slider_step } else {(self.slider_range [1] - self.slider_range [0])/1000.0};
     let input_callback = self.input_callback;
     let update_callback = { let value_type = value_type.clone(); move | value: String |{
           if let Some(value) = UserNumber::new (value_type.clone(), value) {
             (input_callback)(value);
           }
+        }};
+    let to_rendered_callback = { let value_type = value_type.clone(); move | value: String |{
+          if let Some(value) = UserNumber::new (value_type.clone(), value) {
+            value.rendered
+          }
+          else {std::f64::NAN}
         }};
     let update = js!{return _.debounce(function(value) {
         var success = @{update_callback} (value);
@@ -268,15 +276,25 @@ impl <'a, F: 'static + Fn (UserNumber <T>), T: UserNumberType> NumericalInputSpe
       
       @{&range_input}.val(@{self.current_value.rendered});
       
-      on (result, "wheel", function (event) {
-        var range_input = $("#"+@{self.id}).children ("input[type=range]");
-        var value = range_input[0].valueAsNumber;
-        value += (-Math.sign(event.originalEvent.deltaY) || Math.sign(event.originalEvent.deltaX) || 0)*@{slider_step*50.0};
+      return result;
+    };
+    js! {
+      on (@{&result}, "wheel", function (event) {
+        var parent = $("#"+@{self.id});
+        var number_input = parent.children ("input[type=number]");
+        var value = @{to_rendered_callback} (number_input.val());
+        var range_input = parent.children ("input[type=range]");
+        if (isNaN (value)) {var value = range_input[0].valueAsNumber;}
+        //console.log (event.originalEvent.deltaY);
+        var increment = ((-event.originalEvent.deltaY) || event.originalEvent.deltaX || 0)*@{slider_step*0.5};
+        if (@{slider_step == 1.0}) {increment = Math.sign (increment);}
+        value += increment;
+        var source = @{{let value_type = value_type.clone(); move | value: f64 | value_type.approximate_from_rendered (value)}} (value);
         range_input.val (value);
-        @{&range_overrides}($("#"+@{self.id}));
+        number_input.val(source);
+        @{& number_overrides}(parent);
         event.preventDefault();
       });
-      return result;
     };
     result
   }
@@ -303,6 +321,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
       id: id,
       name: name, 
       slider_range: slider_range,
+      slider_step: self.info.untyped.slider_step,
       current_value: current_value,
       input_callback: input_callback (self.state, move | state, value: UserNumber <U> | *getter.get_mut (state) = value),
     }.render())
