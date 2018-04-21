@@ -50,13 +50,21 @@ impl UserNumberType for $Enum {
 pub const OCTAVES_TO_DECIBELS: f64 = 3.0102999;
 pub const DEFAULT_DECIBEL_BASE: f64 = -40.0;
 
+pub fn format_number (number: f64, minimum_significant_figures: i32)->String {
+  let magnitude = number.abs();
+  if magnitude < 0.0000001 { return format! ("0") }
+  let biggest_figure = magnitude.log10().floor() as i32;
+  let precision = ::std::cmp::max (0, minimum_significant_figures - 1 - biggest_figure);
+  format! ("{:.*}", precision as usize, number)
+}
+
 zero_information_number_type!{
   FrequencyType, Frequency, IntervalType, "Hz",
   | value | {
     let value = value.log2();
     if value.is_finite() {Some (value)} else {None}
   },
-  | rendered | format!("{:.1}", rendered.exp2())
+  | rendered | format_number (rendered.exp2(), 3)
 }
 zero_information_number_type!{
   IntervalType, Ratio, Self, "ratio",
@@ -64,7 +72,7 @@ zero_information_number_type!{
     let value = value.log2();
     if value.is_finite() {Some (value)} else {None}
   },
-  | rendered | format!("{:.2}", rendered.exp2())
+  | rendered | format_number (rendered.exp2(), 3)
 }
 zero_information_number_type!{
   TimeType, Seconds, Self, "s",
