@@ -141,7 +141,20 @@ fn redraw(state: & Rc<RefCell<State>>) {
     })
   ));
   js!{@{left_column}.append (@{randomize_button});}
-  js!{@{left_column}.append ($("<textarea>").text (@{serde_json::to_string_pretty (sound).unwrap()}));}
+  let load_callback = input_callback (state, | state, value: String | {
+    if let Ok (sound) = serde_json::from_str (& value) {
+      state.sound = sound;
+    }
+  });
+  js!{
+    on (on (
+      $("<textarea>").text (@{serde_json::to_string_pretty (sound).unwrap()}).appendTo (@{left_column}),
+      "click",
+      function (event) {event.target.select() ;}
+    ),
+      "input",
+      function(event) {@{load_callback} (event.target.value);}
+    );}
   
 
   
