@@ -275,7 +275,8 @@ macro_rules! signals_definitions {
   }
 }
 
-#[derive (Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive (Clone, PartialEq, Serialize, Deserialize)]
+#[serde (default)]
 pub struct SoundDefinition {
   pub envelope: Envelope,
   pub waveform: Waveform,
@@ -420,4 +421,20 @@ impl SoundDefinition {
     result
   }
   pub fn sample_rate (&self)->usize {44100}
+}
+
+impl Default for SoundDefinition {
+  fn default()->Self {SoundDefinition {
+      envelope: Envelope {attack: UserNumber::from_rendered (0.1), sustain: UserNumber::from_rendered (0.5), decay: UserNumber::from_rendered (0.5)},
+      waveform: Waveform::Sine,
+      harmonics: Signal::constant (UserNumber::from_rendered (3.0)),
+      odd_harmonics: false,
+      waveform_skew: Signal::constant (UserNumber::from_rendered (-2.0)),
+      log_frequency: Signal::constant (UserNumber::from_rendered (220.0_f64.log2())),
+      volume: Signal::constant (UserNumber::from_rendered (-2.0)),
+      log_flanger_frequency: Signal::constant (UserNumber::from_rendered (1600.0_f64.log2())),
+      log_bitcrush_frequency: Signal::constant (UserNumber::from_rendered (3600.0_f64.log2())),
+      log_lowpass_filter_cutoff: Signal::constant (UserNumber::from_rendered (2500.0_f64.log2())),
+      log_highpass_filter_cutoff: Signal::constant (UserNumber::from_rendered (600.0_f64.log2())),
+    }}
 }
