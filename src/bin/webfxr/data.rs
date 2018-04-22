@@ -288,6 +288,7 @@ pub struct SoundDefinition {
   pub log_flanger_frequency: Signal <FrequencyType>,
   pub log_lowpass_filter_cutoff: Signal <FrequencyType>,
   pub log_highpass_filter_cutoff: Signal <FrequencyType>,
+  pub bitcrush_resolution_bits: Signal <DimensionlessType>,
   pub log_bitcrush_frequency: Signal <FrequencyType>,
 }
 
@@ -355,7 +356,16 @@ signals_definitions! {
     average_effects: 0.7,
     can_disable: true,
   }),
-  (log_bitcrush_frequency, FrequencyType, Some(Rc::new(|state| &state.after_bitcrush)), SignalInfo {
+  (bitcrush_resolution_bits, DimensionlessType, Some(Rc::new(|state| &state.after_bitcrush_resolution)), SignalInfo {
+    id: "bitcrush_resolution_bits",
+    name: "Bitcrush resolution bits",
+    slider_range: [1.0, 16.0],
+    slider_step: 1.0,
+    difference_slider_range: 10.0,
+    average_effects: 0.7,
+    can_disable: true,
+  }),
+  (log_bitcrush_frequency, FrequencyType, Some(Rc::new(|state| &state.after_bitcrush_frequency)), SignalInfo {
     id: "bitcrush_frequency",
     name: "Bitcrush frequency",
     slider_range: [100f64.log2(), 10000f64.log2()],
@@ -436,5 +446,6 @@ impl Default for SoundDefinition {
       log_bitcrush_frequency: Signal::constant (UserNumber::from_rendered (3600.0_f64.log2())),
       log_lowpass_filter_cutoff: Signal::constant (UserNumber::from_rendered (2500.0_f64.log2())),
       log_highpass_filter_cutoff: Signal::constant (UserNumber::from_rendered (600.0_f64.log2())),
+      bitcrush_resolution_bits: Signal::constant (UserNumber::from_rendered (6.0)),
     }}
 }

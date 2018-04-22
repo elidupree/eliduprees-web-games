@@ -112,7 +112,8 @@ pub struct RenderingState {
   
   pub bitcrush_phase: f64,
   pub bitcrush_last_used_sample: f64,
-  pub after_bitcrush: RenderedSamples,
+  pub after_bitcrush_resolution: RenderedSamples,
+  pub after_bitcrush_frequency: RenderedSamples,
   
   pub final_samples: RenderedSamples,
   
@@ -359,6 +360,13 @@ impl RenderingState {
       sample = self.highpass_state.apply (sample, highpass_filter_frequency, self.constants.supersample_duration);
       self.after_highpass.push (sample, &self.constants);
     }
+    
+    if sound.bitcrush_resolution_bits.enabled {
+      let bits = max (1.0, sound.bitcrush_resolution_bits.sample (time, false));
+      let increment = 4.0/bits.exp2();
+      sample = ((sample/increment + 0.5).round() - 0.5)*increment;
+      self.after_bitcrush_resolution.push (sample, &self.constants);
+    }
 
     if sound.log_bitcrush_frequency.enabled {
       if self.bitcrush_phase >= 1.0 {
@@ -367,7 +375,7 @@ impl RenderingState {
         self.bitcrush_last_used_sample = sample; 
       }
       sample = self.bitcrush_last_used_sample;
-      self.after_bitcrush.push (sample, &self.constants);
+      self.after_bitcrush_frequency.push (sample, &self.constants);
      
       let bitcrush_frequency = sound.log_bitcrush_frequency.sample(time, false).exp2();
       self.bitcrush_phase += bitcrush_frequency*self.constants.supersample_duration;
