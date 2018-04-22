@@ -156,9 +156,6 @@ impl<T: UserNumberType> Default for UserNumber <T> {
 }
 
 
-//js_serializable! (UserNumber) ;
-//js_deserializable! (UserNumber) ;
-
 pub type UserFrequency = UserNumber <FrequencyType>;
 pub type UserTime = UserNumber <TimeType>;
 
