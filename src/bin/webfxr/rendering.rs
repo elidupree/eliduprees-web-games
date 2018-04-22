@@ -363,8 +363,13 @@ impl RenderingState {
     
     if sound.bitcrush_resolution_bits.enabled {
       let bits = max (1.0, sound.bitcrush_resolution_bits.sample (time, false));
-      let increment = 4.0/bits.exp2();
-      sample = ((sample/increment + 0.5).round() - 0.5)*increment;
+      let floor_bits = bits.floor();
+      let bits_fraction = bits - floor_bits;
+      let increment = 4.0/floor_bits.exp2();
+      let sample_increments = (sample+1.0)/increment;
+      let sample_increments_rounded = sample_increments.round();
+      let sample_fraction = sample_increments - sample_increments_rounded;
+      sample = if sample_fraction.abs() > 0.25*(2.0 - bits_fraction) {sample_increments_rounded + sample_fraction.signum()*0.5} else {sample_increments_rounded}*increment - 1.0;
       self.after_bitcrush_resolution.push (sample, &self.constants);
     }
 
