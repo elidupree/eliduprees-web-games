@@ -14,6 +14,10 @@ p.disclaimer {font-size: 200%; text-align: center; margin:0.4em 0.8em;}
 /*
 #panels {display: flex; justify-content: center; flex-wrap: wrap; }
 */
+
+#app {display: flex;}
+.left_column {}
+
 .main_grid {display: grid; grid-template-columns: 1fr 0fr 0fr 0fr 0fr 1fr;}
 .signal_toggle {grid-column: 2 / span 1; }
 .labeled_input.numeric, .effect_header, .odd_harmonics_toggle, .view_toggle {grid-column: 3 / span 1; white-space: nowrap;}
@@ -54,7 +58,9 @@ input[type='button'].down {
     <!-- eliduprees-website-source body -->
     <h1>WebFXR</h1>
     <p>Inspired by <a href="https://www.bfxr.net">Bfxr</a>. Generate sound effects for computer games. You have full rights to all sounds you make with WebFXR.</p>
-    <div id="main_grid" class="main_grid"></div>
+    
+    <div id="app"></div>
+    
     <p>Notes for audio nerds:</p>
     <ul>
     <li>"Volume" is measured in decibels of amplitude above -40, because positive numbers are easier to work with. (Normally, 0.0 dB represents the maximum amplitude of 1.0, but here, 40.0 dB represents that.)</li>

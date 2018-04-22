@@ -1,7 +1,8 @@
 use std::rc::Rc;
 use std::str::FromStr;
-use serde::{Serialize};
-use serde::de::DeserializeOwned;
+use std::fmt::Debug;
+use serde::{Serialize, Deserialize, Serializer, Deserializer};
+use serde::de::{DeserializeOwned, Error};
 
 use super::*;
 
@@ -13,7 +14,7 @@ pub const MAX_RENDER_LENGTH: f64 = 10.0;
 macro_rules! zero_information_number_type {
   ($Enum: ident, $Variant: ident, $Difference: ident, $name: expr, | $value: ident | $render: expr, | $rendered: ident | $from_rendered: expr) => {
 
-#[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Derivative)]
+#[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Debug, Derivative)]
 #[derivative (Default)]
 pub enum $Enum {
   #[derivative (Default)]
@@ -93,26 +94,24 @@ zero_information_number_type!{
   | rendered | format!("{:.3}", rendered)
 }
 
-#[derive (Clone, PartialEq, Serialize, Deserialize, Derivative)]
+#[derive (Clone, PartialEq, Serialize, Deserialize, Debug, Derivative)]
 #[derivative (Default)]
 pub enum VolumeType {
   #[derivative (Default)]
   DecibelsAbove(#[derivative (Default (value = "DEFAULT_DECIBEL_BASE"))] f64),
 }
 
-pub trait UserNumberType: 'static + Clone + PartialEq + Serialize + DeserializeOwned + Default {
+pub trait UserNumberType: 'static + Clone + PartialEq + Serialize + DeserializeOwned + Debug + Default {
   type DifferenceType: UserNumberType;
   fn render (&self, value: & str)->Option<f64>;
   fn approximate_from_rendered (&self, rendered: f64)->String;
   fn unit_name (&self)->&'static str;
   fn currently_used (_state: & State)->Self {Self::default()}
 }
-#[derive (Clone, PartialEq, Serialize, Deserialize)]
+#[derive (Clone, PartialEq)]
 pub struct UserNumber <T: UserNumberType> {
   pub source: String,
   pub rendered: f64,
-  // Hacky workaround for https://github.com/rust-lang/rust/issues/41617 (see https://github.com/serde-rs/serde/issues/943)
-  #[serde(deserialize_with = "::serde::Deserialize::deserialize")]
   pub value_type: T,
 }
 
@@ -152,6 +151,22 @@ impl<T: UserNumberType> UserNumber <T> {
 impl<T: UserNumberType> Default for UserNumber <T> {
   fn default ()->Self {
     Self::from_rendered(1.0)
+  }
+}
+
+impl<T: UserNumberType> Serialize for UserNumber <T> {
+  fn serialize <S: Serializer> (&self, serializer: S)->Result <S::Ok, S::Error> {
+    (self.value_type.clone(), self.source.clone()).serialize (serializer)
+  }
+}
+
+impl<'de, T: UserNumberType> Deserialize<'de> for UserNumber <T> {
+  fn deserialize <D: Deserializer<'de>> (deserializer: D)->Result <Self, D::Error> {
+    let (value_type, source): (T, String) = Deserialize::deserialize(deserializer)?;
+    match Self::new(value_type.clone(), source.clone()) {
+      Some (result) => Ok (result),
+      None => Err (D::Error::custom (format!("{} isn't a valid value of type {:?}", source, value_type))),
+    }
   }
 }
 

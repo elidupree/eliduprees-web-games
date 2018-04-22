@@ -6,6 +6,7 @@ extern crate eliduprees_web_games;
 #[macro_use]
 extern crate stdweb;
 extern crate serde;
+extern crate serde_json;
 #[macro_use]
 extern crate serde_derive;
 #[macro_use]
@@ -95,8 +96,14 @@ fn redraw(state: & Rc<RefCell<State>>) {
   let envelope_samples = display_samples (sample_rate, sound.duration(), | time | sound.envelope.sample (time));
       
   js!{clear_callbacks();}  
+  let app_element = js!{ return $("<div>", {id: "app"});};
+  let app_element = & app_element;
+  let left_column = js!{
+    return $("<div>", {id: "left_column", class: "left_column"}).appendTo (@{app_element});
+  };
+  let left_column = & left_column;
   let grid_element = js!{
-    return $("<div>", {id: "main_grid", class: "main_grid"});
+    return $("<div>", {id: "main_grid", class: "main_grid"}).appendTo (@{app_element});
   };
   let grid_element = &grid_element;
   
@@ -105,7 +112,7 @@ fn redraw(state: & Rc<RefCell<State>>) {
   let final_samples = guard.rendering_state.final_samples();
   let main_canvas = final_samples.canvas.clone();
   setup_rendered_canvas (state, Rc::new (| state | state.final_samples()), 100);
-  js!{@{grid_element}.append (@{main_canvas}.parent().css("grid-row", @{rows}+" / span 5"));}
+  js!{@{left_column}.append (@{main_canvas}.parent());}
   //rows += 1;
       
   let play_button = assign_row (rows, button_input ("Play",
@@ -113,32 +120,28 @@ fn redraw(state: & Rc<RefCell<State>>) {
       play (&mut state.borrow_mut(), Rc::new (| state | state.final_samples()));
     }}
   ));
-  js!{@{grid_element}.append (@{play_button});}
-  rows += 1;
+  js!{@{left_column}.append (@{play_button});}
   
   let loop_button = assign_row (rows, checkbox_input (state, "loop", "Loop", getter! (state => state.loop_playback)));
-  js!{@{grid_element}.append (@{loop_button});}
-  rows += 1;
+  js!{@{left_column}.append (@{loop_button});}
   
   let undo_button = assign_row (rows, button_input ("Undo (z)",
     { let state = state.clone(); move || undo (&state) }
   ));
-  js!{@{grid_element}.append (@{undo_button});}
-  rows += 1;
+  js!{@{left_column}.append (@{undo_button});}
   
   let redo_button = assign_row (rows, button_input ("Redo (shift-Z)",
     { let state = state.clone(); move || redo (&state) }
   ));
-  js!{@{grid_element}.append (@{redo_button});}
-  rows += 1;
+  js!{@{left_column}.append (@{redo_button});}
       
   let randomize_button = assign_row (rows, button_input ("Randomize",
     input_callback_nullary (state, move | state | {
       state.sound = random_sound (&mut rand::thread_rng());
     })
   ));
-  js!{@{grid_element}.append (@{randomize_button});}
-  rows += 1;
+  js!{@{left_column}.append (@{randomize_button});}
+  js!{@{left_column}.append ($("<textarea>").text (@{serde_json::to_string_pretty (sound).unwrap()}));}
   
 
   
@@ -204,7 +207,7 @@ fn redraw(state: & Rc<RefCell<State>>) {
   
   //js! {console.log("rendering took this many milliseconds: " + (Date.now() - window.before_render));}
   
-  js!{morphdom($(".main_grid")[0], @{grid_element}[0]);} 
+  js!{morphdom($("#app")[0], @{app_element}[0]);} 
   
   }
 }
