@@ -318,33 +318,33 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     element
   }
 
-  pub fn numeric_input <U: UserNumberType> (&self, id: & str, name: & str, slider_range: [f64; 2], getter: Getter <State, UserNumber <U>>)->Value {
+  pub fn numeric_input <U: UserNumberType> (&self, id: & str, name: & str, slider_range: [f64; 2], slider_step: f64, getter: Getter <State, UserNumber <U>>)->Value {
     let current_value = getter.get (&self.state.borrow()).clone();
     self.assign_row(NumericalInputSpecification {
       state: self.state,
       id: id,
       name: name, 
       slider_range: slider_range,
-      slider_step: self.info.untyped.slider_step,
+      slider_step: slider_step,
       current_value: current_value,
       input_callback: input_callback (self.state, move | state, value: UserNumber <U> | *getter.get_mut (state) = value),
     }.render())
   }
 
   pub fn time_input (&self, id: & str, name: & str, getter: Getter <State, UserTime>)->Value {
-    self.numeric_input (id, name, [0.0, 3.0], getter)
+    self.numeric_input (id, name, [0.0, 3.0], 0.0, getter)
   }
   
   pub fn value_input (&self, id: & str, name: & str, getter: Getter <State, UserNumber <T>>)->Value {
-    self.numeric_input (id, name, self.info.untyped.slider_range, getter)
+    self.numeric_input (id, name, self.info.untyped.slider_range, self.info.untyped.slider_step, getter)
   }
   
   pub fn difference_input (&self, id: & str, name: & str, getter: Getter <State, UserNumber <T::DifferenceType>>)->Value {
-    self.numeric_input (id, name, [-self.info.untyped.difference_slider_range, self.info.untyped.difference_slider_range], getter)
+    self.numeric_input (id, name, [-self.info.untyped.difference_slider_range, self.info.untyped.difference_slider_range], 0.0, getter)
   }
   
   pub fn frequency_input (&self, id: & str, name: & str, getter: Getter <State, UserFrequency>)->Value {
-    self.numeric_input (id, name, [1.0f64.log2(), 20f64.log2()], getter)
+    self.numeric_input (id, name, [1.0f64.log2(), 20f64.log2()], 0.0, getter)
   }
   
   pub fn checkbox_input (&self, id: & str, name: & str, getter: Getter <State, bool>)->Value {
