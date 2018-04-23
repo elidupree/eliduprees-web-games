@@ -365,11 +365,13 @@ impl RenderingState {
       let bits = max (1.0, sound.bitcrush_resolution_bits.sample (time, false));
       let floor_bits = bits.floor();
       let bits_fraction = bits - floor_bits;
-      let increment = 4.0/floor_bits.exp2();
+      let used_bits = if rand::thread_rng().gen::<f64>() < bits_fraction {floor_bits + 1.0} else {floor_bits};
+      let increment = 4.0/used_bits.exp2();
       let sample_increments = (sample+1.0)/increment;
-      let sample_increments_rounded = sample_increments.round();
-      let sample_fraction = sample_increments - sample_increments_rounded;
-      sample = if sample_fraction.abs() > 0.25*(2.0 - bits_fraction) {sample_increments_rounded + sample_fraction.signum()*0.5} else {sample_increments_rounded}*increment - 1.0;
+      let sample_increments_floor = sample_increments.floor();
+      let sample_increments_fraction = sample_increments - sample_increments_floor;
+      let used_increments = if rand::thread_rng().gen::<f64>() < sample_increments_fraction {sample_increments_floor + 1.0} else {sample_increments_floor};
+      sample = used_increments*increment - 1.0;
       self.after_bitcrush_resolution.push (sample, &self.constants);
     }
 
