@@ -276,6 +276,7 @@ impl <'a, F: 'static + Fn (UserNumber <T>), T: UserNumberType> NumericalInputSpe
         if (window.webfxr_scrolling) {return;}
         var parent = $("#"+@{self.id});
         var number_input = parent.children ("input[type=number]");
+        if (number_input.prop ("disabled")) {return;}
         var value = @{to_rendered_callback} (number_input.val());
         var range_input = parent.children ("input[type=range]");
         if (isNaN (value)) {var value = range_input[0].valueAsNumber;}
@@ -362,6 +363,9 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
       
   let container = self.main_grid;
   
+  let disabled = self.info.untyped.can_disable && !signal.enabled;
+  let maybe_disable = | value | { if disabled {js!{@{&value}.prop ("disabled", true)};} value };
+  
   //js!{@{& container}.append (@{self.info.untyped.name} + ": ");}
   
   let initial_value_input = self.value_input (
@@ -372,7 +376,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   
   js!{@{& container}.append (@{&initial_value_input})}
   //let input_height = js!{ return @{&initial_value_input}.outerHeight()};
-  let mut label = self.assign_row(js!{ return @{initial_value_input}.children("label");});
+  let mut label = self.assign_row(js!{ return @{&initial_value_input}.children("label");});
   if self.info.untyped.can_disable {
     js!{@{label}.remove();}
     let toggle = self.checkbox_input (
@@ -389,7 +393,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     let info = self.info.untyped.clone();
     let duration = sound.duration();
     let getter = self.info.getter.clone();
-    let buttons = self.assign_row(js!{
+    let buttons = maybe_disable(self.assign_row(js!{
       var menu = $("<select>", {class: "add_effect_buttons"}).append (
         $("<option>", {selected: true}).text("Add effect..."),
         $("<option>").text(@{self.info.untyped.name}+" jump"),
@@ -409,10 +413,12 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
         })}(event.target.selectedIndex)
       });
       return menu;
-    });
+    }));
     
     js!{ @{& container}.append (@{buttons}); }
   }
+  
+  maybe_disable(js!{ return @{& initial_value_input}.children();});
   
     if let Some(ref rendered_getter) = self.info.rendered_getter {
       let rendered = (rendered_getter) (& guard.rendering_state);
@@ -428,6 +434,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
       "Odd harmonics only",
       getter! (state => state.sound.odd_harmonics)
     );
+    maybe_disable(js!{ return @{& toggle}.children();});
     js!{@{&toggle}.appendTo(@{& container}).addClass("odd_harmonics_toggle")}
     *self.rows += 1;
   }
@@ -456,9 +463,9 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     
   if effects_shown {for (index, effect) in signal.effects.iter().enumerate() {
     let effect_getter = self.info.getter.clone() + getter!(signal => signal.effects [index]);
-    let delete_button = button_input ("Delete",
+    let delete_button = maybe_disable (button_input ("Delete",
       input_callback_gotten_nullary (self.state, self.info.getter.clone(), move | signal | {signal.effects.remove (index);})
-    );
+    ));
     macro_rules! effect_editors {
       (
         $([
@@ -473,11 +480,13 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
             js!{@{& container}.append (@{header});}
             *self.rows += 1;
             $(
-              js!{@{& container}.append (@{self.$input_method(
+              let input = self.$input_method(
                 & format! ("{}_{}_{}", & self.info.untyped.id, index, stringify! ($field)),
                 $name,
                 effect_getter.clone() + variant_field_getter! (SignalEffect::$Variant => $field)
-              )}.addClass("signal_effect input"))}
+              );
+              maybe_disable(js!{ return @{& input}.children();});
+              js!{@{& container}.append (@{& input}.addClass("signal_effect input"))}
               *self.rows += 1;
             )*
           },)*
