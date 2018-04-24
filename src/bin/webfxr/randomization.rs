@@ -80,6 +80,7 @@ pub fn random_sound <G: Rng>(generator: &mut G)->SoundDefinition {
     waveform: random_waveform(generator),
     envelope: random_envelope (generator),
     odd_harmonics: generator.gen(),
+    soft_clipping: generator.gen(),
     ..Default::default()
   };
   struct Visitor <'a, G: 'a + Rng> (& 'a mut G, f64);
