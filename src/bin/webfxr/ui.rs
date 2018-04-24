@@ -132,7 +132,6 @@ pub fn menu_input <T: 'static + Eq + Clone> (state: &Rc<RefCell<State>>, getter:
 }
 
 pub fn waveform_input (state: &Rc<RefCell<State>>, id: & str, name: & str, getter: Getter <State, Waveform>)->Value {
-  let current_value = getter.get (&state.borrow()).clone();
   RadioInputSpecification {
     state: state, id: id, name: name,
     options: &[
@@ -142,8 +141,7 @@ pub fn waveform_input (state: &Rc<RefCell<State>>, id: & str, name: & str, gette
       (Waveform::Sawtooth, "Sawtooth"),
       (Waveform::WhiteNoise, "White noise"),
     ],
-    current_value: current_value,
-    input_callback: input_callback_gotten (state, getter, | target, value: Waveform | *target = value),
+    getter: getter,
   }.render()
   /*let result = js!{return $("<div>", {class: "labeled_input radio"}).append (
     $("<label>", {text:@{name} + ": "}),
@@ -162,33 +160,33 @@ pub fn waveform_input (state: &Rc<RefCell<State>>, id: & str, name: & str, gette
 
 //fn round_step (input: f64, step: f64)->f64 {(input*step).round()/step}
 
-pub struct RadioInputSpecification <'a, T: 'a, F> {
+pub struct RadioInputSpecification <'a, T: 'a> {
   pub state: & 'a Rc<RefCell<State>>,
   pub id: & 'a str,
   pub name: & 'a str,
   pub options: & 'a [(T, & 'a str)],
-  pub current_value: T,
-  pub input_callback: F,
+  pub getter: Getter <State, T>,
 }
 
-impl <'a, F: 'static + Fn (T), T: Eq> RadioInputSpecification <'a, T, F>
+impl <'a, T: Clone + Eq + 'static> RadioInputSpecification <'a, T>
   where
     T: JsSerialize,
     T: TryFrom<Value>,
     Value: TryInto<T>,
     <Value as TryInto<T>>::Error: ::std::fmt::Debug {
   pub fn render (self)->Value {
+    let current_value = self.getter.get (& self.state.borrow()).clone();
     let result = js!{return $("<div>", {class: "labeled_input radio"}).append (
       $("<label>", {text:@{self.name} + ":"})
     );};
     
     let update = js!{
-      return function (value) {@{self.input_callback}(value)}
+      return function (value) {@{input_callback_gotten (self.state, self.getter, | target, value: T | *target = value)}(value)}
     };
     
     for &(ref value, name) in self.options.iter() {
       let input = js!{ return on ($("<input>", {type: "button", id: @{self.id}+"_radios_" + @{&value}, value: @{name}}), "click", function() {@{& update} (@{&value})});};
-      if *value == self.current_value {
+      if *value == current_value {
         js!{ @{&input}.addClass("down"); }
       }
       js!{ @{&result}.append (@{input}); }

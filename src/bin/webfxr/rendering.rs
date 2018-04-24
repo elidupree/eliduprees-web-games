@@ -386,6 +386,10 @@ impl RenderingState {
       self.bitcrush_phase += bitcrush_frequency*self.constants.supersample_duration;
     }
     
+    if sound.soft_clipping {
+      sample = sample/(1.0 + sample.abs());
+    }
+    
     self.final_samples.push (sample, &self.constants) ;
     
     let frequency = sound.log_frequency.sample(time, false).exp2();

@@ -290,6 +290,7 @@ pub struct SoundDefinition {
   pub log_highpass_filter_cutoff: Signal <FrequencyType>,
   pub bitcrush_resolution_bits: Signal <DimensionlessType>,
   pub log_bitcrush_frequency: Signal <FrequencyType>,
+  pub soft_clipping: bool,
 }
 
 signals_definitions! {
@@ -447,5 +448,6 @@ impl Default for SoundDefinition {
       log_lowpass_filter_cutoff: Signal::constant (UserNumber::from_rendered (2500.0_f64.log2())),
       log_highpass_filter_cutoff: Signal::constant (UserNumber::from_rendered (600.0_f64.log2())),
       bitcrush_resolution_bits: Signal::constant (UserNumber::from_rendered (6.0)),
+      soft_clipping: false,
     }}
 }

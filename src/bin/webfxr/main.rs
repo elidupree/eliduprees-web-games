@@ -193,7 +193,7 @@ fn redraw(state: & Rc<RefCell<State>>) {
   
   js!{@{grid_element}.append (@{assign_row(rows, js!{ return @{waveform_canvas}.parent()})});}
   redraw_waveform_canvas (& guard, 0.0);
-  js!{@{grid_element}.append (@{label},@{waveform_input}.addClass("sound_waveform_input"));}
+  js!{@{grid_element}.append (@{label},@{waveform_input}.addClass("sound_radio_input"));}
   rows += 1;
   
   js!{ @{grid_element}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{waveform_start}+" / "+@{rows})); }
@@ -212,8 +212,24 @@ fn redraw(state: & Rc<RefCell<State>>) {
     }
   }
   
+  {
   let mut visitor = Visitor (state, &mut rows, grid_element);
   for caller in sound.visit_callers::<Visitor>() {(caller)(&mut visitor, sound);}
+  }
+  
+  let clipping_input = assign_row (rows, RadioInputSpecification {
+    state: state, id: "clipping", name: "Clipping behavior", getter: getter! (state => state.sound.soft_clipping),
+    options: &[
+      (false, "Hard clipping"),
+      (true, "Soft clipping"),
+    ],  
+  }.render());
+  let label = assign_row(rows, js!{ return @{& clipping_input}.children("label").first();});
+  js!{@{&label}.addClass("toplevel_input_label")}
+  js!{ @{grid_element}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{rows}+" / span 1")); }
+  js!{@{grid_element}.append (@{label},@{clipping_input}.addClass("sound_radio_input"));}
+  rows += 1;
+
   
   //js! {window.before_render = Date.now();}
   //let rendered: TypedArray <f64> = sound.render (44100).as_slice().into();
