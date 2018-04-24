@@ -229,6 +229,20 @@ fn redraw(state: & Rc<RefCell<State>>) {
   js!{ @{grid_element}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{rows}+" / span 1")); }
   js!{@{grid_element}.append (@{label},@{clipping_input}.addClass("sound_radio_input"));}
   rows += 1;
+  
+  
+  let sample_rate_input = assign_row (rows, RadioInputSpecification {
+    state: state, id: "sample_rate", name: "Output sample rate", getter: getter! (state => state.sound.output_sample_rate),
+    options: &[
+      (44100, "44100"),
+      (48000, "48000"),
+    ],  
+  }.render());
+  let label = assign_row(rows, js!{ return @{& sample_rate_input}.children("label").first();});
+  js!{@{&label}.addClass("toplevel_input_label")}
+  js!{ @{grid_element}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{rows}+" / span 1")); }
+  js!{@{grid_element}.append (@{label},@{sample_rate_input}.addClass("sound_radio_input"));}
+  rows += 1;
 
   
   //js! {window.before_render = Date.now();}
