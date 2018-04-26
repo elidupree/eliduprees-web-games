@@ -224,6 +224,7 @@ impl SoundDefinition {
     let mut result = 0.0;
     let harmonics = if self.harmonics.enabled {max (1.0, min (100.0, self.harmonics.sample (time, true)))} else {1.0};
     let skew = logistic_curve (self.waveform_skew.sample (time, true));
+    let mut total = 0.0;
     for index in 0..harmonics.ceil() as usize {
       let mut harmonic = (index + 1) as f64;
       let fraction = if harmonic <= harmonics {1.0} else {harmonics + 1.0 - harmonic};
@@ -235,9 +236,11 @@ impl SoundDefinition {
         harmonic_phase = harmonic_phase - harmonic_phase.floor();
         harmonic_phase = if harmonic_phase < skew {harmonic_phase*0.5/skew} else {0.5 + (harmonic_phase - skew)*0.5/(1.0 - skew)};
       }
-      result += self.waveform.sample_simple (harmonic_phase).unwrap()*fraction/harmonic;
+      let amplitude = fraction/harmonic;
+      total += amplitude;
+      result += self.waveform.sample_simple (harmonic_phase).unwrap()*amplitude;
     }
-    result
+    result/total
   }
 }
 
