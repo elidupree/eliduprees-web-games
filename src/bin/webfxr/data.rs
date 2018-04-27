@@ -212,66 +212,73 @@ pub struct Envelope {
   pub decay: UserTime,
 }
 
-#[derive (Clone)]
+pub trait SignalIdentityGetters {
+  type NumberType: UserNumberType;
+  fn definition_getter()->Getter <SoundDefinition, Signal <Self::NumberType>>;
+  fn rendering_getter()->Getter <RenderingState, SignalRenderingState>;
+}
+pub trait SignalIdentity: SignalIdentityGetters {
+  fn info()->SignalInfo;
+}
+
+#[derive (Clone, Derivative)]
+#[derivative (Default)]
 pub struct SignalInfo {
   pub id: & 'static str,
   pub name: & 'static str,
   pub slider_range: [f64; 2],
+  pub default: f64,
+  #[derivative (Default (value = "0.0"))]
   pub slider_step: f64,
   pub difference_slider_range: f64,
+  #[derivative (Default (value = "0.7"))]
   pub average_effects: f64,
+  #[derivative (Default (value = "true"))]
   pub can_disable: bool,
 }
 
-#[derive (Clone)]
-pub struct TypedSignalInfo<T: UserNumberType> {
-  pub untyped: SignalInfo,
-  pub getter: Getter <State, Signal <T>>,
-  pub rendered_getter: Option <Rc<Fn(& RenderingState)->& RenderedSamples>>,
-}
-
 pub trait SignalVisitor {
-  fn visit <T: UserNumberType> (&mut self, info: & TypedSignalInfo <T>, signal: & Signal <T>);
+  fn visit <T: SignalIdentity> (&mut self);
 }
 
-pub trait SignalVisitorMut {
-  fn visit_mut <T: UserNumberType> (&mut self, info: & TypedSignalInfo <T>, signal: &mut Signal <T>);
-}
 
 macro_rules! signals_definitions {
-  ($(($field: ident, $NumberType: ident, $rendered_field: expr, $info: expr),)*) => {
-    impl SoundDefinition {
-      pub fn signals_static_info()->Vec<SignalInfo> {
-        vec![
-          $($info,)*
-        ]
-      }
-      pub fn visit_callers <T: SignalVisitor> (&self)->Vec<Box<Fn(&mut T, &SoundDefinition)>> {
-        vec![
-          $(Box::new (| visitor, sound | visitor.visit (& TypedSignalInfo::$field(), &sound.$field)),)*
-        ]
-      }
-      pub fn visit_mut_callers <T: SignalVisitorMut> (&self)->Vec<Box<Fn(&mut T, &mut SoundDefinition)>> {
-        vec![
-          $(Box::new (| visitor, sound | visitor.visit_mut (& TypedSignalInfo::$field(), &mut sound.$field)),)*
-        ]
-      }
+  ($([$Identity: $field, ident, $NumberType: ident,])*) => {
+
+#[derive (Clone, PartialEq, Serialize, Deserialize)]
+pub struct Signals {
+  $($field: Signal <$NumberType>,)*
+}
+#[derive (Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct SignalsRenderingState {
+  $($field: SignalRenderingState,)*
+}
+
+impl Default for Signals {
+  fn default()->Self {
+    Signals {
+      $($field: Signal::constant (UserNumber::from_rendered ($Identity::info().default)))*
     }
-    
-    impl SignalInfo {
-      $(pub fn $field ()->Self {
-        $info
-      })*
+  }
+}
+
+$(
+  impl SignalIdentityGetters for $Identity {
+    type NumberType = $NumberType;
+    fn definition_getter()->Getter <SoundDefinition, Signal <Self::NumberType>> {
+      getter! (sound => sound.$field)
     }
-    $(impl TypedSignalInfo <$NumberType> {
-      pub fn $field ()->Self {
-        TypedSignalInfo {
-          untyped: $info,
-          getter: getter! (state => state.sound.$field),
-          rendered_getter: $rendered_field,
-        }
-      }
-    })*
+    fn rendering_getter()->Getter <RenderingState, SignalRenderingState> {
+      getter! (Rendering => rendering.$field)
+    }
+  }
+)*
+
+pub fn visit_signals <Visitor: SignalVisitor> (visitor: &mut Visitor) {
+  $(
+    visitor.visit::<$Identity>();
+  )*
+}
   }
 }
 
@@ -280,102 +287,119 @@ macro_rules! signals_definitions {
 pub struct SoundDefinition {
   pub envelope: Envelope,
   pub waveform: Waveform,
-  pub harmonics: Signal <DimensionlessType>,
+  pub signals: Signals,
   pub odd_harmonics: bool,
-  pub waveform_skew: Signal <DimensionlessType>,
-  pub log_frequency: Signal <FrequencyType>,
-  pub volume: Signal <VolumeType>,
-  pub log_flanger_frequency: Signal <FrequencyType>,
-  pub log_lowpass_filter_cutoff: Signal <FrequencyType>,
-  pub log_highpass_filter_cutoff: Signal <FrequencyType>,
-  pub bitcrush_resolution_bits: Signal <DimensionlessType>,
-  pub log_bitcrush_frequency: Signal <FrequencyType>,
   pub soft_clipping: bool,
   pub output_sample_rate: u32,
 }
 
 signals_definitions! {
-  (log_frequency, FrequencyType, Some(Rc::new(|state| &state.after_frequency)), SignalInfo {
+  [LogFrequency, log_frequency, FrequencyType],
+  [Harmonics, harmonics, DimensionlessType],
+  [WaveformSkew, waveform_skew, DimensionlessType],
+  [Volume, volume, VolumeType],
+  [LogFlangerFrequency, log_flanger_frequency, FrequencyType],
+  [LogLowpassFilterCutoff, log_lowpass_filter_cutoff, FrequencyType],
+  [LogHighpassFilterCutoff, log_highpass_filter_cutoff, FrequencyType],
+  [BitcrushResolutionBits, bitcrush_resolution_bits, DimensionlessType],
+  [LogBitcrushFrequency, log_bitcrush_frequency, FrequencyType],
+};
+
+impl SignalIdentity for LogFrequency {
+  fn info()->SignalInfo {SignalInfo {
     id: "frequency",
     name: "Frequency",
     slider_range: [20f64.log2(), 2000f64.log2()],
-    slider_step: 0.0,
+    default: 220.0_f64.log2(),
     difference_slider_range: 2.0,
     average_effects: 2.0,
     can_disable: false,
-  }),
-  (harmonics, DimensionlessType, None, SignalInfo {
+    .. Default::default()
+  }}
+}
+impl SignalIdentity for Harmonics {
+  fn info()->SignalInfo {SignalInfo {
     id: "harmonics",
     name: "Harmonics",
     slider_range: [1.0, 13.0],
+    default: 3.0,
     slider_step: 1.0,
     difference_slider_range: 5.0,
     average_effects: 0.5,
-    can_disable: true,
-  }),
-  (waveform_skew, DimensionlessType, None, SignalInfo {
+    .. Default::default()
+  }}
+}
+impl SignalIdentity for WaveformSkew {
+  fn info()->SignalInfo {SignalInfo {
     id: "waveform_skew",
     name: "Waveform skew",
     slider_range: [-5.0, 5.0],
-    slider_step: 0.0,
+    default: -2.0,
     difference_slider_range: 5.0,
-    average_effects: 0.7,
-    can_disable: true,
-  }),
-  (volume, VolumeType, Some(Rc::new(|state| &state.after_volume)), SignalInfo {
+    .. Default::default()
+  }}
+}
+impl SignalIdentity for Volume {
+  fn info()->SignalInfo {SignalInfo {
     id: "volume",
     name: "Volume",
     slider_range: [DEFAULT_DECIBEL_BASE/OCTAVES_TO_DECIBELS,0.0],
-    slider_step: 0.0,
+    default: -2.0,
     difference_slider_range: 2.0,
-    average_effects: 0.7,
     can_disable: false,
-  }),
-  (log_flanger_frequency, FrequencyType, Some(Rc::new(|state| &state.after_flanger)), SignalInfo {
+    .. Default::default()
+  }}
+}
+impl SignalIdentity for LogFlangerFrequency {
+  fn info()->SignalInfo {SignalInfo {
     id: "flanger_frequency",
     name: "Flanger frequency",
     slider_range: [20f64.log2(), 20000f64.log2()],
-    slider_step: 0.0,
+    default: 1600.0_f64.log2(),
     difference_slider_range: 2.0,
-    average_effects: 0.7,
-    can_disable: true,
-  }),
-  (log_lowpass_filter_cutoff, FrequencyType, Some(Rc::new(|state| &state.after_lowpass)), SignalInfo {
+    .. Default::default()
+  }}
+}
+impl SignalIdentity for LogLowpassFilterCutoff {
+  fn info()->SignalInfo {SignalInfo {
     id: "lowpass",
     name: "Low-pass filter cutoff",
     slider_range: [100f64.log2(), 20000f64.log2()],
-    slider_step: 0.0,
+    default: 2500.0_f64.log2(),
     difference_slider_range: 5.0,
-    average_effects: 0.7,
-    can_disable: true,
-  }),
-  (log_highpass_filter_cutoff, FrequencyType, Some(Rc::new(|state| &state.after_highpass)), SignalInfo {
+    .. Default::default()
+  }}
+}
+impl SignalIdentity for LogHighpassFilterCutoff {
+  fn info()->SignalInfo {SignalInfo {
     id: "highpass",
     name: "High-pass filter cutoff",
     slider_range: [20f64.log2(), 10000f64.log2()],
-    slider_step: 0.0,
+    default: 600.0_f64.log2(),
     difference_slider_range: 5.0,
-    average_effects: 0.7,
-    can_disable: true,
-  }),
-  (bitcrush_resolution_bits, DimensionlessType, Some(Rc::new(|state| &state.after_bitcrush_resolution)), SignalInfo {
+    .. Default::default()
+  }}
+}
+impl SignalIdentity for BitcrushResolutionBits {
+  fn info()->SignalInfo {SignalInfo {
     id: "bitcrush_resolution_bits",
     name: "Bitcrush resolution bits",
     slider_range: [1.0, 16.0],
+    default: 6.0,
     slider_step: 1.0,
     difference_slider_range: 10.0,
-    average_effects: 0.7,
-    can_disable: true,
-  }),
-  (log_bitcrush_frequency, FrequencyType, Some(Rc::new(|state| &state.after_bitcrush_frequency)), SignalInfo {
+    .. Default::default()
+  }}
+}
+impl SignalIdentity for LogBitcrushFrequency {
+  fn info()->SignalInfo {SignalInfo {
     id: "bitcrush_frequency",
     name: "Bitcrush frequency",
     slider_range: [100f64.log2(), 10000f64.log2()],
-    slider_step: 0.0,
+    default: 3600.0_f64.log2(),
     difference_slider_range: 5.0,
-    average_effects: 0.7,
-    can_disable: true,
-  }),
+    .. Default::default()
+  }}
 }
 
 
@@ -439,16 +463,8 @@ impl Default for SoundDefinition {
   fn default()->Self {SoundDefinition {
       envelope: Envelope {attack: UserNumber::from_rendered (0.1), sustain: UserNumber::from_rendered (0.5), decay: UserNumber::from_rendered (0.5)},
       waveform: Waveform::Sine,
-      harmonics: Signal::constant (UserNumber::from_rendered (3.0)),
+      signals: Default::default(),
       odd_harmonics: false,
-      waveform_skew: Signal::constant (UserNumber::from_rendered (-2.0)),
-      log_frequency: Signal::constant (UserNumber::from_rendered (220.0_f64.log2())),
-      volume: Signal::constant (UserNumber::from_rendered (-2.0)),
-      log_flanger_frequency: Signal::constant (UserNumber::from_rendered (1600.0_f64.log2())),
-      log_bitcrush_frequency: Signal::constant (UserNumber::from_rendered (3600.0_f64.log2())),
-      log_lowpass_filter_cutoff: Signal::constant (UserNumber::from_rendered (2500.0_f64.log2())),
-      log_highpass_filter_cutoff: Signal::constant (UserNumber::from_rendered (600.0_f64.log2())),
-      bitcrush_resolution_bits: Signal::constant (UserNumber::from_rendered (6.0)),
       soft_clipping: false,
       output_sample_rate: 44100,
     }}
