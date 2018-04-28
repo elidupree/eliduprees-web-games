@@ -207,6 +207,7 @@ fn redraw(state: & Rc<RefCell<State>>) {
         state: self.0,
         rows: self.1,
         main_grid: self.2,
+        _marker: PhantomData,
       };
       specification.render();
     }

@@ -214,8 +214,8 @@ pub struct Envelope {
 
 pub trait SignalIdentityGetters {
   type NumberType: UserNumberType;
-  fn definition_getter()->Getter <SoundDefinition, Signal <Self::NumberType>>;
-  fn rendering_getter()->Getter <RenderingState, SignalRenderingState>;
+  fn definition_getter()->Getter <Signals, Signal <Self::NumberType>>;
+  fn rendering_getter()->Getter <SignalsRenderingState, SignalRenderingState>;
 }
 pub trait SignalIdentity: SignalIdentityGetters {
   fn info()->SignalInfo;
@@ -247,11 +247,11 @@ macro_rules! signals_definitions {
 
 #[derive (Clone, PartialEq, Serialize, Deserialize)]
 pub struct Signals {
-  $($field: Signal <$NumberType>,)*
+  $(pub $field: Signal <$NumberType>,)*
 }
 #[derive (Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct SignalsRenderingState {
-  $($field: SignalRenderingState,)*
+  $(pub $field: SignalRenderingState,)*
 }
 
 impl Default for Signals {
@@ -266,10 +266,10 @@ $(
   pub struct $Identity (!);
   impl SignalIdentityGetters for $Identity {
     type NumberType = $NumberType;
-    fn definition_getter()->Getter <SoundDefinition, Signal <Self::NumberType>> {
+    fn definition_getter()->Getter <Signals, Signal <Self::NumberType>> {
       getter! (sound => sound.$field)
     }
-    fn rendering_getter()->Getter <RenderingState, SignalRenderingState> {
+    fn rendering_getter()->Getter <SignalsRenderingState, SignalRenderingState> {
       getter! (rendering => rendering.$field)
     }
   }
@@ -449,11 +449,11 @@ impl Envelope {
 impl SoundDefinition {
   pub fn duration(&self)->f64 {
     let mut result = self.envelope.duration();
-    if self.log_flanger_frequency.enabled {
-      result += 1.0/self.log_flanger_frequency.range() [0].exp2();
+    if self.signals.log_flanger_frequency.enabled {
+      result += 1.0/self.signals.log_flanger_frequency.range() [0].exp2();
     }
-    if self.log_bitcrush_frequency.enabled {
-      result += 1.0/self.log_bitcrush_frequency.range() [0].exp2();
+    if self.signals.log_bitcrush_frequency.enabled {
+      result += 1.0/self.signals.log_bitcrush_frequency.range() [0].exp2();
     }
     result
   }

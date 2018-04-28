@@ -85,6 +85,7 @@ impl Default for RenderedSamples {
 }
 
 
+#[derive (Default)]
 pub struct SignalRenderingState {
   pub samples: Vec<f64>,
   pub rendered_after: RenderedSamples,
@@ -99,6 +100,7 @@ pub struct RenderingStateConstants {
   pub num_supersamples: usize,
   pub supersample_duration: f64,
   pub samples_per_illustrated: usize,
+  pub samples_per_signal_sample: usize,
 }
 
 #[derive (Default)]
@@ -290,7 +292,7 @@ impl<T: UserNumberType> SignalEffect <T> {
 
 impl SignalRenderingState {
   fn next_sample <T: UserNumberType> (&mut self, definition: & Signal <T>, index: usize, time: f64, smooth: bool)->f64 {
-    definition.sample (time, smooth);
+    definition.sample (time, smooth)
   }
 }
 
@@ -298,8 +300,8 @@ impl RenderingState {
   pub fn sample_signal <Identity: SignalIdentity> (&mut self, definition: & SoundDefinition, smooth: bool)->f64 {
     let index = self.next_supersample;
     let time = self.next_time;
-    let rendering = Identity::rendering_getter().get_mut (self.signals);
-    let sample = rendering.next_sample (Identity::definition_getter().get (definition.signals), index, time, smooth);
+    let rendering = Identity::rendering_getter().get_mut (&mut self.signals);
+    let sample = rendering.next_sample (Identity::definition_getter().get (& definition.signals), index, time, smooth);
     if index % self.constants.samples_per_signal_sample == 0 {
       rendering.samples.push (sample);
     }
@@ -337,23 +339,23 @@ impl RenderingState {
     }
     
     let mut result = 0.0;
-    let harmonics = if sound.harmonics.enabled {max (1.0, min (100.0, self.sample_signal::<Harmonics> (sound, true)))} else {1.0};
+    let harmonics = if sound.signals.harmonics.enabled {max (1.0, min (100.0, self.sample_signal::<Harmonics> (sound, true)))} else {1.0};
     let skew = logistic_curve (self.sample_signal::<WaveformSkew> (sound, true));
     let mut total = 0.0;
     for index in 0..harmonics.ceil() as usize {
       let mut harmonic = (index + 1) as f64;
       let fraction = if harmonic <= harmonics {1.0} else {harmonics + 1.0 - harmonic};
-      if self.odd_harmonics {
+      if sound.odd_harmonics {
         harmonic = (index*2 + 1) as f64;
       }
       let mut harmonic_phase = phase*harmonic;
-      if sound.waveform_skew.enabled {
+      if sound.signals.waveform_skew.enabled {
         harmonic_phase = harmonic_phase - harmonic_phase.floor();
         harmonic_phase = if harmonic_phase < skew {harmonic_phase*0.5/skew} else {0.5 + (harmonic_phase - skew)*0.5/(1.0 - skew)};
       }
       let amplitude = fraction/harmonic;
       total += amplitude;
-      result += self.waveform.sample_simple (harmonic_phase).unwrap()*amplitude;
+      result += sound.waveform.sample_simple (harmonic_phase).unwrap()*amplitude;
     }
     
     let sample = result/total;

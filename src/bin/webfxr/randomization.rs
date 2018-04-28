@@ -87,43 +87,43 @@ pub fn random_sound <G: Rng>(generator: &mut G)->SoundDefinition {
   impl<'a, G: Rng> SignalVisitor for Visitor<'a, G> {
     fn visit <Identity: SignalIdentity> (&mut self) {
       let duration = self.0.duration();
-      *Identity::definition_getter() (self.0) = random_signal (self.1, duration, & Identity::info());
+      *Identity::definition_getter().get_mut (&mut self.0.signals) = random_signal (self.1, duration, & Identity::info());
     }
   }
   
   visit_signals (&mut Visitor (&mut sound, generator));
   
   for _attempt in 0..90 {
-    let log_frequency_range = sound.log_frequency.range();
-    let info = SignalInfo::log_frequency();
+    let log_frequency_range = sound.signals.log_frequency.range();
+    let info = LogFrequency::info();
     if log_frequency_range[0] < info.slider_range [0] || log_frequency_range[1] > info.slider_range [1] {
-      sound.log_frequency = random_signal (generator, sound.duration(), &info);
+      sound.signals.log_frequency = random_signal (generator, sound.duration(), &info);
     }
   }
   
   let max_attempts = 90;
   for attempt in 0..max_attempts {
     let last = attempt == max_attempts - 1;
-    let volume_range = sound.volume.range();
+    let volume_range = sound.signals.volume.range();
     if volume_range[1] > -1.0 || volume_range[1] <= -2.0 {
-      sound.volume = random_signal (generator, sound.duration(), &SignalInfo::volume());
+      sound.signals.volume = random_signal (generator, sound.duration(), & Volume::info());
     }
-    let waveform_skew_range = sound.waveform_skew.range();
+    let waveform_skew_range = sound.signals.waveform_skew.range();
     if max (waveform_skew_range [1].abs(), waveform_skew_range [0].abs()) >5.0 {
-      sound.waveform_skew = random_signal (generator, sound.duration(), &SignalInfo::waveform_skew());
+      sound.signals.waveform_skew = random_signal (generator, sound.duration(), & WaveformSkew::info());
     }
-    if sound.log_lowpass_filter_cutoff.range() [0] < sound.log_frequency.range() [1] {
-      let info = SignalInfo::log_lowpass_filter_cutoff();
-      sound.log_lowpass_filter_cutoff = if last {Signal::constant (UserNumber::from_rendered (info.slider_range [1]))}
+    if sound.signals.log_lowpass_filter_cutoff.range() [0] < sound.signals.log_frequency.range() [1] {
+      let info = LogLowpassFilterCutoff::info();
+      sound.signals.log_lowpass_filter_cutoff = if last {Signal::constant (UserNumber::from_rendered (info.slider_range [1]))}
       else {random_signal (generator, sound.duration(), &info)};
     }
-    if sound.log_highpass_filter_cutoff.range() [1] > sound.log_frequency.range() [0] {
-      let info = SignalInfo::log_highpass_filter_cutoff();
-      sound.log_highpass_filter_cutoff = if last {Signal::constant (UserNumber::from_rendered (info.slider_range [0]))}
+    if sound.signals.log_highpass_filter_cutoff.range() [1] > sound.signals.log_frequency.range() [0] {
+      let info = LogHighpassFilterCutoff::info();
+      sound.signals.log_highpass_filter_cutoff = if last {Signal::constant (UserNumber::from_rendered (info.slider_range [0]))}
       else {random_signal (generator, sound.duration(), &info)};
     }
-    if sound.log_bitcrush_frequency.range() [0] < sound.log_frequency.range() [1] {
-      sound.log_bitcrush_frequency = random_signal (generator, sound.duration(), &SignalInfo::log_bitcrush_frequency());
+    if sound.signals.log_bitcrush_frequency.range() [0] < sound.signals.log_frequency.range() [1] {
+      sound.signals.log_bitcrush_frequency = random_signal (generator, sound.duration(), & LogBitcrushFrequency::info());
     }
   }
   
