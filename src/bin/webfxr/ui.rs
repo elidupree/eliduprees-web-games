@@ -362,7 +362,7 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
       let signals_getter = Identity::definition_getter();
       let state_getter = getter! (state => state.sound.signals) + signals_getter.clone();
       let info = Identity::info();
-    let signal = getter.get (& guard.sound.signals);
+    let signal = signals_getter.get (& guard.sound.signals);
     let first_row = *self.rows;
       
   let container = self.main_grid;
@@ -418,8 +418,8 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
     js!{ @{& container}.append (@{buttons}); }
   }
   
-  let rendered = Identity::rendered_getter() (& guard.rendering_state.signals);
-  setup_rendered_canvas (self.state, getter! (rendering => rendering.signals) + Identity::rendered_getter() + getter! (rendered => rendered.rendered_after), 32);
+  let rendered = Identity::rendering_getter().get (& guard.rendering_state.signals);
+  setup_rendered_canvas (self.state, getter! (rendering => rendering.signals) + Identity::rendering_getter() + getter! (rendered => rendered.rendered_after), 32);
   js!{@{& container}.append (@{self.assign_row (js!{ return @{rendered.canvas.clone()}.parent()})});}
       
   *self.rows += 1;

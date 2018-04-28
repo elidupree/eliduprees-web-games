@@ -249,7 +249,7 @@ macro_rules! signals_definitions {
 pub struct Signals {
   $(pub $field: Signal <$NumberType>,)*
 }
-#[derive (Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive (Default)]
 pub struct SignalsRenderingState {
   $(pub $field: SignalRenderingState,)*
 }

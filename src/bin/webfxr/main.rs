@@ -19,6 +19,7 @@ extern crate array_ext;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::{VecDeque, HashSet};
+use std::marker::PhantomData;
 use stdweb::Value;
 use stdweb::unstable::TryInto;
 use stdweb::web::{self, TypedArray};

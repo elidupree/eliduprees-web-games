@@ -328,6 +328,7 @@ impl RenderingState {
     }
      
   }
+
   
   pub fn next_waveform_sample (&mut self, sound: & SoundDefinition)->f64 {
     let time = self.next_time;
@@ -366,36 +367,41 @@ impl RenderingState {
     
     sample
   }
+    
+  /*fn handle_signal <Identity: SignalIdentity> (&mut self, sound: & SoundDefinition, smooth: bool,) {
+    let sample = self.sample_signal::<Identity>
+  }*/
+  
   
   fn superstep (&mut self, sound: & SoundDefinition) {
     let time = self.next_time;
     
     let mut sample = self.next_waveform_sample (sound)*sound.envelope.sample (time);
-    self.after_frequency.push (sample, &self.constants);
+    self.signals.log_frequency.rendered_after.push (sample, &self.constants);
     
     sample *= self.sample_signal::<Volume> (sound, true).exp2();
-    self.after_volume.push (sample, &self.constants);
+    self.signals.volume.rendered_after.push (sample, &self.constants);
     
-    if sound.log_flanger_frequency.enabled {
+    if sound.signals.log_flanger_frequency.enabled {
       let flanger_frequency = self.sample_signal::<LogFlangerFrequency> (sound, true).exp2();
       let flanger_offset = 1.0/flanger_frequency;
-      sample += self.after_volume.resample (time - flanger_offset, & self.constants);
-      self.after_flanger.push (sample, &self.constants);
+      sample += self.signals.volume.rendered_after.resample (time - flanger_offset, & self.constants);
+      self.signals.log_flanger_frequency.rendered_after.push (sample, &self.constants);
     }
     
-    if sound.log_lowpass_filter_cutoff.enabled {
+    if sound.signals.log_lowpass_filter_cutoff.enabled {
       let lowpass_filter_frequency = self.sample_signal::<LogLowpassFilterCutoff> (sound, false).exp2();
       sample = self.lowpass_state.apply (sample, lowpass_filter_frequency, self.constants.supersample_duration);
-      self.after_lowpass.push (sample, &self.constants);
+      self.signals.log_lowpass_filter_cutoff.rendered_after.push (sample, &self.constants);
     }
     
-    if sound.log_highpass_filter_cutoff.enabled {
+    if sound.signals.log_highpass_filter_cutoff.enabled {
       let highpass_filter_frequency = self.sample_signal::<LogHighpassFilterCutoff> (sound, false).exp2();
       sample = self.highpass_state.apply (sample, highpass_filter_frequency, self.constants.supersample_duration);
-      self.after_highpass.push (sample, &self.constants);
+      self.signals.log_highpass_filter_cutoff.rendered_after.push (sample, &self.constants);
     }
     
-    if sound.bitcrush_resolution_bits.enabled {
+    if sound.signals.bitcrush_resolution_bits.enabled {
       let bits = max (1.0, self.sample_signal::<BitcrushResolutionBits> (sound, false));
       let floor_bits = bits.floor();
       let bits_fraction = bits - floor_bits;
@@ -404,17 +410,17 @@ impl RenderingState {
       let sample_increments_rounded = sample_increments.round();
       let sample_fraction = sample_increments - sample_increments_rounded;
       sample = if sample_fraction.abs() > 0.25*(2.0 - bits_fraction) {sample_increments_rounded + sample_fraction.signum()*0.5} else {sample_increments_rounded}*increment - 1.0;
-      self.after_bitcrush_resolution.push (sample, &self.constants);
+      self.signals.bitcrush_resolution_bits.rendered_after.push (sample, &self.constants);
     }
 
-    if sound.log_bitcrush_frequency.enabled {
+    if sound.signals.log_bitcrush_frequency.enabled {
       if self.bitcrush_phase >= 1.0 {
         self.bitcrush_phase -= 1.0;
         if self.bitcrush_phase >1.0 {self.bitcrush_phase = 1.0;}
         self.bitcrush_last_used_sample = sample; 
       }
       sample = self.bitcrush_last_used_sample;
-      self.after_bitcrush_frequency.push (sample, &self.constants);
+      self.signals.log_bitcrush_frequency.rendered_after.push (sample, &self.constants);
      
       let bitcrush_frequency = self.sample_signal::<LogBitcrushFrequency> (sound, false).exp2();
       self.bitcrush_phase += bitcrush_frequency*self.constants.supersample_duration;
