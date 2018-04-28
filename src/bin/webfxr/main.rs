@@ -202,7 +202,7 @@ fn redraw(state: & Rc<RefCell<State>>) {
   
   struct Visitor <'a> (& 'a Rc<RefCell<State>>, & 'a mut u32, & 'a Value);
   impl<'a> SignalVisitor for Visitor<'a> {
-    fn visit <T: UserNumberType> (&mut self, info: & TypedSignalInfo <T>, _signal: & Signal <T>) {
+    fn visit <Identity: SignalIdentity> (&mut self) {
       SignalEditorSpecification {
     state: self.0,
     info: info,
@@ -212,10 +212,7 @@ fn redraw(state: & Rc<RefCell<State>>) {
     }
   }
   
-  {
-  let mut visitor = Visitor (state, &mut rows, grid_element);
-  for caller in sound.visit_callers::<Visitor>() {(caller)(&mut visitor, sound);}
-  }
+  visit_signals (&mut Visitor (state, &mut rows, grid_element));
   
   let clipping_input = assign_row (rows, RadioInputSpecification {
     state: state, id: "clipping", name: "Clipping behavior", getter: getter! (state => state.sound.soft_clipping),

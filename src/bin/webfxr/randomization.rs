@@ -83,21 +83,15 @@ pub fn random_sound <G: Rng>(generator: &mut G)->SoundDefinition {
     soft_clipping: generator.gen(),
     ..Default::default()
   };
-  struct Visitor <'a, G: 'a + Rng> (& 'a mut G, f64);
-  impl<'a, G: Rng> SignalVisitorMut for Visitor<'a, G> {
-    fn visit_mut <T: UserNumberType> (&mut self, info: & TypedSignalInfo <T>, signal: & mut Signal <T>) {
-      *signal = random_signal (self.0, self.1, &info.untyped);
+  struct Visitor <'a, G: 'a + Rng> (& 'a mut SoundDefinition, & 'a mut G);
+  impl<'a, G: Rng> SignalVisitor for Visitor<'a, G> {
+    fn visit <Identity: SignalIdentity> (&mut self) {
+      let duration = self.0.duration();
+      *Identity::definition_getter() (self.0) = random_signal (self.1, duration, & Identity::info());
     }
   }
   
-  {
-    let mut visitor = Visitor (generator, sound.duration());
-    for caller in sound.visit_mut_callers::<Visitor<G>>() {
-      //let hack: Box <Fn (Visitor<G>, &mut SoundDefinition)> = caller;
-      //(hack)(, &mut sound);
-      (caller)(&mut visitor, &mut sound);
-    }
-  }
+  visit_signals (&mut Visitor (&mut sound, generator));
   
   for _attempt in 0..90 {
     let log_frequency_range = sound.log_frequency.range();
