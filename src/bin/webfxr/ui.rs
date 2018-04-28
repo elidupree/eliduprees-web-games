@@ -303,14 +303,14 @@ impl <'a, F: 'static + Fn (UserNumber <T>), T: UserNumberType> NumericalInputSpe
 }
 
 
-pub struct SignalEditorSpecification <'a, T: UserNumberType> {
+pub struct SignalEditorSpecification <'a, Identity: SignalIdentity> {
   pub state: & 'a Rc<RefCell<State>>,
-  pub info: &'a TypedSignalInfo<T>,
   pub rows: &'a mut u32,
   pub main_grid: & 'a Value,
+  pub _marker: PhantomData <Identity>,
 }
 
-impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
+impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
   pub fn assign_row (&self, element: Value)->Value {
     js!{@{&element}.css("grid-row", @{*self.rows}+" / span 1")};
     element
@@ -333,12 +333,14 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     self.numeric_input (id, name, [0.0, 3.0], 0.0, getter)
   }
   
-  pub fn value_input (&self, id: & str, name: & str, getter: Getter <State, UserNumber <T>>)->Value {
-    self.numeric_input (id, name, self.info.untyped.slider_range, self.info.untyped.slider_step, getter)
+  pub fn value_input (&self, id: & str, name: & str, getter: Getter <State, UserNumber <Identity::NumberType>>)->Value {
+    let info = Identity::info();
+    self.numeric_input (id, name, info.slider_range, info.slider_step, getter)
   }
   
-  pub fn difference_input (&self, id: & str, name: & str, getter: Getter <State, UserNumber <T::DifferenceType>>)->Value {
-    self.numeric_input (id, name, [-self.info.untyped.difference_slider_range, self.info.untyped.difference_slider_range], 0.0, getter)
+  pub fn difference_input (&self, id: & str, name: & str, getter: Getter <State, UserNumber <<Identity::NumberType as UserNumberType>::DifferenceType>>)->Value {
+    let info = Identity::info();
+    self.numeric_input (id, name, [-info.difference_slider_range, info.difference_slider_range], 0.0, getter)
   }
   
   pub fn frequency_input (&self, id: & str, name: & str, getter: Getter <State, UserFrequency>)->Value {
@@ -357,44 +359,46 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     
       let guard = self.state.borrow();
       let sound = & guard.sound;
-    let signal = self.info.getter.get (& guard);
+      let signals_getter = Identity::definition_getter();
+      let state_getter = getter! (state => state.sound.signals) + signals_getter.clone();
+      let info = Identity::info();
+    let signal = getter.get (& guard.sound.signals);
     let first_row = *self.rows;
       
   let container = self.main_grid;
   
-  //js!{@{& container}.append (@{self.info.untyped.name} + ": ");}
+  //js!{@{& container}.append (@{info.name} + ": ");}
   
   let initial_value_input = self.value_input (
-    & format! ("{}_initial", & self.info.untyped.id),
-    self.info.untyped.name,
-    self.info.getter.clone() + getter! (signal => signal.initial_value)
+    & format! ("{}_initial", & info.id),
+    info.name,
+    state_getter.clone() + getter! (signal => signal.initial_value)
   );
   
   js!{@{& container}.append (@{&initial_value_input})}
   //let input_height = js!{ return @{&initial_value_input}.outerHeight()};
   let mut label = self.assign_row(js!{ return @{initial_value_input}.children("label");});
-  if self.info.untyped.can_disable {
+  if info.can_disable {
     js!{@{label}.remove();}
     let toggle = self.checkbox_input (
-      & format! ("{}_enabled", & self.info.untyped.id),
-      self.info.untyped.name,
-      self.info.getter.clone() + getter! (signal => signal.enabled)
+      & format! ("{}_enabled", & info.id),
+      info.name,
+      state_getter.clone() + getter! (signal => signal.enabled)
     );
     js!{@{&toggle}.appendTo(@{& container}).addClass("signal_toggle")}
     label = self.assign_row(js!{ return @{toggle}.children("label");});
   }
   js!{@{label}.append(":").appendTo(@{& container}).addClass("toplevel_input_label")}
   {
-    //let range = self.info.untyped.difference_slider_range;
-    let info = self.info.untyped.clone();
+    let info = info.clone();
     let duration = sound.duration();
-    let getter = self.info.getter.clone();
+    let getter = state_getter.clone();
     let buttons = self.assign_row(js!{
       var menu = $("<select>", {class: "add_effect_buttons"}).append (
         $("<option>", {selected: true}).text("Add effect..."),
-        $("<option>").text(@{self.info.untyped.name}+" jump"),
-        $("<option>").text(@{self.info.untyped.name}+" slide"),
-        $("<option>").text(@{self.info.untyped.name}+" oscillation")
+        $("<option>").text(@{info.name}+" jump"),
+        $("<option>").text(@{info.name}+" slide"),
+        $("<option>").text(@{info.name}+" oscillation")
       );
       on(menu, "change", function(event) {
         @{input_callback (self.state, move | state, index: i32 | {
@@ -414,15 +418,13 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     js!{ @{& container}.append (@{buttons}); }
   }
   
-    if let Some(ref rendered_getter) = self.info.rendered_getter {
-      let rendered = (rendered_getter) (& guard.rendering_state);
-      setup_rendered_canvas (self.state, rendered_getter.clone(), 32);
-      js!{@{& container}.append (@{self.assign_row (js!{ return @{rendered.canvas.clone()}.parent()})});}
-    }
+  let rendered = Identity::rendered_getter() (& guard.rendering_state.signals);
+  setup_rendered_canvas (self.state, getter! (rendering => rendering.signals) + Identity::rendered_getter() + getter! (rendered => rendered.rendered_after), 32);
+  js!{@{& container}.append (@{self.assign_row (js!{ return @{rendered.canvas.clone()}.parent()})});}
       
   *self.rows += 1;
   
-  if self.info.untyped.id == "harmonics" {
+  if info.id == "harmonics" {
     let toggle = self.checkbox_input (
       "odd_harmonics",
       "Odd harmonics only",
@@ -432,10 +434,10 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     *self.rows += 1;
   }
   
-  let effects_shown = guard.effects_shown.contains (self.info.untyped.id);
+  let effects_shown = guard.effects_shown.contains (info.id);
   
   if signal.effects.len() > 0 {
-    let id = self.info.untyped.id.clone();
+    let id = info.id.clone();
     let view_toggle = self.assign_row (button_input (
       & format! ("{} {} {}... ▼",
         if effects_shown {"Hide"} else {"Show"},
@@ -455,9 +457,9 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
   }
     
   if effects_shown {for (index, effect) in signal.effects.iter().enumerate() {
-    let effect_getter = self.info.getter.clone() + getter!(signal => signal.effects [index]);
+    let effect_getter = state_getter.clone() + getter!(signal => signal.effects [index]);
     let delete_button = button_input ("Delete",
-      input_callback_gotten_nullary (self.state, self.info.getter.clone(), move | signal | {signal.effects.remove (index);})
+      input_callback_gotten_nullary (self.state, state_getter.clone(), move | signal | {signal.effects.remove (index);})
     );
     macro_rules! effect_editors {
       (
@@ -469,12 +471,12 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
         ])*) => {
         match *effect {
           $(SignalEffect::$Variant {..} => {
-            let header = self.assign_row(js!{ return jQuery("<div>", {class: "signal_effect effect_header"}).append (@{self.info.untyped.name}+" "+@{$variant_name}+": ",@{delete_button})});
+            let header = self.assign_row(js!{ return jQuery("<div>", {class: "signal_effect effect_header"}).append (@{info.name}+" "+@{$variant_name}+": ",@{delete_button})});
             js!{@{& container}.append (@{header});}
             *self.rows += 1;
             $(
               js!{@{& container}.append (@{self.$input_method(
-                & format! ("{}_{}_{}", & self.info.untyped.id, index, stringify! ($field)),
+                & format! ("{}_{}_{}", & info.id, index, stringify! ($field)),
                 $name,
                 effect_getter.clone() + variant_field_getter! (SignalEffect::$Variant => $field)
               )}.addClass("signal_effect input"))}
@@ -508,7 +510,7 @@ impl <'a, T: UserNumberType> SignalEditorSpecification <'a, T> {
     if signal.effects.len() > 0 {
       let sample_rate = 500.0;
       let samples = display_samples (sample_rate, max (sound.duration(), signal.draw_through_time()), | time | signal.sample (time, false));
-      let canvas = canvas_of_samples (& samples, sample_rate, if effects_shown {100.0} else {32.0}, self.info.untyped.slider_range, sound.duration());
+      let canvas = canvas_of_samples (& samples, sample_rate, if effects_shown {100.0} else {32.0}, info.slider_range, sound.duration());
       js!{ @{& container}.append (@{canvas}.parent().css("grid-row", @{first_row + 1}+" / "+@{*self.rows})); }
     }
     
@@ -601,9 +603,9 @@ pub fn draw_samples (canvas: Value, samples: & [f64], sample_rate: f64, canvas_h
   }
 }
 
-pub fn setup_rendered_canvas (state: &Rc<RefCell<State>>, rendered_getter: SamplesGetter, height: i32) {
+pub fn setup_rendered_canvas (state: &Rc<RefCell<State>>, rendered_getter: Getter <RenderingState, RenderedSamples>, height: i32) {
   let guard = state.borrow();
-  let rendered = (rendered_getter) (& guard.rendering_state);
+  let rendered = rendered_getter.get (& guard.rendering_state);
   js!{
     var canvas = @{rendered.canvas.clone()};
     canvas[0].height =@{height};

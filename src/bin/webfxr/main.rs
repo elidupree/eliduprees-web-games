@@ -203,12 +203,12 @@ fn redraw(state: & Rc<RefCell<State>>) {
   struct Visitor <'a> (& 'a Rc<RefCell<State>>, & 'a mut u32, & 'a Value);
   impl<'a> SignalVisitor for Visitor<'a> {
     fn visit <Identity: SignalIdentity> (&mut self) {
-      SignalEditorSpecification {
-    state: self.0,
-    info: info,
-    rows: self.1,
-    main_grid: self.2,
-  }.render();
+      let specification: SignalEditorSpecification::<Identity> = SignalEditorSpecification {
+        state: self.0,
+        rows: self.1,
+        main_grid: self.2,
+      };
+      specification.render();
     }
   }
   
