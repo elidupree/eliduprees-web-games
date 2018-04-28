@@ -83,6 +83,14 @@ impl Default for RenderedSamples {
     }
   }
 }
+
+
+pub struct SignalRenderingState {
+  pub samples: Vec<f64>,
+  pub rendered_after: RenderedSamples,
+}
+
+
 #[derive (Default)]
 pub struct RenderingStateConstants {
   pub num_samples: usize,
@@ -96,24 +104,18 @@ pub struct RenderingStateConstants {
 #[derive (Default)]
 pub struct RenderingState {
   pub next_supersample: usize,
+  pub next_time: f64,
   
   pub wave_phase: f64,
-  pub after_frequency: RenderedSamples,
+  pub waveform_samples: Vec<f64>,
   
-  pub after_volume: RenderedSamples,
-  
-  pub after_flanger: RenderedSamples,
+  pub signals: SignalsRenderingState,
   
   pub lowpass_state: LowpassFilterState,
-  pub after_lowpass: RenderedSamples,
-  
   pub highpass_state: HighpassFilterState,
-  pub after_highpass: RenderedSamples,
   
   pub bitcrush_phase: f64,
   pub bitcrush_last_used_sample: f64,
-  pub after_bitcrush_resolution: RenderedSamples,
-  pub after_bitcrush_frequency: RenderedSamples,
   
   pub final_samples: RenderedSamples,
   
@@ -214,36 +216,6 @@ impl Waveform {
   }
 }
 
-impl SoundDefinition {
-  pub fn sample_waveform (&self, time: f64, phase: f64)->f64 {
-    match self.waveform {
-      Waveform::WhiteNoise => return self.waveform.sample_simple (phase).unwrap(),
-      _=>(),
-    }
-    
-    let mut result = 0.0;
-    let harmonics = if self.harmonics.enabled {max (1.0, min (100.0, self.harmonics.sample (time, true)))} else {1.0};
-    let skew = logistic_curve (self.waveform_skew.sample (time, true));
-    let mut total = 0.0;
-    for index in 0..harmonics.ceil() as usize {
-      let mut harmonic = (index + 1) as f64;
-      let fraction = if harmonic <= harmonics {1.0} else {harmonics + 1.0 - harmonic};
-      if self.odd_harmonics {
-        harmonic = (index*2 + 1) as f64;
-      }
-      let mut harmonic_phase = phase*harmonic;
-      if self.waveform_skew.enabled {
-        harmonic_phase = harmonic_phase - harmonic_phase.floor();
-        harmonic_phase = if harmonic_phase < skew {harmonic_phase*0.5/skew} else {0.5 + (harmonic_phase - skew)*0.5/(1.0 - skew)};
-      }
-      let amplitude = fraction/harmonic;
-      total += amplitude;
-      result += self.waveform.sample_simple (harmonic_phase).unwrap()*amplitude;
-    }
-    result/total
-  }
-}
-
 
 const SMOOTH_TIME: f64 = 0.001;
 
@@ -316,7 +288,24 @@ impl<T: UserNumberType> SignalEffect <T> {
 }
 
 
+impl SignalRenderingState {
+  fn next_sample <T: UserNumberType> (&mut self, definition: & Signal <T>, index: usize, time: f64, smooth: bool)->f64 {
+    definition.sample (time, smooth);
+  }
+}
+
 impl RenderingState {
+  pub fn sample_signal <Identity: SignalIdentity> (&mut self, definition: & SoundDefinition, smooth: bool)->f64 {
+    let index = self.next_supersample;
+    let time = self.next_time;
+    let rendering = Identity::rendering_getter().get_mut (self.signals);
+    let sample = rendering.next_sample (Identity::definition_getter().get (definition.signals), index, time, smooth);
+    if index % self.constants.samples_per_signal_sample == 0 {
+      rendering.samples.push (sample);
+    }
+    sample
+  }
+
   pub fn final_samples (&self)->& RenderedSamples {& self.final_samples}
   pub fn new (sound: & SoundDefinition)->RenderingState {
     let num_samples = (min(MAX_RENDER_LENGTH, sound.duration())*sound.sample_rate() as f64).ceil() as usize;
@@ -330,42 +319,82 @@ impl RenderingState {
         num_supersamples: num_samples*supersamples_per_sample,
         supersample_duration: 1.0/((sound.sample_rate()*supersamples_per_sample) as f64),
         samples_per_illustrated: (sound.sample_rate() as f64/DISPLAY_SAMPLE_RATE).ceil() as usize,
+        samples_per_signal_sample: (sound.sample_rate() as f64/500.0).ceil() as usize,
       },
       bitcrush_phase: 1.0,
       .. Default::default()
     }
      
   }
-  fn superstep (&mut self, sound: & SoundDefinition) {
-    let time = self.next_supersample as f64*self.constants.supersample_duration;
+  
+  pub fn next_waveform_sample (&mut self, sound: & SoundDefinition)->f64 {
+    let time = self.next_time;
+    let phase = self.wave_phase;
     
-    let mut sample = sound.sample_waveform (time, self.wave_phase)*sound.envelope.sample (time);
+    match sound.waveform {
+      Waveform::WhiteNoise => return sound.waveform.sample_simple (phase).unwrap(),
+      _=>(),
+    }
+    
+    let mut result = 0.0;
+    let harmonics = if sound.harmonics.enabled {max (1.0, min (100.0, self.sample_signal::<Harmonics> (sound, true)))} else {1.0};
+    let skew = logistic_curve (self.sample_signal::<WaveformSkew> (sound, true));
+    let mut total = 0.0;
+    for index in 0..harmonics.ceil() as usize {
+      let mut harmonic = (index + 1) as f64;
+      let fraction = if harmonic <= harmonics {1.0} else {harmonics + 1.0 - harmonic};
+      if self.odd_harmonics {
+        harmonic = (index*2 + 1) as f64;
+      }
+      let mut harmonic_phase = phase*harmonic;
+      if sound.waveform_skew.enabled {
+        harmonic_phase = harmonic_phase - harmonic_phase.floor();
+        harmonic_phase = if harmonic_phase < skew {harmonic_phase*0.5/skew} else {0.5 + (harmonic_phase - skew)*0.5/(1.0 - skew)};
+      }
+      let amplitude = fraction/harmonic;
+      total += amplitude;
+      result += self.waveform.sample_simple (harmonic_phase).unwrap()*amplitude;
+    }
+    
+    let sample = result/total;
+    self.waveform_samples.push (sample);
+    
+    let frequency = self.sample_signal::<LogFrequency> (sound, false).exp2();
+    self.wave_phase += frequency*self.constants.supersample_duration;
+    
+    sample
+  }
+  
+  fn superstep (&mut self, sound: & SoundDefinition) {
+    let time = self.next_time;
+    
+    let mut sample = self.next_waveform_sample (sound)*sound.envelope.sample (time);
     self.after_frequency.push (sample, &self.constants);
     
-    sample *= sound.volume.sample (time, true).exp2();
+    sample *= self.sample_signal::<Volume> (sound, true).exp2();
     self.after_volume.push (sample, &self.constants);
     
     if sound.log_flanger_frequency.enabled {
-      let flanger_frequency = sound.log_flanger_frequency.sample (time, true).exp2();
+      let flanger_frequency = self.sample_signal::<LogFlangerFrequency> (sound, true).exp2();
       let flanger_offset = 1.0/flanger_frequency;
       sample += self.after_volume.resample (time - flanger_offset, & self.constants);
       self.after_flanger.push (sample, &self.constants);
     }
     
     if sound.log_lowpass_filter_cutoff.enabled {
-      let lowpass_filter_frequency = sound.log_lowpass_filter_cutoff.sample (time, false).exp2();
+      let lowpass_filter_frequency = self.sample_signal::<LogLowpassFilterCutoff> (sound, false).exp2();
       sample = self.lowpass_state.apply (sample, lowpass_filter_frequency, self.constants.supersample_duration);
       self.after_lowpass.push (sample, &self.constants);
     }
     
     if sound.log_highpass_filter_cutoff.enabled {
-      let highpass_filter_frequency = sound.log_highpass_filter_cutoff.sample (time, false).exp2();
+      let highpass_filter_frequency = self.sample_signal::<LogHighpassFilterCutoff> (sound, false).exp2();
       sample = self.highpass_state.apply (sample, highpass_filter_frequency, self.constants.supersample_duration);
       self.after_highpass.push (sample, &self.constants);
     }
     
     if sound.bitcrush_resolution_bits.enabled {
-      let bits = max (1.0, sound.bitcrush_resolution_bits.sample (time, false));
+      let bits = max (1.0, self.sample_signal::<BitcrushResolutionBits> (sound, false));
       let floor_bits = bits.floor();
       let bits_fraction = bits - floor_bits;
       let increment = 4.0/floor_bits.exp2();
@@ -385,7 +414,7 @@ impl RenderingState {
       sample = self.bitcrush_last_used_sample;
       self.after_bitcrush_frequency.push (sample, &self.constants);
      
-      let bitcrush_frequency = sound.log_bitcrush_frequency.sample(time, false).exp2();
+      let bitcrush_frequency = self.sample_signal::<LogBitcrushFrequency> (sound, false).exp2();
       self.bitcrush_phase += bitcrush_frequency*self.constants.supersample_duration;
     }
     
@@ -395,10 +424,8 @@ impl RenderingState {
     
     self.final_samples.push (sample, &self.constants) ;
     
-    let frequency = sound.log_frequency.sample(time, false).exp2();
-    self.wave_phase += frequency*self.constants.supersample_duration;
-    
     self.next_supersample += 1;
+    self.next_time = self.next_supersample as f64*self.constants.supersample_duration;
   }
   pub fn step (&mut self, sound: & SoundDefinition) {
     if self.finished() {return;}

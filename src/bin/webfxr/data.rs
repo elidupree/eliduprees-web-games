@@ -243,7 +243,7 @@ pub trait SignalVisitor {
 
 
 macro_rules! signals_definitions {
-  ($([$Identity: $field, ident, $NumberType: ident,])*) => {
+  ($([$Identity: ident, $field: ident, $NumberType: ident],)*) => {
 
 #[derive (Clone, PartialEq, Serialize, Deserialize)]
 pub struct Signals {
@@ -257,19 +257,20 @@ pub struct SignalsRenderingState {
 impl Default for Signals {
   fn default()->Self {
     Signals {
-      $($field: Signal::constant (UserNumber::from_rendered ($Identity::info().default)))*
+      $($field: Signal::constant (UserNumber::from_rendered ($Identity::info().default)),)*
     }
   }
 }
 
 $(
+  pub struct $Identity (!);
   impl SignalIdentityGetters for $Identity {
     type NumberType = $NumberType;
     fn definition_getter()->Getter <SoundDefinition, Signal <Self::NumberType>> {
       getter! (sound => sound.$field)
     }
     fn rendering_getter()->Getter <RenderingState, SignalRenderingState> {
-      getter! (Rendering => rendering.$field)
+      getter! (rendering => rendering.$field)
     }
   }
 )*
@@ -303,7 +304,7 @@ signals_definitions! {
   [LogHighpassFilterCutoff, log_highpass_filter_cutoff, FrequencyType],
   [BitcrushResolutionBits, bitcrush_resolution_bits, DimensionlessType],
   [LogBitcrushFrequency, log_bitcrush_frequency, FrequencyType],
-};
+}
 
 impl SignalIdentity for LogFrequency {
   fn info()->SignalInfo {SignalInfo {
