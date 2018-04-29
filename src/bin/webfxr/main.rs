@@ -42,11 +42,10 @@ pub use ui::*;
 pub use randomization::*;
 
 
-type SamplesGetter = Rc<Fn(& RenderingState)->& RenderedSamples>;
 #[derive (Clone)]
 pub struct Playback {
   start_audio_time: f64,
-  samples_getter: SamplesGetter,
+  samples_getter: Getter <RenderingState, RenderedSamples>,
 }
 
 pub struct State {
@@ -65,7 +64,7 @@ pub struct State {
 fn update_for_changed_sound (state: & Rc<RefCell<State>>) {
   restart_rendering (state);
   redraw (state);
-  play (&mut state.borrow_mut(), Rc::new (| state | state.final_samples()));
+  play (&mut state.borrow_mut(), getter! (state => state.final_samples()));
 }
 
 fn restart_rendering (state: & Rc<RefCell<State>>) {
@@ -112,13 +111,13 @@ fn redraw(state: & Rc<RefCell<State>>) {
 
   let final_samples = guard.rendering_state.final_samples();
   let main_canvas = final_samples.canvas.clone();
-  setup_rendered_canvas (state, Rc::new (| state | state.final_samples()), 100);
+  setup_rendered_canvas (state, getter! (state => state.final_samples()), 100);
   js!{@{left_column}.append (@{main_canvas}.parent());}
   //rows += 1;
       
   let play_button = assign_row (rows, button_input ("Play",
     { let state = state.clone(); move || {
-      play (&mut state.borrow_mut(), Rc::new (| state | state.final_samples()));
+      play (&mut state.borrow_mut(), getter! (state => state.final_samples()));
     }}
   ));
   js!{@{left_column}.append (@{play_button});}
@@ -204,7 +203,7 @@ fn redraw(state: & Rc<RefCell<State>>) {
   struct Visitor <'a> (& 'a Rc<RefCell<State>>, & 'a mut u32, & 'a Value);
   impl<'a> SignalVisitor for Visitor<'a> {
     fn visit <Identity: SignalIdentity> (&mut self) {
-      let specification: SignalEditorSpecification::<Identity> = SignalEditorSpecification {
+      let specification: SignalEditorSpecification<Identity> = SignalEditorSpecification {
         state: self.0,
         rows: self.1,
         main_grid: self.2,
@@ -286,7 +285,7 @@ fn render_loop (state: Rc<RefCell<State>>) {
           let tentative_offset = now - playback.start_audio_time;
           if tentative_offset < rendered_duration {
             js! {
-              play_buffer (@{&(playback.samples_getter) (&state.rendering_state).audio_buffer},@{tentative_offset},@{rendered_duration - tentative_offset});
+              play_buffer (@{&playback.samples_getter.get(&state.rendering_state).audio_buffer},@{tentative_offset},@{rendered_duration - tentative_offset});
             }
           }
         }
@@ -302,12 +301,12 @@ fn render_loop (state: Rc<RefCell<State>>) {
           if state.loop_playback {
             play (state, playback.samples_getter);
           } else {
-            let samples = (playback.samples_getter) (&state.rendering_state);
+            let samples = playback.samples_getter.get (&state.rendering_state);
             samples.redraw (None, & state.rendering_state.constants);
             state.playback_state = None;
           }
         } else {
-          let samples = (playback.samples_getter) (&state.rendering_state);
+          let samples = playback.samples_getter.get (&state.rendering_state);
           samples.redraw (Some(offset), & state.rendering_state.constants);
           redraw_waveform_canvas (state, offset);
         }
@@ -319,10 +318,10 @@ fn render_loop (state: Rc<RefCell<State>>) {
   web::window().request_animation_frame (move | _time | render_loop (state));
 }
 
-fn play (state: &mut State, getter: SamplesGetter) {
-  let samples = (getter) (&state.rendering_state);
+fn play (state: &mut State, getter: Getter <RenderingState, RenderedSamples>) {
+  let samples = getter.get (&state.rendering_state);
   if let Some(ref playback) = state.playback_state {
-    let old_samples = (playback.samples_getter) (&state.rendering_state);
+    let old_samples = playback.samples_getter.get (&state.rendering_state);
     if old_samples.serial_number != samples.serial_number {
       old_samples.redraw (None, & state.rendering_state.constants);
     }

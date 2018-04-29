@@ -360,7 +360,8 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
       let guard = self.state.borrow();
       let sound = & guard.sound;
       let signals_getter = Identity::definition_getter();
-      let state_getter = getter! (state => state.sound.signals) + signals_getter.clone();
+      let uh: Getter <State, Signals> = getter! (state => state.sound.signals);
+      let state_getter = uh + signals_getter.clone();
       let info = Identity::info();
     let signal = signals_getter.get (& guard.sound.signals);
     let first_row = *self.rows;
