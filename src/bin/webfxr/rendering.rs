@@ -1,6 +1,7 @@
 use super::*;
 
 use rand::{Rng, IsaacRng, SeedableRng};
+type Generator = IsaacRng;
 
 pub fn root_mean_square (samples: & [f32])->f32{
   (samples.iter().map (| sample | sample*sample).sum::<f32>()/samples.len() as f32).sqrt()
@@ -85,8 +86,17 @@ impl Default for RenderedSamples {
 }
 
 
+pub struct WaveformRenderingState {
+  pub generator: Generator,
+}
+
+pub struct SignalEffectRenderingState {
+  pub waveform: WaveformRenderingState,
+}
+
 #[derive (Default)]
 pub struct SignalRenderingState {
+  pub effects: Vec<SignalEffectRenderingState>,
   pub samples: Vec<f64>,
   pub rendered_after: RenderedSamples,
 }
@@ -103,10 +113,14 @@ pub struct RenderingStateConstants {
   pub samples_per_signal_sample: usize,
 }
 
-#[derive (Default)]
+#[derive (Derivative)]
+#[derivative (Default)]
 pub struct RenderingState {
   pub next_supersample: usize,
   pub next_time: f64,
+  
+  #[derivative (Default (value = "Generator::from_seed ([0; 32])"))]
+  pub generator: Generator,
   
   pub wave_phase: f64,
   pub waveform_samples: Vec<f64>,
@@ -200,30 +214,39 @@ impl RenderedSamples {
 
 
 
-pub fn generator_for_time (time: f64)->IsaacRng {
+/*pub fn generator_for_time (time: f64)->IsaacRng {
   let whatever = (time*1_000_000_000.0).floor() as i64 as u64;
   IsaacRng::from_seed (Array::from_fn (| index | (whatever >> (index*8)) as u8))
-}
+}*/
 
 impl Waveform {
-  pub fn sample_simple (&self, phase: f64)->Option<f64> {
+  pub fn sample_simple (&self, phase: f64)->f64 {
     let fraction = phase - phase.floor();
-    Some(match *self {
+    match *self {
       Waveform::Sine => ((phase-0.25)*TURN).sin(),
       Waveform::Square => if fraction < 0.5 {0.5} else {-0.5},
       Waveform::Triangle => 1.0 - (fraction-0.5).abs()*4.0,
       Waveform::Sawtooth => 1.0 - fraction*2.0,
-      Waveform::WhiteNoise => /*generator_for_time (phase)*/rand::thread_rng().gen_range(-1.0, 1.0),
-    })
+      _ => panic!("{:?} can't be sampled without a rendering state", self),
+    }
   }
 }
 
 
+impl WaveformRenderingState {
+  fn next_sample <T: UserNumberType> (&mut self, definition: & Waveform, index: usize, time: f64, phase: f64, constants: &RenderingStateConstants)->f64 {
+    match definition.clone() {
+      Waveform::WhiteNoise => self.generator.gen_range(-1.0, 1.0),
+      _ => definition.sample_simple (phase),
+    }
+  }
+}
+
 const SMOOTH_TIME: f64 = 0.001;
 
-impl<T: UserNumberType> SignalEffect <T> {
-  pub fn sample (&self, sample_time: f64, smooth: bool)->f64 {
-    match self.clone() {
+impl SignalEffectRenderingState {
+  fn next_sample <T: UserNumberType> (&mut self, definition: & SignalEffect <T>, index: usize, sample_time: f64, smooth: bool, constants: &RenderingStateConstants)->f64 {
+    match definition.clone() {
       SignalEffect::Jump {time, size} => {
         if smooth && sample_time > time.rendered && sample_time < time.rendered + SMOOTH_TIME {
           size.rendered*(sample_time - time.rendered)/SMOOTH_TIME
@@ -269,30 +292,15 @@ impl<T: UserNumberType> SignalEffect <T> {
             }
           }
         }
-        size.rendered*waveform.sample_simple (phase).unwrap()
+        size.rendered*self.waveform.next_sample (& waveform, index, sample_time, phase, constants)
       },
-    }
-  }
-  pub fn range (&self)->[f64;2] {
-    match self.clone() {
-      SignalEffect::Jump {size, ..} => [min (0.0, size.rendered), max (0.0, size.rendered)],
-      SignalEffect::Slide {size, ..} => [min (0.0, size.rendered), max (0.0, size.rendered)],
-      SignalEffect::Oscillation {size, ..} => [-size.rendered.abs(), size.rendered.abs()],
-    }
-  }
-  pub fn draw_through_time (&self)->f64 {
-    match self.clone() {
-      SignalEffect::Jump {time, ..} => time.rendered + 0.1,
-      SignalEffect::Slide {start, duration, ..} => start.rendered + duration.rendered + 0.1,
-      SignalEffect::Oscillation {frequency, ..} => 1.1/frequency.rendered.exp2(),
     }
   }
 }
 
-
 impl SignalRenderingState {
-  fn next_sample <T: UserNumberType> (&mut self, definition: & Signal <T>, index: usize, time: f64, smooth: bool)->f64 {
-    definition.sample (time, smooth)
+  fn next_sample <T: UserNumberType> (&mut self, definition: & Signal <T>, index: usize, time: f64, smooth: bool, constants: &RenderingStateConstants)->f64 {
+    definition.initial_value.rendered + self.effects.iter_mut().zip (definition.effects.iter()).map (| (rendering, definition) | rendering.next_sample(definition, index, time, smooth, constants)).sum::<f64>()
   }
 }
 
@@ -301,7 +309,7 @@ impl RenderingState {
     let index = self.next_supersample;
     let time = self.next_time;
     let rendering = Identity::rendering_getter().get_mut (&mut self.signals);
-    let sample = rendering.next_sample (Identity::definition_getter().get (& definition.signals), index, time, smooth);
+    let sample = rendering.next_sample (Identity::definition_getter().get (& definition.signals), index, time, smooth, &self.constants);
     if index % self.constants.samples_per_signal_sample == 0 {
       rendering.samples.push (sample);
     }
@@ -312,7 +320,7 @@ impl RenderingState {
     let num_samples = (min(MAX_RENDER_LENGTH, sound.duration())*sound.sample_rate() as f64).ceil() as usize;
     js! { window.webfxr_num_samples = @{num_samples as f64}; window.webfxr_sample_rate = @{sound.sample_rate() as f64}; } 
     let supersamples_per_sample = 1;
-    RenderingState {
+    let mut result = RenderingState {
       constants: RenderingStateConstants {
         num_samples: num_samples,
         sample_rate: sound.sample_rate(),
@@ -324,8 +332,28 @@ impl RenderingState {
       },
       bitcrush_phase: 1.0,
       .. Default::default()
+    };
+    
+    
+    struct Visitor <'a> (& 'a SoundDefinition, & 'a mut RenderingState);
+    impl<'a> SignalVisitor for Visitor<'a> {
+      fn visit <Identity: SignalIdentity> (&mut self) {
+        let generator = Generator::from_rng (&mut self.1.generator).unwrap();
+        let signal = Identity::definition_getter().get (& self.0.signals);
+        let rendering = Identity::rendering_getter().get_mut (&mut self.1.signals);
+        for _effect in signal.effects {
+          rendering.effects.push (SignalEffectRenderingState {
+            waveform: WaveformRenderingState {
+              generator: Generator::from_rng (&mut generator).unwrap(),
+            },
+          });
+        }
+      }
     }
-     
+  
+    visit_signals (&mut Visitor (sound, &mut result));
+    
+    result
   }
 
   

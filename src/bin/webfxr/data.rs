@@ -174,7 +174,7 @@ impl<'de, T: UserNumberType> Deserialize<'de> for UserNumber <T> {
 pub type UserFrequency = UserNumber <FrequencyType>;
 pub type UserTime = UserNumber <TimeType>;
 
-#[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Derivative)]
+#[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Debug, Derivative)]
 #[derivative (Default)]
 pub enum Waveform {
   #[derivative (Default)]
@@ -403,6 +403,22 @@ impl SignalIdentity for LogBitcrushFrequency {
   }}
 }
 
+impl<T: UserNumberType> SignalEffect<T> {
+  pub fn range (&self)->[f64;2] {
+    match self.clone() {
+      SignalEffect::Jump {size, ..} => [min (0.0, size.rendered), max (0.0, size.rendered)],
+      SignalEffect::Slide {size, ..} => [min (0.0, size.rendered), max (0.0, size.rendered)],
+      SignalEffect::Oscillation {size, ..} => [-size.rendered.abs(), size.rendered.abs()],
+    }
+  }
+  pub fn draw_through_time (&self)->f64 {
+    match self.clone() {
+      SignalEffect::Jump {time, ..} => time.rendered + 0.1,
+      SignalEffect::Slide {start, duration, ..} => start.rendered + duration.rendered + 0.1,
+      SignalEffect::Oscillation {frequency, ..} => 1.1/frequency.rendered.exp2(),
+    }
+  }
+}
 
 impl<T: UserNumberType> Signal<T> {
   pub fn constant(value: UserNumber <T>)->Self {
@@ -411,10 +427,6 @@ impl<T: UserNumberType> Signal<T> {
       initial_value: value,
       effects: Vec::new(),
     }
-  }
-
-  pub fn sample (&self, time: f64, smooth: bool)->f64 {
-    self.initial_value.rendered + self.effects.iter().map (| effect | effect.sample (time, smooth)).sum::<f64>()
   }
   
   pub fn range (&self)->[f64;2] {
