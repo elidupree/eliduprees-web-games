@@ -419,8 +419,8 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
     js!{ @{& container}.append (@{buttons}); }
   }
   
-  let rendered = Identity::rendering_getter().get (& guard.rendering_state.signals);
-  setup_rendered_canvas (self.state, getter! (rendering => rendering.signals) + Identity::rendering_getter() + getter! (rendered => rendered.rendered_after), 32);
+  let rendered = & Identity::rendering_getter().get (& guard.rendering_state.signals).rendered_after;
+  setup_rendered_canvas (self.state, getter! (rendering: RenderingState => rendering.signals) + Identity::rendering_getter() + getter! (rendered: SignalRenderingState => rendered.rendered_after), 32);
   js!{@{& container}.append (@{self.assign_row (js!{ return @{rendered.canvas.clone()}.parent()})});}
       
   *self.rows += 1;

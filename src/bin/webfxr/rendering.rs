@@ -308,7 +308,6 @@ impl RenderingState {
     sample
   }
 
-  pub fn final_samples (&self)->& RenderedSamples {& self.final_samples}
   pub fn new (sound: & SoundDefinition)->RenderingState {
     let num_samples = (min(MAX_RENDER_LENGTH, sound.duration())*sound.sample_rate() as f64).ceil() as usize;
     js! { window.webfxr_num_samples = @{num_samples as f64}; window.webfxr_sample_rate = @{sound.sample_rate() as f64}; } 

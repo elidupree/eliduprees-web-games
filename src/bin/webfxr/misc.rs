@@ -1,4 +1,3 @@
-
 use std::rc::Rc;
 use std::cell::Cell;
 
@@ -60,7 +59,13 @@ macro_rules! getter {
       get    : Rc::new (move | $value | &    $($path)*),
       get_mut: Rc::new (move | $value | &mut $($path)*),
     }
-  }
+  };
+  ($value: ident: $Type: ty => $($path:tt)*) => {
+    Getter {
+      get    : Rc::new (move | $value: &    $Type | &    $($path)*),
+      get_mut: Rc::new (move | $value: &mut $Type | &mut $($path)*),
+    }
+  };
 }
 macro_rules! variant_field_getter {
   ($Enum: ident::$Variant: ident => $field: ident) => {

@@ -64,7 +64,7 @@ pub struct State {
 fn update_for_changed_sound (state: & Rc<RefCell<State>>) {
   restart_rendering (state);
   redraw (state);
-  play (&mut state.borrow_mut(), getter! (state => state.final_samples()));
+  play (&mut state.borrow_mut(), getter! (state => state.final_samples));
 }
 
 fn restart_rendering (state: & Rc<RefCell<State>>) {
@@ -109,15 +109,15 @@ fn redraw(state: & Rc<RefCell<State>>) {
   
   
 
-  let final_samples = guard.rendering_state.final_samples();
+  let final_samples = & guard.rendering_state.final_samples;
   let main_canvas = final_samples.canvas.clone();
-  setup_rendered_canvas (state, getter! (state => state.final_samples()), 100);
+  setup_rendered_canvas (state, getter! (state => state.final_samples), 100);
   js!{@{left_column}.append (@{main_canvas}.parent());}
   //rows += 1;
       
   let play_button = assign_row (rows, button_input ("Play",
     { let state = state.clone(); move || {
-      play (&mut state.borrow_mut(), getter! (state => state.final_samples()));
+      play (&mut state.borrow_mut(), getter! (state => state.final_samples));
     }}
   ));
   js!{@{left_column}.append (@{play_button});}
@@ -256,9 +256,9 @@ fn redraw(state: & Rc<RefCell<State>>) {
 
 fn redraw_waveform_canvas (state: & State, time: f64) {
   let sample_rate = 500.0;
-  let waveform_samples = display_samples (sample_rate, 3.0, | phase | state.sound.sample_waveform (time, phase));
+  //let waveform_samples = display_samples (sample_rate, 3.0, | phase | state.sound.sample_waveform (time, phase));
   
-  draw_samples (state.waveform_canvas.clone(), &waveform_samples, sample_rate, 40.0, [-1.0, 1.0], 3.0);
+  //draw_samples (state.waveform_canvas.clone(), &waveform_samples, sample_rate, 40.0, [-1.0, 1.0], 3.0);
 }
 
 fn render_loop (state: Rc<RefCell<State>>) {
@@ -277,7 +277,7 @@ fn render_loop (state: Rc<RefCell<State>>) {
       }
     }
     
-    let rendered_duration = state.rendering_state.final_samples().samples.len() as f64/state.sound.sample_rate() as f64;
+    let rendered_duration = state.rendering_state.final_samples.samples.len() as f64/state.sound.sample_rate() as f64;
     if (state.rendering_state.finished() || rendered_duration > 0.2) && !already_finished {
       match state.playback_state {
         Some(ref playback) => {
