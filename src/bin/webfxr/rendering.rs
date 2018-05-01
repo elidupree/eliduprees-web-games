@@ -86,7 +86,10 @@ impl Default for RenderedSamples {
 }
 
 
+#[derive (Derivative)]
+#[derivative (Default)]
 pub struct WaveformRenderingState {
+  #[derivative (Default (value = "Generator::from_seed ([1; 32])"))]
   pub generator: Generator,
 }
 
@@ -125,6 +128,7 @@ pub struct RenderingState {
   pub wave_phase: f64,
   pub waveform_samples: Vec<f64>,
   
+  pub main_waveform: WaveformRenderingState,
   pub signals: SignalsRenderingState,
   
   pub lowpass_state: LowpassFilterState,
@@ -234,7 +238,7 @@ impl Waveform {
 
 
 impl WaveformRenderingState {
-  fn next_sample <T: UserNumberType> (&mut self, definition: & Waveform, index: usize, time: f64, phase: f64, constants: &RenderingStateConstants)->f64 {
+  fn next_sample (&mut self, definition: & Waveform, _index: usize, _time: f64, phase: f64, _constants: &RenderingStateConstants)->f64 {
     match definition.clone() {
       Waveform::WhiteNoise => self.generator.gen_range(-1.0, 1.0),
       _ => definition.sample_simple (phase),
@@ -338,10 +342,10 @@ impl RenderingState {
     struct Visitor <'a> (& 'a SoundDefinition, & 'a mut RenderingState);
     impl<'a> SignalVisitor for Visitor<'a> {
       fn visit <Identity: SignalIdentity> (&mut self) {
-        let generator = Generator::from_rng (&mut self.1.generator).unwrap();
+        let mut generator = Generator::from_rng (&mut self.1.generator).unwrap();
         let signal = Identity::definition_getter().get (& self.0.signals);
         let rendering = Identity::rendering_getter().get_mut (&mut self.1.signals);
-        for _effect in signal.effects {
+        for _effect in signal.effects.iter() {
           rendering.effects.push (SignalEffectRenderingState {
             waveform: WaveformRenderingState {
               generator: Generator::from_rng (&mut generator).unwrap(),
@@ -359,10 +363,11 @@ impl RenderingState {
   
   pub fn next_waveform_sample (&mut self, sound: & SoundDefinition)->f64 {
     let time = self.next_time;
+    let index = self.next_supersample;
     let phase = self.wave_phase;
     
     match sound.waveform {
-      Waveform::WhiteNoise => return sound.waveform.sample_simple (phase).unwrap(),
+      Waveform::WhiteNoise => return self.main_waveform.next_sample (& sound.waveform, index, time, phase, & self.constants),
       _=>(),
     }
     
@@ -383,7 +388,7 @@ impl RenderingState {
       }
       let amplitude = fraction/harmonic;
       total += amplitude;
-      result += sound.waveform.sample_simple (harmonic_phase).unwrap()*amplitude;
+      result += sound.waveform.sample_simple (harmonic_phase)*amplitude;
     }
     
     let sample = result/total;

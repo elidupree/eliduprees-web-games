@@ -510,7 +510,7 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
   
     if signal.effects.len() > 0 {
       let sample_rate = 500.0;
-      let samples = display_samples (sample_rate, max (sound.duration(), signal.draw_through_time()), | time | signal.sample (time, false));
+      let samples = display_samples (sample_rate, max (sound.duration(), signal.draw_through_time()), | time | 0.0/*signal.sample (time, false)*/);
       let canvas = canvas_of_samples (& samples, sample_rate, if effects_shown {100.0} else {32.0}, info.slider_range, sound.duration());
       js!{ @{& container}.append (@{canvas}.parent().css("grid-row", @{first_row + 1}+" / "+@{*self.rows})); }
     }
