@@ -260,7 +260,7 @@ impl WaveformRenderingState {
     let result = match definition.clone() {
       Waveform::WhiteNoise => self.generator.gen_range(-1.0, 1.0),
       Waveform::PinkNoise => {
-        let num_values = 20;
+        let num_values = 24;
         let amplitude_adjust = 1.0/(num_values as f64).sqrt();
         let factor = 0.5f64.sqrt();
         let mut fraction = 1.0;
