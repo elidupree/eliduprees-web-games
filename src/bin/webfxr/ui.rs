@@ -134,24 +134,12 @@ pub fn menu_input <T: 'static + Eq + Clone> (state: &Rc<RefCell<State>>, getter:
 pub fn waveform_input (state: &Rc<RefCell<State>>, id: & str, name: & str, getter: Getter <State, Waveform>)->Value {
   RadioInputSpecification {
     state: state, id: id, name: name,
-    options: &[
-      (Waveform::Sine, "Sine"),
-      (Waveform::Square, "Square"),
-      (Waveform::Triangle, "Triangle"),
-      (Waveform::Sawtooth, "Sawtooth"),
-      (Waveform::WhiteNoise, "White noise"),
-    ],
+    options: & waveforms_list(),
     getter: getter,
   }.render()
   /*let result = js!{return $("<div>", {class: "labeled_input radio"}).append (
     $("<label>", {text:@{name} + ": "}),
-    @{menu_input (state, getter, &[
-      (Waveform::Sine, "Sine"),
-      (Waveform::Square, "Square"),
-      (Waveform::Triangle, "Triangle"),
-      (Waveform::Sawtooth, "Sawtooth"),
-      (Waveform::WhiteNoise, "White noise"),
-    ])}
+    @{menu_input (state, getter, &waveforms_list())}
   );};
   result*/
 }

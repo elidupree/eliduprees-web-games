@@ -188,6 +188,16 @@ pub enum Waveform {
 js_serializable! (Waveform) ;
 js_deserializable! (Waveform) ;
 
+pub fn waveforms_list()->Vec<(Waveform, & 'static str)> {
+  vec![
+      (Waveform::Sine, "Sine"),
+      (Waveform::Square, "Square"),
+      (Waveform::Triangle, "Triangle"),
+      (Waveform::Sawtooth, "Sawtooth"),
+      (Waveform::WhiteNoise, "White noise"),
+  ]
+}
+
 
 #[derive (Clone, PartialEq, Serialize, Deserialize)]
 pub enum SignalEffect <T: UserNumberType> {
