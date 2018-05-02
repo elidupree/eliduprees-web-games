@@ -94,6 +94,7 @@ pub struct WaveformRenderingState {
   
   pub last_phase: f64,
   pub value: f64,
+  pub values: Vec<f64>,
 }
 
 pub struct SignalEffectRenderingState {
@@ -239,27 +240,41 @@ impl Waveform {
   }
 }
 
+fn do_white_noise (value: &mut f64, fraction: f64, generator: &mut Generator) {
+  let decay_factor = 1.0 - fraction;
+  // normalize so that the power is equal to that of white noise
+  // let infinite_sum = 1.0/(1.0 - decay_factor*decay_factor); (infinite sum of sample powers)
+  // we want to reduce the power by that sum, so
+  // let power_factor = (1.0/infinite_sum).sqrt();
+  // but that can be done in fewer steps and without making an exception for 0.0
+  let power_factor = (1.0 - decay_factor*decay_factor).sqrt();
+  *value = generator.gen_range(-1.0, 1.0)*power_factor + *value*decay_factor;
+}
 
 impl WaveformRenderingState {
   fn next_sample (&mut self, definition: & Waveform, _index: usize, _time: f64, phase: f64, _constants: &RenderingStateConstants)->f64 {
+    let offset = phase - self.last_phase;
+    let fraction = if offset > 1.0 {1.0} else {offset - offset.floor()};
+    assert! (fraction.is_finite());
+    assert! (fraction >= 0.0) ;
     let result = match definition.clone() {
       Waveform::WhiteNoise => self.generator.gen_range(-1.0, 1.0),
-      Waveform::Experimental => {
-        let offset = phase - self.last_phase;
-        let fraction = if offset > 1.0 {1.0} else {offset - offset.floor()};
-        assert! (fraction.is_finite());
-        assert! (fraction >= 0.0) ;
-        let decay_factor = 1.0 - fraction;
-        if fraction == 0.0 {
-          self.value = self.generator.gen_range(-1.0, 1.0);
-        } else {
-          // normalize so that the power is equal to that of white noise
-          // let infinite_sum = 1.0/(1.0 - decay_factor*decay_factor); (infinite sum of sample powers)
-          // we want to reduce the power by that sum, so
-          // let power_factor = (1.0/infinite_sum).sqrt();
-          let power_factor = (1.0 - decay_factor*decay_factor).sqrt();
-          self.value = self.generator.gen_range(-1.0, 1.0)*power_factor + self.value*decay_factor;
+      Waveform::PinkNoise => {
+        let num_values = 20;
+        let amplitude_adjust = 1.0/(num_values as f64).sqrt();
+        let factor = 0.5f64.sqrt();
+        let mut fraction = 1.0;
+        while self.values.len() <num_values {self.values.push (0.0);}
+        let mut result = 0.0;
+        for value in self.values.iter_mut() {
+          do_white_noise (value, fraction, &mut self.generator);
+          fraction *= factor;
+          result += *value*amplitude_adjust;
         }
+        result
+      },
+      Waveform::Experimental => {
+        do_white_noise (&mut self.value, fraction, &mut self.generator);
         self.value
       },
       _ => definition.sample_simple (phase),
@@ -391,7 +406,7 @@ impl RenderingState {
     let phase = self.wave_phase;
     
     let sample = match sound.waveform {
-      Waveform::WhiteNoise | Waveform::Experimental => self.main_waveform.next_sample (& sound.waveform, index, time, phase, & self.constants),
+      Waveform::WhiteNoise | Waveform::PinkNoise | Waveform::Experimental => self.main_waveform.next_sample (& sound.waveform, index, time, phase, & self.constants),
       _=>{
       
     let mut result = 0.0;

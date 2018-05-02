@@ -183,6 +183,7 @@ pub enum Waveform {
   Triangle,
   Sawtooth,
   WhiteNoise,
+  PinkNoise,
   Experimental,
 }
 
@@ -196,6 +197,7 @@ pub fn waveforms_list()->Vec<(Waveform, & 'static str)> {
       (Waveform::Triangle, "Triangle"),
       (Waveform::Sawtooth, "Sawtooth"),
       (Waveform::WhiteNoise, "White noise"),
+      (Waveform::PinkNoise, "Pink noise"),
       (Waveform::Experimental, "Experimental"),
   ]
 }
