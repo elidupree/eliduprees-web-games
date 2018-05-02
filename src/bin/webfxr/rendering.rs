@@ -91,6 +91,9 @@ impl Default for RenderedSamples {
 pub struct WaveformRenderingState {
   #[derivative (Default (value = "Generator::from_seed ([1; 32])"))]
   pub generator: Generator,
+  
+  pub last_phase: f64,
+  pub value: f64,
 }
 
 pub struct SignalEffectRenderingState {
@@ -239,10 +242,20 @@ impl Waveform {
 
 impl WaveformRenderingState {
   fn next_sample (&mut self, definition: & Waveform, _index: usize, _time: f64, phase: f64, _constants: &RenderingStateConstants)->f64 {
-    match definition.clone() {
+    let result = match definition.clone() {
       Waveform::WhiteNoise => self.generator.gen_range(-1.0, 1.0),
+      Waveform::Experimental => {
+        let offset = phase - self.last_phase;
+        let fraction = if offset > 1.0 {1.0} else {offset - offset.floor()};
+        assert! (fraction.is_finite());
+        assert! (fraction >= 0.0) ;
+        self.value = self.generator.gen_range(-1.0, 1.0)*fraction + self.value*(1.0 - fraction);
+        self.value
+      },
       _ => definition.sample_simple (phase),
-    }
+    };
+    self.last_phase = phase;
+    result
   }
 }
 
@@ -349,6 +362,7 @@ impl RenderingState {
           rendering.effects.push (SignalEffectRenderingState {
             waveform: WaveformRenderingState {
               generator: Generator::from_rng (&mut generator).unwrap(),
+              .. Default::default()
             },
           });
         }
@@ -366,11 +380,10 @@ impl RenderingState {
     let index = self.next_supersample;
     let phase = self.wave_phase;
     
-    match sound.waveform {
-      Waveform::WhiteNoise => return self.main_waveform.next_sample (& sound.waveform, index, time, phase, & self.constants),
-      _=>(),
-    }
-    
+    let sample = match sound.waveform {
+      Waveform::WhiteNoise | Waveform::Experimental => self.main_waveform.next_sample (& sound.waveform, index, time, phase, & self.constants),
+      _=>{
+      
     let mut result = 0.0;
     let harmonics = if sound.signals.harmonics.enabled {max (1.0, min (100.0, self.sample_signal::<Harmonics> (sound, true)))} else {1.0};
     let skew = logistic_curve (self.sample_signal::<WaveformSkew> (sound, true));
@@ -391,7 +404,9 @@ impl RenderingState {
       result += sound.waveform.sample_simple (harmonic_phase)*amplitude;
     }
     
-    let sample = result/total;
+    result/total
+      }
+    };
     self.waveform_samples.push (sample);
     
     let frequency = self.sample_signal::<LogFrequency> (sound, false).exp2();

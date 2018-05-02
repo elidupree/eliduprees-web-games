@@ -183,6 +183,7 @@ pub enum Waveform {
   Triangle,
   Sawtooth,
   WhiteNoise,
+  Experimental,
 }
 
 js_serializable! (Waveform) ;
@@ -195,6 +196,7 @@ pub fn waveforms_list()->Vec<(Waveform, & 'static str)> {
       (Waveform::Triangle, "Triangle"),
       (Waveform::Sawtooth, "Sawtooth"),
       (Waveform::WhiteNoise, "White noise"),
+      (Waveform::Experimental, "Experimental"),
   ]
 }
 
