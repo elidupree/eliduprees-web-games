@@ -249,7 +249,17 @@ impl WaveformRenderingState {
         let fraction = if offset > 1.0 {1.0} else {offset - offset.floor()};
         assert! (fraction.is_finite());
         assert! (fraction >= 0.0) ;
-        self.value = self.generator.gen_range(-1.0, 1.0)*fraction + self.value*(1.0 - fraction);
+        let decay_factor = 1.0 - fraction;
+        if fraction == 0.0 {
+          self.value = self.generator.gen_range(-1.0, 1.0);
+        } else {
+          // normalize so that the power is equal to that of white noise
+          // let infinite_sum = 1.0/(1.0 - decay_factor*decay_factor); (infinite sum of sample powers)
+          // we want to reduce the power by that sum, so
+          // let power_factor = (1.0/infinite_sum).sqrt();
+          let power_factor = (1.0 - decay_factor*decay_factor).sqrt();
+          self.value = self.generator.gen_range(-1.0, 1.0)*power_factor + self.value*decay_factor;
+        }
         self.value
       },
       _ => definition.sample_simple (phase),
