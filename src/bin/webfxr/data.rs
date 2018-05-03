@@ -184,6 +184,8 @@ pub enum Waveform {
   Sawtooth,
   WhiteNoise,
   PinkNoise,
+  PitchedWhite,
+  PitchedPink,
   Experimental,
 }
 
@@ -198,6 +200,8 @@ pub fn waveforms_list()->Vec<(Waveform, & 'static str)> {
       (Waveform::Sawtooth, "Sawtooth"),
       (Waveform::WhiteNoise, "White noise"),
       (Waveform::PinkNoise, "Pink noise"),
+      (Waveform::PitchedWhite, "Pitched white"),
+      (Waveform::PitchedPink, "Pitched pink"),
       (Waveform::Experimental, "Experimental"),
   ]
 }
