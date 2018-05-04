@@ -19,19 +19,18 @@ const FILTER_ITERATIONS: usize = 3;
 pub type FirstOrderLowpassFilterState = f64;
 #[derive (Default)]
 pub struct LowpassFilterState([FirstOrderLowpassFilterState; FILTER_ITERATIONS]);
+//#[derive (Default)]
+//pub struct FirstOrderHighpassFilterState {value: f64, previous: f64}
 #[derive (Default)]
-pub struct FirstOrderHighpassFilterState {value: f64, previous: f64}
-#[derive (Default)]
-pub struct HighpassFilterState([FirstOrderHighpassFilterState; FILTER_ITERATIONS]);
+pub struct HighpassFilterState([FirstOrderLowpassFilterState; FILTER_ITERATIONS]);
 
 //note: the formulas for the filter cutoff are based on a first-order filter, so they are not exactly correct for this. TODO fix
 impl LowpassFilterState {
   pub fn apply (&mut self, mut sample: f64, cutoff_frequency: f64, duration: f64)->f64 {
-    let dt = duration;
-    let rc = 1.0/(TURN*cutoff_frequency);
-    let lowpass_filter_constant = dt/(dt + rc);
+    let decay_constant = TURN*cutoff_frequency/(2f64.powf (1.0/FILTER_ITERATIONS as f64) - 1.0).sqrt();
+    let decay_factor = (-decay_constant*duration).exp();
     for iteration in 0..FILTER_ITERATIONS {
-      self.0 [iteration] = self.0 [iteration] + lowpass_filter_constant * (sample - self.0 [iteration]);
+      self.0 [iteration] = self.0 [iteration] + (1.0 - decay_factor) * (sample - self.0 [iteration]);
       sample = self.0 [iteration];
     }
     sample    
@@ -39,14 +38,11 @@ impl LowpassFilterState {
 }
 impl HighpassFilterState {
   pub fn apply (&mut self, mut sample: f64, cutoff_frequency: f64, duration: f64)->f64 {
-    let dt = duration;
-    let rc = 1.0/(TURN*cutoff_frequency);
-    let highpass_filter_constant = rc/(rc + dt);
+    let decay_constant = TURN*cutoff_frequency*(2f64.powf (1.0/FILTER_ITERATIONS as f64) - 1.0).sqrt();
+    let decay_factor = (-decay_constant*duration).exp();
     for iteration in 0..FILTER_ITERATIONS {
-      self.0 [iteration].value = highpass_filter_constant * (
-        self.0 [iteration].value + (sample - self.0 [iteration].previous));
-      self.0 [iteration].previous = sample;
-      sample = self.0 [iteration].value;
+      self.0 [iteration] = self.0 [iteration] + (1.0 - decay_factor) * (sample - self.0 [iteration]);
+      sample -= self.0 [iteration];
     }
     sample
   }
