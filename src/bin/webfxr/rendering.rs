@@ -18,31 +18,32 @@ const FILTER_ITERATIONS: usize = 3;
 //#[derive (Default)]
 pub type FirstOrderLowpassFilterState = f64;
 #[derive (Default)]
-pub struct LowpassFilterState([FirstOrderLowpassFilterState; FILTER_ITERATIONS]);
+pub struct LowpassFilterState(Vec<FirstOrderLowpassFilterState>);
 //#[derive (Default)]
 //pub struct FirstOrderHighpassFilterState {value: f64, previous: f64}
 #[derive (Default)]
-pub struct HighpassFilterState([FirstOrderLowpassFilterState; FILTER_ITERATIONS]);
+pub struct HighpassFilterState(Vec<FirstOrderLowpassFilterState>);
 
-//note: the formulas for the filter cutoff are based on a first-order filter, so they are not exactly correct for this. TODO fix
 impl LowpassFilterState {
+  pub fn new (order: usize)->Self {LowpassFilterState (vec![0.0; order])}
   pub fn apply (&mut self, mut sample: f64, cutoff_frequency: f64, duration: f64)->f64 {
-    let decay_constant = TURN*cutoff_frequency/(2f64.powf (1.0/FILTER_ITERATIONS as f64) - 1.0).sqrt();
+    let decay_constant = TURN*cutoff_frequency/(2f64.powf (1.0/self.0.len() as f64) - 1.0).sqrt();
     let decay_factor = (-decay_constant*duration).exp();
-    for iteration in 0..FILTER_ITERATIONS {
-      self.0 [iteration] = self.0 [iteration] + (1.0 - decay_factor) * (sample - self.0 [iteration]);
-      sample = self.0 [iteration];
+    for value in self.0.iter_mut() {
+      *value = *value + (1.0 - decay_factor) * (sample - *value);
+      sample = *value;
     }
     sample    
   }
 }
 impl HighpassFilterState {
+  pub fn new (order: usize)->Self {HighpassFilterState (vec![0.0; order])}
   pub fn apply (&mut self, mut sample: f64, cutoff_frequency: f64, duration: f64)->f64 {
-    let decay_constant = TURN*cutoff_frequency*(2f64.powf (1.0/FILTER_ITERATIONS as f64) - 1.0).sqrt();
+    let decay_constant = TURN*cutoff_frequency*(2f64.powf (1.0/self.0.len() as f64) - 1.0).sqrt();
     let decay_factor = (-decay_constant*duration).exp();
-    for iteration in 0..FILTER_ITERATIONS {
-      self.0 [iteration] = self.0 [iteration] + (1.0 - decay_factor) * (sample - self.0 [iteration]);
-      sample -= self.0 [iteration];
+    for value in self.0.iter_mut() {
+      *value = *value + (1.0 - decay_factor) * (sample - *value);
+      sample -= *value;
     }
     sample
   }
@@ -131,7 +132,9 @@ pub struct RenderingState {
   pub main_waveform: WaveformRenderingState,
   pub signals: SignalsRenderingState,
   
+  #[derivative (Default (value = "LowpassFilterState::new (FILTER_ITERATIONS)"))]
   pub lowpass_state: LowpassFilterState,
+  #[derivative (Default (value = "HighpassFilterState::new (FILTER_ITERATIONS)"))]
   pub highpass_state: HighpassFilterState,
   
   pub bitcrush_phase: f64,
