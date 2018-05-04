@@ -92,6 +92,11 @@ pub struct WaveformRenderingState {
   pub last_phase: f64,
   pub value: f64,
   pub values: Vec<f64>,
+  
+  #[derivative (Default (value = "LowpassFilterState::new (16)"))]
+  pub lowpass_state: LowpassFilterState,
+  #[derivative (Default (value = "HighpassFilterState::new (16)"))]
+  pub highpass_state: HighpassFilterState,
 }
 
 pub struct SignalEffectRenderingState {
@@ -270,7 +275,7 @@ fn do_pink_noise (values: &mut Vec<f64>, max_fraction: f64, min_fraction: f64, g
 }
 
 impl WaveformRenderingState {
-  fn next_sample (&mut self, definition: & Waveform, _index: usize, _time: f64, phase: f64, constants: &RenderingStateConstants)->f64 {
+  fn next_sample (&mut self, definition: & Waveform, _index: usize, _time: f64, frequency: f64, phase: f64, constants: &RenderingStateConstants)->f64 {
     let offset = phase - self.last_phase;
     let fraction = if offset > 1.0 {1.0} else {offset - offset.floor()};
     assert! (fraction.is_finite());
@@ -281,7 +286,10 @@ impl WaveformRenderingState {
       Waveform::PitchedWhite => do_white_noise (&mut self.value, fraction, &mut self.generator),
       Waveform::PitchedPink => do_pink_noise (&mut self.values, fraction, 10.0/constants.sample_rate as f64, &mut self.generator),
       Waveform::Experimental => {
-        0.0
+        let mut sample =do_pink_noise (&mut self.values, 1.0, 10.0/constants.sample_rate as f64, &mut self.generator);
+        sample = self.lowpass_state.apply (sample, frequency, constants.supersample_duration);
+        sample = self.highpass_state.apply (sample, frequency, constants.supersample_duration);
+        sample*4.0
       },
       _ => definition.sample_simple (phase),
     };
@@ -340,7 +348,7 @@ impl SignalEffectRenderingState {
             }
           }
         }
-        size.rendered*self.waveform.next_sample (& waveform, index, sample_time, phase, constants)
+        size.rendered*self.waveform.next_sample (& waveform, index, sample_time, frequency, phase, constants)
       },
     }
   }
@@ -410,9 +418,10 @@ impl RenderingState {
     let time = self.next_time;
     let index = self.next_supersample;
     let phase = self.wave_phase;
+    let frequency = self.sample_signal::<LogFrequency> (sound, false).exp2();
     
     let sample = match sound.waveform {
-      Waveform::WhiteNoise | Waveform::PinkNoise | Waveform::PitchedWhite | Waveform::PitchedPink | Waveform::Experimental => self.main_waveform.next_sample (& sound.waveform, index, time, phase, & self.constants),
+      Waveform::WhiteNoise | Waveform::PinkNoise | Waveform::PitchedWhite | Waveform::PitchedPink | Waveform::Experimental => self.main_waveform.next_sample (& sound.waveform, index, time, frequency, phase, & self.constants),
       _=>{
       
     let mut result = 0.0;
@@ -440,7 +449,7 @@ impl RenderingState {
     };
     self.waveform_samples.push (sample);
     
-    let frequency = self.sample_signal::<LogFrequency> (sound, false).exp2();
+    
     self.wave_phase += frequency*self.constants.supersample_duration;
     
     sample
