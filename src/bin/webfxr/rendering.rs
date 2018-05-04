@@ -55,7 +55,6 @@ pub struct IllustrationLine {
 }
 pub struct RenderedSamples {
   pub serial_number: SerialNumber,
-  pub unprocessed_supersamples: Vec<f64>,
   pub samples: Vec<f32>,
   pub illustration: Vec<IllustrationLine>,
   pub canvas: Value,
@@ -68,7 +67,6 @@ impl Default for RenderedSamples {
     let context = js!{ return @{&canvas}[0].getContext ("2d"); };
     RenderedSamples {
       serial_number: Default::default(),
-      unprocessed_supersamples: Vec::new(),
       samples: Vec::new(),
       illustration: Vec::new(),
       canvas: canvas, context: context,
@@ -115,9 +113,7 @@ pub struct SignalRenderingState {
 pub struct RenderingStateConstants {
   pub num_samples: usize,
   pub sample_rate: usize,
-  pub supersamples_per_sample: usize,
-  pub num_supersamples: usize,
-  pub supersample_duration: f64,
+  pub sample_duration: f64,
   pub samples_per_illustrated: usize,
   pub samples_per_signal_sample: usize,
 }
@@ -125,7 +121,7 @@ pub struct RenderingStateConstants {
 #[derive (Derivative)]
 #[derivative (Default)]
 pub struct RenderingState {
-  pub next_supersample: usize,
+  pub next_sample: usize,
   pub next_time: f64,
   
   #[derivative (Default (value = "Generator::from_seed ([0; 32])"))]
@@ -152,10 +148,8 @@ pub struct RenderingState {
 
 impl RenderedSamples {
   pub fn push (&mut self, value: f64, constants: &RenderingStateConstants) {
-    self.unprocessed_supersamples.push (value);
-    if self.unprocessed_supersamples.len() == constants.supersamples_per_sample {
-      self.samples.push ((self.unprocessed_supersamples.drain(..).sum::<f64>() / constants.supersamples_per_sample as f64) as f32);
-      if self.samples.len() % constants.samples_per_illustrated == 0 || self.samples.len() == constants.num_samples {
+    self.samples.push (value as f32);
+    if self.samples.len() % constants.samples_per_illustrated == 0 || self.samples.len() == constants.num_samples {
         let batch_start = ((self.samples.len()-1) / constants.samples_per_illustrated) * constants.samples_per_illustrated;
         let rendered_slice = & self.samples [batch_start..];
         let value = root_mean_square (rendered_slice);
@@ -168,7 +162,6 @@ impl RenderedSamples {
           const rendered = @{rendered};
           @{&self.audio_buffer}.copyToChannel (rendered, 0, @{batch_start as f64});
         }  
-      }
     }
   }
   
@@ -209,10 +202,6 @@ impl RenderedSamples {
   }
   
   pub fn resample (&self, time: f64, constants: &RenderingStateConstants)->f64 {
-    // note: it's technically worse to use samples instead of supersamples,
-    // but storing the super samples would use more memory,
-    // and that the time of this writing, I'm not using supersampling anyway.
-    //
     // Linear interpolation because it doesn't matter that much anyway.
     
     let scaled = time*constants.sample_rate as f64;
@@ -287,8 +276,8 @@ impl WaveformRenderingState {
       Waveform::PitchedPink => do_pink_noise (&mut self.values, fraction, 10.0/constants.sample_rate as f64, &mut self.generator),
       Waveform::Experimental => {
         let mut sample =do_pink_noise (&mut self.values, 1.0, 10.0/constants.sample_rate as f64, &mut self.generator);
-        sample = self.lowpass_state.apply (sample, frequency, constants.supersample_duration);
-        sample = self.highpass_state.apply (sample, frequency, constants.supersample_duration);
+        sample = self.lowpass_state.apply (sample, frequency, constants.sample_duration);
+        sample = self.highpass_state.apply (sample, frequency, constants.sample_duration);
         sample*4.0
       },
       _ => definition.sample_simple (phase),
@@ -362,7 +351,7 @@ impl SignalRenderingState {
 
 impl RenderingState {
   pub fn sample_signal <Identity: SignalIdentity> (&mut self, definition: & SoundDefinition, smooth: bool)->f64 {
-    let index = self.next_supersample;
+    let index = self.next_sample;
     let time = self.next_time;
     let rendering = Identity::rendering_getter().get_mut (&mut self.signals);
     let sample = rendering.next_sample (Identity::definition_getter().get (& definition.signals), index, time, smooth, &self.constants);
@@ -375,14 +364,11 @@ impl RenderingState {
   pub fn new (sound: & SoundDefinition)->RenderingState {
     let num_samples = (min(MAX_RENDER_LENGTH, sound.duration())*sound.sample_rate() as f64).ceil() as usize;
     js! { window.webfxr_num_samples = @{num_samples as f64}; window.webfxr_sample_rate = @{sound.sample_rate() as f64}; } 
-    let supersamples_per_sample = 1;
     let mut result = RenderingState {
       constants: RenderingStateConstants {
         num_samples: num_samples,
         sample_rate: sound.sample_rate(),
-        supersamples_per_sample: supersamples_per_sample,
-        num_supersamples: num_samples*supersamples_per_sample,
-        supersample_duration: 1.0/((sound.sample_rate()*supersamples_per_sample) as f64),
+        sample_duration: 1.0/(sound.sample_rate() as f64),
         samples_per_illustrated: (sound.sample_rate() as f64/DISPLAY_SAMPLE_RATE).ceil() as usize,
         samples_per_signal_sample: (sound.sample_rate() as f64/500.0).ceil() as usize,
       },
@@ -416,7 +402,7 @@ impl RenderingState {
   
   pub fn next_waveform_sample (&mut self, sound: & SoundDefinition)->f64 {
     let time = self.next_time;
-    let index = self.next_supersample;
+    let index = self.next_sample;
     let phase = self.wave_phase;
     let frequency = self.sample_signal::<LogFrequency> (sound, false).exp2();
     
@@ -450,7 +436,7 @@ impl RenderingState {
     self.waveform_samples.push (sample);
     
     
-    self.wave_phase += frequency*self.constants.supersample_duration;
+    self.wave_phase += frequency*self.constants.sample_duration;
     
     sample
   }
@@ -460,7 +446,7 @@ impl RenderingState {
   }*/
   
   
-  fn superstep (&mut self, sound: & SoundDefinition) {
+  fn single_step (&mut self, sound: & SoundDefinition) {
     let time = self.next_time;
     
     let mut sample = self.next_waveform_sample (sound)*sound.envelope.sample (time);
@@ -478,13 +464,13 @@ impl RenderingState {
     
     if sound.signals.log_lowpass_filter_cutoff.enabled {
       let lowpass_filter_frequency = self.sample_signal::<LogLowpassFilterCutoff> (sound, false).exp2();
-      sample = self.lowpass_state.apply (sample, lowpass_filter_frequency, self.constants.supersample_duration);
+      sample = self.lowpass_state.apply (sample, lowpass_filter_frequency, self.constants.sample_duration);
       self.signals.log_lowpass_filter_cutoff.rendered_after.push (sample, &self.constants);
     }
     
     if sound.signals.log_highpass_filter_cutoff.enabled {
       let highpass_filter_frequency = self.sample_signal::<LogHighpassFilterCutoff> (sound, false).exp2();
-      sample = self.highpass_state.apply (sample, highpass_filter_frequency, self.constants.supersample_duration);
+      sample = self.highpass_state.apply (sample, highpass_filter_frequency, self.constants.sample_duration);
       self.signals.log_highpass_filter_cutoff.rendered_after.push (sample, &self.constants);
     }
     
@@ -510,7 +496,7 @@ impl RenderingState {
       self.signals.log_bitcrush_frequency.rendered_after.push (sample, &self.constants);
      
       let bitcrush_frequency = self.sample_signal::<LogBitcrushFrequency> (sound, false).exp2();
-      self.bitcrush_phase += bitcrush_frequency*self.constants.supersample_duration;
+      self.bitcrush_phase += bitcrush_frequency*self.constants.sample_duration;
     }
     
     if sound.soft_clipping {
@@ -519,20 +505,19 @@ impl RenderingState {
     
     self.final_samples.push (sample, &self.constants) ;
     
-    self.next_supersample += 1;
-    self.next_time = self.next_supersample as f64*self.constants.supersample_duration;
+    self.next_sample += 1;
+    self.next_time = self.next_sample as f64*self.constants.sample_duration;
   }
   pub fn step (&mut self, sound: & SoundDefinition) {
     if self.finished() {return;}
     
     let batch_samples = self.constants.samples_per_illustrated;
-    let batch_supersamples = batch_samples*self.constants.supersamples_per_sample;
-    for _ in 0..batch_supersamples {
-      self.superstep(sound);
+    for _ in 0..batch_samples {
+      self.single_step(sound);
       if self.finished() {return;}
     }
   }
   pub fn finished (&self)->bool {
-    self.next_supersample == self.constants.num_supersamples
+    self.next_sample == self.constants.num_samples
   }
 }
