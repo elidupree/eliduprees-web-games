@@ -130,7 +130,7 @@ pub struct RenderingState {
   pub wave_phase: f64,
   pub waveform_samples: Vec<f64>,
   
-  pub main_waveform: WaveformRenderingState,
+  pub harmonics: Vec<WaveformRenderingState>,
   pub signals: SignalsRenderingState,
   
   #[derivative (Default (value = "LowpassFilterState::new (FILTER_ITERATIONS)"))]
@@ -377,6 +377,9 @@ impl RenderingState {
       .. Default::default()
     };
     
+    for _ in 0..(if sound.signals.harmonics.enabled {max (1.0, sound.signals.harmonics.range() [1].ceil()) as usize} else {1}) {
+      result.harmonics.push (Default::default());
+    }
     
     struct Visitor <'a> (& 'a SoundDefinition, & 'a mut RenderingState);
     impl<'a> SignalVisitor for Visitor<'a> {
@@ -407,17 +410,16 @@ impl RenderingState {
     let phase = self.wave_phase;
     let frequency = self.sample_signal::<LogFrequency> (sound, false).exp2();
     
-    let sample = match sound.waveform {
+    /*let sample = match sound.waveform {
       Waveform::WhiteNoise | Waveform::PinkNoise | Waveform::BrownNoise | Waveform::PitchedWhite | Waveform::PitchedPink | Waveform::Experimental => self.main_waveform.next_sample (& sound.waveform, index, time, frequency, phase, & self.constants),
-      _=>{
+      _=>{*/
       
     let mut result = 0.0;
     let harmonics = if sound.signals.harmonics.enabled {max (1.0, min (100.0, self.sample_signal::<Harmonics> (sound, true)))} else {1.0};
     let skew = logistic_curve (self.sample_signal::<WaveformSkew> (sound, true));
     let mut total = 0.0;
-    for index in 0..harmonics.ceil() as usize {
+    for (index, waveform) in self.harmonics.iter_mut().enumerate() {
       let mut harmonic = (index + 1) as f64;
-      let fraction = if harmonic <= harmonics {1.0} else {harmonics + 1.0 - harmonic};
       if sound.odd_harmonics {
         harmonic = (index*2 + 1) as f64;
       }
@@ -426,14 +428,18 @@ impl RenderingState {
         harmonic_phase = harmonic_phase - harmonic_phase.floor();
         harmonic_phase = if harmonic_phase < skew {harmonic_phase*0.5/skew} else {0.5 + (harmonic_phase - skew)*0.5/(1.0 - skew)};
       }
-      let amplitude = fraction/harmonic;
-      total += amplitude;
-      result += sound.waveform.sample_simple (harmonic_phase)*amplitude;
+      let this_sample = waveform.next_sample (& sound.waveform, index, time, frequency*harmonic, harmonic_phase, & self.constants);
+      if harmonic < harmonics + 1.0 {
+        let fraction = if harmonic <= harmonics {1.0} else {harmonics + 1.0 - harmonic};
+        let amplitude = fraction/harmonic;
+        total += amplitude;
+        result += this_sample*amplitude;
+      }
     }
     
-    result/total
-      }
-    };
+    let sample = result/total;
+    //  }
+    //};
     self.waveform_samples.push (sample);
     
     
