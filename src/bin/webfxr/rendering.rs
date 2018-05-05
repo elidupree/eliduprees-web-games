@@ -274,7 +274,7 @@ impl WaveformRenderingState {
       Waveform::PinkNoise => do_pink_noise (&mut self.values, 1.0, 10.0/constants.sample_rate as f64, &mut self.generator),
       Waveform::BrownNoise => do_white_noise (&mut self.value, 20.0/constants.sample_rate as f64, &mut self.generator),
       Waveform::PitchedWhite => do_white_noise (&mut self.value, fraction, &mut self.generator),
-      Waveform::PitchedPink => do_pink_noise (&mut self.values, fraction, 10.0/constants.sample_rate as f64, &mut self.generator),
+      Waveform::PitchedPink => do_pink_noise (&mut self.values, fraction, min (fraction*0.25, 10.0/constants.sample_rate as f64), &mut self.generator),
       Waveform::Experimental => {
         let mut sample =do_pink_noise (&mut self.values, 1.0, 10.0/constants.sample_rate as f64, &mut self.generator);
         sample = self.lowpass_state.apply (sample, frequency, constants.sample_duration);
