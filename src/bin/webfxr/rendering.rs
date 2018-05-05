@@ -430,14 +430,14 @@ impl RenderingState {
       }
       let this_sample = waveform.next_sample (& sound.waveform, index, time, frequency*harmonic, harmonic_phase, & self.constants);
       if harmonic < harmonics + 1.0 {
-        let fraction = if harmonic <= harmonics {1.0} else {harmonics + 1.0 - harmonic};
+        let fraction = if harmonic <= harmonics {1.0} else {(harmonics + 1.0 - harmonic).sqrt()};
         let amplitude = fraction/harmonic;
-        total += amplitude;
+        total += amplitude*amplitude;
         result += this_sample*amplitude;
       }
     }
     
-    let sample = result/total;
+    let sample = result/total.sqrt();
     //  }
     //};
     self.waveform_samples.push (sample);
