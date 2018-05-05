@@ -236,11 +236,11 @@ impl Waveform {
 fn do_white_noise (value: &mut f64, fraction: f64, generator: &mut Generator)->f64 {
   let decay_factor = 1.0 - fraction;
   // normalize so that the power is equal to that of white noise
-  // let infinite_sum = 1.0/(1.0 - decay_factor*decay_factor); (infinite sum of sample powers)
+  // let infinite_sum = 1.0/(1.0 - decay_factor); (infinite sum of sample powers)
   // we want to reduce the power by that sum, so
   // let power_factor = (1.0/infinite_sum).sqrt();
   // but that can be done in fewer steps and without making an exception for 0.0
-  let power_factor = (1.0 - decay_factor*decay_factor).sqrt();
+  let power_factor = fraction.sqrt();
   *value = generator.gen_range(-1.0, 1.0)*power_factor + *value*decay_factor;
   *value
 }
