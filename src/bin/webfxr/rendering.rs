@@ -272,6 +272,7 @@ impl WaveformRenderingState {
     let result = match definition.clone() {
       Waveform::WhiteNoise => self.generator.gen_range(-1.0, 1.0),
       Waveform::PinkNoise => do_pink_noise (&mut self.values, 1.0, 10.0/constants.sample_rate as f64, &mut self.generator),
+      Waveform::BrownNoise => do_white_noise (&mut self.value, 20.0/constants.sample_rate as f64, &mut self.generator),
       Waveform::PitchedWhite => do_white_noise (&mut self.value, fraction, &mut self.generator),
       Waveform::PitchedPink => do_pink_noise (&mut self.values, fraction, 10.0/constants.sample_rate as f64, &mut self.generator),
       Waveform::Experimental => {
@@ -407,7 +408,7 @@ impl RenderingState {
     let frequency = self.sample_signal::<LogFrequency> (sound, false).exp2();
     
     let sample = match sound.waveform {
-      Waveform::WhiteNoise | Waveform::PinkNoise | Waveform::PitchedWhite | Waveform::PitchedPink | Waveform::Experimental => self.main_waveform.next_sample (& sound.waveform, index, time, frequency, phase, & self.constants),
+      Waveform::WhiteNoise | Waveform::PinkNoise | Waveform::BrownNoise | Waveform::PitchedWhite | Waveform::PitchedPink | Waveform::Experimental => self.main_waveform.next_sample (& sound.waveform, index, time, frequency, phase, & self.constants),
       _=>{
       
     let mut result = 0.0;
