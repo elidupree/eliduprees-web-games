@@ -319,6 +319,7 @@ signals_definitions! {
   [Harmonics, harmonics, DimensionlessType],
   [WaveformSkew, waveform_skew, DimensionlessType],
   [Volume, volume, VolumeType],
+  [Chorus, chorus, DimensionlessType],
   [LogFlangerFrequency, log_flanger_frequency, FrequencyType],
   [LogLowpassFilterCutoff, log_lowpass_filter_cutoff, FrequencyType],
   [LogHighpassFilterCutoff, log_highpass_filter_cutoff, FrequencyType],
@@ -368,6 +369,18 @@ impl SignalIdentity for Volume {
     default: -2.0,
     difference_slider_range: 2.0,
     can_disable: false,
+    .. Default::default()
+  }}
+}
+impl SignalIdentity for Chorus {
+  fn info()->SignalInfo {SignalInfo {
+    id: "chorus",
+    name: "Chorus voices",
+    slider_range: [1.0, 13.0],
+    default: 3.0,
+    slider_step: 1.0,
+    difference_slider_range: 5.0,
+    average_effects: 0.5,
     .. Default::default()
   }}
 }

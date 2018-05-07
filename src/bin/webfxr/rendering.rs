@@ -420,6 +420,7 @@ impl RenderingState {
     let mut total = 0.0;
     for (index, waveform) in self.harmonics.iter_mut().enumerate() {
       let mut harmonic = (index + 1) as f64;
+      let fraction = if harmonic <= harmonics {1.0} else {(harmonics + 1.0 - harmonic).sqrt()};
       if sound.odd_harmonics {
         harmonic = (index*2 + 1) as f64;
       }
@@ -430,7 +431,6 @@ impl RenderingState {
       }
       let this_sample = waveform.next_sample (& sound.waveform, index, time, frequency*harmonic, harmonic_phase, & self.constants);
       if harmonic < harmonics + 1.0 {
-        let fraction = if harmonic <= harmonics {1.0} else {(harmonics + 1.0 - harmonic).sqrt()};
         let amplitude = fraction/harmonic;
         total += amplitude*amplitude;
         result += this_sample*amplitude;
@@ -461,6 +461,26 @@ impl RenderingState {
     
     sample *= self.sample_signal::<Volume> (sound, true).exp2();
     self.signals.volume.rendered_after.push (sample, &self.constants);
+    
+    let mut previous_getter = Volume::rendering_getter();
+    
+    if sound.signals.chorus.enabled {
+      let voices = self.sample_signal::<Chorus> (sound, true);
+      if voices > 0.0 {for voice in 0..voices.ceil() as usize {
+        let fraction = if voices >= (voice + 1) as f64 {1.0} else {(voices - voice as f64).sqrt()};
+        let oscillator_amplitude = 0.05;
+        let oscillator_max_derivative = 0.006;
+        let oscillator_max_speed = oscillator_max_derivative/oscillator_amplitude;
+        let oscillator_speed = oscillator_max_speed*5.0/(5.0 + voice as f64);
+        let initial_phase = TURN*5.0/(5.0 + voice as f64);
+        let offset = ((time*oscillator_speed + initial_phase).sin() - 1.0)*oscillator_amplitude;
+        sample += self.signals.volume.rendered_after.resample (time + offset, & self.constants)*fraction;
+      }
+        sample /= voices + 1.0;
+      }
+      self.signals.chorus.rendered_after.push (sample, &self.constants);
+      previous_getter = Chorus::rendering_getter();
+    }
     
     if sound.signals.log_flanger_frequency.enabled {
       let flanger_frequency = self.sample_signal::<LogFlangerFrequency> (sound, true).exp2();
