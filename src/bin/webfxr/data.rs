@@ -239,6 +239,7 @@ pub trait SignalIdentityGetters {
 }
 pub trait SignalIdentity: SignalIdentityGetters {
   fn info()->SignalInfo;
+  fn applicable (sound: & SoundDefinition)->bool {true}
 }
 
 #[derive (Clone, Derivative)]
@@ -338,6 +339,10 @@ impl SignalIdentity for LogFrequency {
     can_disable: false,
     .. Default::default()
   }}
+  fn applicable (sound: & SoundDefinition)->bool {match sound.waveform {
+    Waveform::WhiteNoise | Waveform::PinkNoise | Waveform::BrownNoise => false,
+    _ => true,
+  }}
 }
 impl SignalIdentity for Harmonics {
   fn info()->SignalInfo {SignalInfo {
@@ -350,6 +355,10 @@ impl SignalIdentity for Harmonics {
     average_effects: 0.5,
     .. Default::default()
   }}
+  fn applicable (sound: & SoundDefinition)->bool {match sound.waveform {
+    Waveform::WhiteNoise | Waveform::PinkNoise | Waveform::BrownNoise | Waveform::PitchedWhite | Waveform::PitchedPink => false,
+    _ => true,
+  }}
 }
 impl SignalIdentity for WaveformSkew {
   fn info()->SignalInfo {SignalInfo {
@@ -359,6 +368,10 @@ impl SignalIdentity for WaveformSkew {
     default: -2.0,
     difference_slider_range: 5.0,
     .. Default::default()
+  }}
+  fn applicable (sound: & SoundDefinition)->bool {match sound.waveform {
+    Waveform::WhiteNoise | Waveform::PinkNoise | Waveform::BrownNoise | Waveform::PitchedWhite | Waveform::PitchedPink | Waveform::Experimental => false,
+    _ => true,
   }}
 }
 impl SignalIdentity for Volume {

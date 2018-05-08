@@ -356,7 +356,8 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
       
   let container = self.main_grid;
   
-  let enabled = signal.enabled || !info.can_disable;
+  let applicable = Identity::applicable (sound);
+  let enabled = applicable && (signal.enabled || !info.can_disable);
   
   //js!{@{& container}.append (@{info.name} + ": ");}
   
@@ -373,7 +374,7 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
     self.assign_row(js!{ return $("<span>").text (@{info.name});})
   };
   
-  if info.can_disable {
+  if applicable && info.can_disable {
     js!{@{label}.remove();}
     let toggle = self.checkbox_input (
       & format! ("{}_enabled", & info.id),
@@ -384,6 +385,10 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
     label = self.assign_row(js!{ return @{toggle}.children("label");});
   }
   js!{@{label}.append(":").appendTo(@{& container}).addClass("toplevel_input_label")}
+  
+  if !applicable {
+    self.assign_row(js!{ return $("<span>", {class: "signal_not_applicable"}).text ("Not applicable for the current waveform").appendTo(@{& container});});
+  }
   
   if enabled {
   {
