@@ -415,7 +415,7 @@ impl RenderingState {
       _=>{*/
       
     let mut result = 0.0;
-    let harmonics = if sound.signals.harmonics.enabled {max (1.0, min (100.0, self.sample_signal::<Harmonics> (sound, true)))} else {1.0};
+    let harmonics = if sound.signals.harmonics.enabled && Harmonics::applicable (sound) {max (1.0, min (100.0, self.sample_signal::<Harmonics> (sound, true)))} else {1.0};
     let skew = logistic_curve (self.sample_signal::<WaveformSkew> (sound, true));
     let mut total = 0.0;
     for (index, waveform) in self.harmonics.iter_mut().enumerate() {
@@ -425,7 +425,7 @@ impl RenderingState {
         harmonic = (index*2 + 1) as f64;
       }
       let mut harmonic_phase = phase*harmonic;
-      if sound.signals.waveform_skew.enabled {
+      if sound.signals.waveform_skew.enabled && WaveformSkew::applicable (sound) {
         harmonic_phase = harmonic_phase - harmonic_phase.floor();
         harmonic_phase = if harmonic_phase < skew {harmonic_phase*0.5/skew} else {0.5 + (harmonic_phase - skew)*0.5/(1.0 - skew)};
       }
