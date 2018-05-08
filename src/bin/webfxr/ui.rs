@@ -356,17 +356,23 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
       
   let container = self.main_grid;
   
+  let enabled = signal.enabled || !info.can_disable;
+  
   //js!{@{& container}.append (@{info.name} + ": ");}
   
-  let initial_value_input = self.value_input (
-    & format! ("{}_initial", & info.id),
-    info.name,
-    state_getter.clone() + getter! (signal => signal.initial_value)
-  );
+  let mut label = if enabled {
+    let initial_value_input = self.value_input (
+      & format! ("{}_initial", & info.id),
+      info.name,
+      state_getter.clone() + getter! (signal => signal.initial_value)
+    );
+    js!{@{& container}.append (@{&initial_value_input})}
+    //let input_height = js!{ return @{&initial_value_input}.outerHeight()};
+    self.assign_row(js!{ return @{initial_value_input}.children("label");})
+  } else {
+    self.assign_row(js!{ return $("<span>").text (@{info.name});})
+  };
   
-  js!{@{& container}.append (@{&initial_value_input})}
-  //let input_height = js!{ return @{&initial_value_input}.outerHeight()};
-  let mut label = self.assign_row(js!{ return @{initial_value_input}.children("label");});
   if info.can_disable {
     js!{@{label}.remove();}
     let toggle = self.checkbox_input (
@@ -378,6 +384,8 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
     label = self.assign_row(js!{ return @{toggle}.children("label");});
   }
   js!{@{label}.append(":").appendTo(@{& container}).addClass("toplevel_input_label")}
+  
+  if enabled {
   {
     let info = info.clone();
     let duration = sound.duration();
@@ -410,8 +418,8 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
   let rendered = & Identity::rendering_getter().get (& guard.rendering_state.signals).rendered_after;
   setup_rendered_canvas (self.state, getter! (rendering: RenderingState => rendering.signals) + Identity::rendering_getter() + getter! (rendered: SignalRenderingState => rendered.rendered_after), 32);
   js!{@{& container}.append (@{self.assign_row (js!{ return @{rendered.canvas.clone()}.parent()})});}
-      
-  *self.rows += 1;
+  
+  } *self.rows += 1; if enabled {
   
   if info.id == "harmonics" {
     let toggle = self.checkbox_input (
@@ -502,7 +510,7 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
       let canvas = canvas_of_samples (& samples, sample_rate, if effects_shown {100.0} else {32.0}, info.slider_range, sound.duration());
       js!{ @{& container}.append (@{canvas}.parent().css("grid-row", @{first_row + 1}+" / "+@{*self.rows})); }
     }
-    
+  }
     js!{ @{& container}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{first_row}+" / "+@{*self.rows})); }
   }
 }
