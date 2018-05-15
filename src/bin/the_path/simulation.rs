@@ -1,6 +1,6 @@
 use super::*;
 
-use rand::Rng;
+use rand::{Rng, SeedableRng};
 use boolinator::Boolinator;
 
 use std::rc::Rc;
@@ -157,6 +157,8 @@ pub struct Click {
   pub time: f64,
 }
 
+pub type Generator = ::rand::ChaChaRng;
+
 #[derive (Derivative)]
 #[derivative (Default)]
 pub struct State {
@@ -177,8 +179,8 @@ pub struct State {
   
   pub stars_collected: i32,
   
-  #[derivative (Default (value = "Box::new(::rand::ChaChaRng::new_unseeded())"))]
-  pub generator: Box <Rng>,
+  #[derivative (Default (value = "Generator::from_seed([1; 32])"))]
+  pub generator: Generator,
   pub constants: Rc<Constants>,
   pub now: f64,
 }
@@ -255,7 +257,7 @@ impl Object {
 }
 
 impl Path {
-  pub fn extend (&mut self, until: f64, player_horizontal: f64, generator: &mut Box<Rng>, constants: & Constants) {
+  pub fn extend (&mut self, until: f64, player_horizontal: f64, generator: &mut Generator, constants: & Constants) {
     while self.components.last().unwrap().center [1] <until {
       let previous = self.components.last().unwrap().clone();
       let distance = constants.visible_length/constants.visible_components as f64;
@@ -310,7 +312,7 @@ impl Path {
 }
 
 impl State {
-  pub fn do_spawns_impl <G: FnMut(f64, &mut Box<Rng>)->f64, F: FnMut()->Object> (&mut self, advance_distance: f64, average_number: f64, mut horizontal_position_generator: G, mut object_generator: F) {
+  pub fn do_spawns_impl <G: FnMut(f64, &mut Generator)->f64, F: FnMut()->Object> (&mut self, advance_distance: f64, average_number: f64, mut horizontal_position_generator: G, mut object_generator: F) {
     let attempts = (average_number*10.0).ceil() as usize;
     for _ in 0..attempts {
       if self.generator.gen::<f64>() < average_number/attempts as f64 {
