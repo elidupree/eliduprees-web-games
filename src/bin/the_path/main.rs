@@ -16,7 +16,7 @@ extern crate boolinator;
 extern crate lyon;
 extern crate arrayvec;
 
-use rand::Rng;
+use rand::{Rng, SeedableRng};
 use stdweb::unstable::TryInto;
 
 use std::rc::Rc;
@@ -111,7 +111,7 @@ fn new_game()->State {
         permanent_pain_smoothed: 0.0,
         temporary_pain_smoothed: 0.0,
   
-        generator: Box::new(rand::thread_rng()),
+        generator: Generator::from_rng (rand::thread_rng()).unwrap(),
         
         .. Default::default()
       };
