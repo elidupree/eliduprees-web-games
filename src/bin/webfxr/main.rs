@@ -1,4 +1,4 @@
-#![feature (option_filter)]
+#![feature (option_filter, never_type)]
 #![recursion_limit="256"]
 
 extern crate eliduprees_web_games;
