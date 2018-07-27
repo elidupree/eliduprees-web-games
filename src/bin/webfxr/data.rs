@@ -507,15 +507,19 @@ impl Envelope {
 impl SoundDefinition {
   pub fn duration(&self)->f64 {
     let mut result = self.envelope.duration();
-    if self.signals.log_flanger_frequency.enabled {
+    if self.enabled::<LogFlangerFrequency>() {
       result += 1.0/self.signals.log_flanger_frequency.range() [0].exp2();
     }
-    if self.signals.log_bitcrush_frequency.enabled {
+    if self.enabled::<LogBitcrushFrequency>() {
       result += 1.0/self.signals.log_bitcrush_frequency.range() [0].exp2();
     }
     result
   }
   pub fn sample_rate (&self)->usize {self.output_sample_rate as usize}
+    
+  pub fn enabled <Identity: SignalIdentity> (&self)->bool {
+    Identity::applicable (self) && Identity::definition_getter ().get (&self.signals).enabled
+  }
 }
 
 impl Default for SoundDefinition {

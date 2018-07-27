@@ -377,7 +377,7 @@ impl RenderingState {
       .. Default::default()
     };
     
-    for _ in 0..(if sound.signals.harmonics.enabled {max (1.0, sound.signals.harmonics.range() [1].ceil()) as usize} else {1}) {
+    for _ in 0..(if sound.enabled::<Harmonics>() {max (1.0, min (100.0, sound.signals.harmonics.range() [1].ceil())) as usize} else {1}) {
       result.harmonics.push (Default::default());
     }
     
@@ -415,7 +415,7 @@ impl RenderingState {
       _=>{*/
       
     let mut result = 0.0;
-    let harmonics = if sound.signals.harmonics.enabled && Harmonics::applicable (sound) {max (1.0, min (100.0, self.sample_signal::<Harmonics> (sound, true)))} else {1.0};
+    let harmonics = if sound.enabled::<Harmonics>() {max (1.0, self.sample_signal::<Harmonics> (sound, true))} else {1.0};
     let skew = logistic_curve (self.sample_signal::<WaveformSkew> (sound, true));
     let mut total = 0.0;
     for (index, waveform) in self.harmonics.iter_mut().enumerate() {
@@ -425,7 +425,7 @@ impl RenderingState {
         harmonic = (index*2 + 1) as f64;
       }
       let mut harmonic_phase = phase*harmonic;
-      if sound.signals.waveform_skew.enabled && WaveformSkew::applicable (sound) {
+      if sound.enabled::<WaveformSkew>() {
         harmonic_phase = harmonic_phase - harmonic_phase.floor();
         harmonic_phase = if harmonic_phase < skew {harmonic_phase*0.5/skew} else {0.5 + (harmonic_phase - skew)*0.5/(1.0 - skew)};
       }
@@ -464,7 +464,7 @@ impl RenderingState {
     
     let mut previous_getter = Volume::rendering_getter();
     
-    if sound.signals.chorus.enabled {
+    if sound.enabled::<Chorus>() {
       let voices = self.sample_signal::<Chorus> (sound, true);
       if voices > 0.0 {for voice in 0..voices.ceil() as usize {
         let fraction = if voices >= (voice + 1) as f64 {1.0} else {(voices - voice as f64).sqrt()};
@@ -482,26 +482,26 @@ impl RenderingState {
       previous_getter = Chorus::rendering_getter();
     }
     
-    if sound.signals.log_flanger_frequency.enabled {
+    if sound.enabled::<LogFlangerFrequency>() {
       let flanger_frequency = self.sample_signal::<LogFlangerFrequency> (sound, true).exp2();
       let flanger_offset = 1.0/flanger_frequency;
       sample += previous_getter.get (& self.signals).rendered_after.resample (time - flanger_offset, & self.constants);
       self.signals.log_flanger_frequency.rendered_after.push (sample, &self.constants);
     }
     
-    if sound.signals.log_lowpass_filter_cutoff.enabled {
+    if sound.enabled::<LogLowpassFilterCutoff>() {
       let lowpass_filter_frequency = self.sample_signal::<LogLowpassFilterCutoff> (sound, false).exp2();
       sample = self.lowpass_state.apply (sample, lowpass_filter_frequency, self.constants.sample_duration);
       self.signals.log_lowpass_filter_cutoff.rendered_after.push (sample, &self.constants);
     }
     
-    if sound.signals.log_highpass_filter_cutoff.enabled {
+    if sound.enabled::<LogHighpassFilterCutoff>() {
       let highpass_filter_frequency = self.sample_signal::<LogHighpassFilterCutoff> (sound, false).exp2();
       sample = self.highpass_state.apply (sample, highpass_filter_frequency, self.constants.sample_duration);
       self.signals.log_highpass_filter_cutoff.rendered_after.push (sample, &self.constants);
     }
     
-    if sound.signals.bitcrush_resolution_bits.enabled {
+    if sound.enabled::<BitcrushResolutionBits>() {
       let bits = max (1.0, self.sample_signal::<BitcrushResolutionBits> (sound, false));
       let floor_bits = bits.floor();
       let bits_fraction = bits - floor_bits;
@@ -513,7 +513,7 @@ impl RenderingState {
       self.signals.bitcrush_resolution_bits.rendered_after.push (sample, &self.constants);
     }
 
-    if sound.signals.log_bitcrush_frequency.enabled {
+    if sound.enabled::<LogBitcrushFrequency>() {
       if self.bitcrush_phase >= 1.0 {
         self.bitcrush_phase -= 1.0;
         if self.bitcrush_phase >1.0 {self.bitcrush_phase = 1.0;}
