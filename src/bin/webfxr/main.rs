@@ -23,7 +23,7 @@ use std::marker::PhantomData;
 use stdweb::Value;
 use stdweb::unstable::TryInto;
 use stdweb::web::{self, TypedArray};
-use std::time::{Instant, Duration};
+use std::time::{Instant};
 pub use array_ext::Array;
 pub use eliduprees_web_games::*;
 
@@ -249,6 +249,9 @@ fn redraw(state: & Rc<RefCell<State>>) {
   //js! {console.log("rendering took this many milliseconds: " + (Date.now() - window.before_render));}
   
   js!{morphdom($("#app")[0], @{app_element}[0]);} 
+  
+  // hack – suppress warning from incrementing rows unnecessarily at the end
+  #[allow (unused_variables)] let whatever = rows;
   
   }
 }

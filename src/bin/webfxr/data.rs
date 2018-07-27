@@ -239,7 +239,7 @@ pub trait SignalIdentityGetters {
 }
 pub trait SignalIdentity: SignalIdentityGetters {
   fn info()->SignalInfo;
-  fn applicable (sound: & SoundDefinition)->bool {true}
+  fn applicable (_sound: & SoundDefinition)->bool {true}
 }
 
 #[derive (Clone, Derivative)]
