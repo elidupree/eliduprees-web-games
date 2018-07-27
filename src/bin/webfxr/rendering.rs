@@ -420,7 +420,6 @@ impl RenderingState {
     let mut total = 0.0;
     for (harmonic_index, waveform) in self.harmonics.iter_mut().enumerate() {
       let mut harmonic = (harmonic_index + 1) as f64;
-      let fraction = if harmonic <= harmonics {1.0} else {(harmonics + 1.0 - harmonic).sqrt()};
       if sound.odd_harmonics {
         harmonic = (harmonic_index*2 + 1) as f64;
       }
@@ -430,7 +429,9 @@ impl RenderingState {
         harmonic_phase = if harmonic_phase < skew {harmonic_phase*0.5/skew} else {0.5 + (harmonic_phase - skew)*0.5/(1.0 - skew)};
       }
       let this_sample = waveform.next_sample (& sound.waveform, index, time, frequency*harmonic, harmonic_phase, & self.constants);
-      if harmonic < harmonics + 1.0 {
+      let leeway = harmonics - (harmonic_index as f64);
+      if leeway > 0.0 {
+        let fraction = min(1.0, leeway).sqrt();
         let amplitude = fraction/harmonic;
         total += amplitude*amplitude;
         result += this_sample*amplitude;
