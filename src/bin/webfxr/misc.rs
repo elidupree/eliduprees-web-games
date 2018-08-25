@@ -72,11 +72,11 @@ macro_rules! variant_field_getter {
     Getter {
       get    : Rc::new (| value | match value {
         &    $Enum::$Variant {ref     $field,..} => $field,
-        _ => unreachable!(),
+        _ => panic!("Variant field getter used with the incorrect variant"),
       }),
       get_mut: Rc::new (| value | match value {
         &mut $Enum::$Variant {ref mut $field,..} => $field,
-        _ => unreachable!(),
+        _ => panic!("Variant field getter used with the incorrect variant"),
       }),
     }
   }

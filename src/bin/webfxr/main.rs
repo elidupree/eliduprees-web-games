@@ -341,7 +341,7 @@ fn play (state: &mut State, getter: Getter <RenderingState, RenderedSamples>) {
 }
 
 
-#[cfg (target_os = "emscripten")]
+//#[cfg (target_os = "emscripten")]
 fn main() {
   stdweb::initialize();
   
@@ -380,7 +380,7 @@ fn main() {
 }
 
 
-#[cfg (not(target_os = "emscripten"))]
+/*#[cfg (not(target_os = "emscripten"))]
 fn main() {
   println!("There's not currently a way to compile this natively");
-}
+}*/
