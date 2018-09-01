@@ -1,12 +1,21 @@
 use std::rc::Rc;
 use std::cell::Cell;
-
+use stdweb::unstable::TryInto;
 
 //use super::*;
 
 
 pub fn min (first: f64, second: f64)->f64 {if first < second {first} else {second}}
 pub fn max (first: f64, second: f64)->f64 {if first > second {first} else {second}}
+
+pub fn now ()->f64 {
+  let milliseconds: f64 = js!{ return Date.now()}.try_into().unwrap();
+  milliseconds*0.001
+}
+pub fn audio_now ()->f64 {
+  let seconds: f64 = js!{ return audio.currentTime}.try_into().unwrap();
+  seconds
+}
 
 
 #[derive (Clone, PartialEq, Eq)]

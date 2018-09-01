@@ -116,6 +116,7 @@ pub struct RenderingStateConstants {
   pub sample_duration: f64,
   pub samples_per_illustrated: usize,
   pub samples_per_signal_sample: usize,
+  pub started_rendering_at: f64,
 }
 
 #[derive (Derivative)]
@@ -372,6 +373,7 @@ impl RenderingState {
         sample_duration: 1.0/(sound.sample_rate() as f64),
         samples_per_illustrated: (sound.sample_rate() as f64/DISPLAY_SAMPLE_RATE).ceil() as usize,
         samples_per_signal_sample: (sound.sample_rate() as f64/500.0).ceil() as usize,
+        started_rendering_at: now(),
       },
       bitcrush_phase: 1.0,
       .. Default::default()

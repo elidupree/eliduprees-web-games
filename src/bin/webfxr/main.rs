@@ -23,7 +23,6 @@ use std::marker::PhantomData;
 use stdweb::Value;
 use stdweb::unstable::TryInto;
 use stdweb::web::{self, TypedArray};
-use std::time::{Instant};
 pub use array_ext::Array;
 pub use eliduprees_web_games::*;
 
@@ -43,8 +42,21 @@ pub use randomization::*;
 
 
 #[derive (Clone)]
+pub enum PlaybackTime {
+  RunningSinceAudioTime (f64),
+  WaitingAtOffset (f64),
+}
+
+impl PlaybackTime {
+  fn current_offset (&self)->f64 {match self {
+    PlaybackTime::RunningSinceAudioTime (start) => audio_now() - start,
+    PlaybackTime::WaitingAtOffset (offset) => *offset,
+  }}
+}
+
+#[derive (Clone)]
 pub struct Playback {
-  start_audio_time: f64,
+  time: PlaybackTime,
   samples_getter: Getter <RenderingState, RenderedSamples>,
 }
 
@@ -268,53 +280,68 @@ fn render_loop (state: Rc<RefCell<State>>) {
   {
     let mut guard = state.borrow_mut();
     let state = &mut*guard;
-    let start = Instant::now();
+    let start = now();
     
     let already_finished = state.rendering_state.finished();
     
     while !state.rendering_state.finished() {
       { state.rendering_state.step(& state.sound); }
-      let elapsed = start.elapsed();
-      if elapsed.as_secs() > 0 || elapsed.subsec_nanos() > 5_000_000 {
+      let elapsed = now() - start;
+      if elapsed > 0.005 {
         break;
       }
     }
     
+    let mut updated =!already_finished ;
+    
     let rendered_duration = state.rendering_state.final_samples.samples.len() as f64/state.sound.sample_rate() as f64;
-    if (state.rendering_state.finished() || rendered_duration > 0.2) && !already_finished {
-      match state.playback_state {
-        Some(ref playback) => {
-          let now: f64 = js!{return audio.currentTime;}.try_into().unwrap();
-          let tentative_offset = now - playback.start_audio_time;
-          if tentative_offset < rendered_duration {
-            js! {
-              play_buffer (@{&playback.samples_getter.get(&state.rendering_state).audio_buffer},@{tentative_offset},@{rendered_duration - tentative_offset});
-            }
+    if let Some(ref mut playback) = state.playback_state {if let PlaybackTime::WaitingAtOffset (offset) = playback.time {
+      let time_spent_rendering = now() - state.rendering_state.constants.started_rendering_at;
+      let rendering_speed = rendered_duration/time_spent_rendering;
+      let currently_available_playback_time = rendered_duration - offset;
+      let conservative_rendering_speed = rendering_speed - 0.05;
+      if state.rendering_state.finished() || conservative_rendering_speed >= 1.0 || {
+        let expected_available_playback_time = currently_available_playback_time/(1.0 - conservative_rendering_speed);
+        expected_available_playback_time > 1.2} {
+        playback.time = PlaybackTime::RunningSinceAudioTime (audio_now() - offset);
+        updated = true;
+      }
+    }}
+    
+    if updated {
+      if let Some(ref mut playback) = state.playback_state {if let PlaybackTime::RunningSinceAudioTime (start) = playback.time {
+        let now: f64 = audio_now();
+        let offset = now - start;
+        let transition_time = now + 0.05;
+        let offset_then = transition_time - start;
+        if offset_then > rendered_duration {
+          if !state.rendering_state.finished() {
+            playback.time = PlaybackTime::WaitingAtOffset (offset);
           }
         }
-        None => (),
-      }
+        else {
+          js! {
+            play_buffer (@{transition_time}, @{&playback.samples_getter.get(&state.rendering_state).audio_buffer},@{offset_then},@{rendered_duration - offset_then});
+          }
+        }
+      }}
     }
     
-    match state.playback_state.clone() {
-      Some(playback) => {
-        let now: f64 = js!{return audio.currentTime;}.try_into().unwrap();
-        let offset = now - playback.start_audio_time;
-        if offset > state.sound.duration() {
-          if state.loop_playback {
-            play (state, playback.samples_getter);
-          } else {
-            let samples = playback.samples_getter.get (&state.rendering_state);
-            samples.redraw (None, & state.rendering_state.constants);
-            state.playback_state = None;
-          }
+    if let Some(playback) = state.playback_state.clone() {
+      let offset = playback.time.current_offset();
+      if offset > state.sound.duration() {
+        if state.loop_playback {
+          play (state, playback.samples_getter);
         } else {
           let samples = playback.samples_getter.get (&state.rendering_state);
-          samples.redraw (Some(offset), & state.rendering_state.constants);
-          redraw_waveform_canvas (state, offset);
+          samples.redraw (None, & state.rendering_state.constants);
+          state.playback_state = None;
         }
+      } else if let PlaybackTime::RunningSinceAudioTime (_) = playback.time {
+        let samples = playback.samples_getter.get (&state.rendering_state);
+        samples.redraw (Some(offset), & state.rendering_state.constants);
+        redraw_waveform_canvas (state, offset);
       }
-      None => (),
     }
   }
   
@@ -330,14 +357,14 @@ fn play (state: &mut State, getter: Getter <RenderingState, RenderedSamples>) {
     }
   }
 
-  let now: f64 = js!{return audio.currentTime;}.try_into().unwrap();
+  //let now: f64 = js!{return audio.currentTime;}.try_into().unwrap();
   state.playback_state = Some(Playback {
-    start_audio_time: now,
+    time: PlaybackTime::WaitingAtOffset (0.0),
     samples_getter: getter,
   });
-  js! {
+  /*js! {
     play_buffer (@{&samples.audio_buffer});
-  }  
+  }*/ 
 }
 
 
