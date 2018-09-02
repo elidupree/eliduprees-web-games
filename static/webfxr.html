@@ -65,7 +65,7 @@ input[type='button'].down {
     <p>Notes for audio nerds:</p>
     <ul>
     <li>"Volume" is measured in decibels of amplitude above -40, because positive numbers are easier to work with. (Normally, 0.0 dB represents the maximum amplitude of 1.0, but here, 40.0 dB represents that.)</li>
-    <li>Sine waves and square waves are normalized to have the same root-mean-square. A full-scale sign wave is 40.0 dB on the volume scale, while a full-scale square wave would actually be ~43 dB on this scale.</li>
+    <li>Sine waves and square waves are normalized to have the same root-mean-square. A full-scale sine wave is 40.0 dB on the volume scale, while a full-scale square wave would actually be ~43 dB on this scale.</li>
     <li>When using harmonics, the Nth harmonic is given an amplitude of 1/N compared to the first harmonic.</li>
     <li>Fractional values of "harmonics" linearly attenuate the last harmonic, so that the effect is continuous. Values lower than 1.0 behave the same as 1.0.</li>
     <li>"Waveform skew" also functions as square duty. However, it goes through a logistic function first, so that you never run into the ends of the scale.</li>
