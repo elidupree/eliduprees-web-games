@@ -72,7 +72,7 @@ input[type='button'].down {
     <li>The flanger doesn't have any feedback, it's just a sum of two copies of the signal with an offset. The input is called "frequency" – the reciprocal of the offset – so it can intuitively be on a log scale like the others.</li>
     <li>For the low-pass and high-pass filters, Bfxr used first-order digital RC filters. I always felt like the rolloff wasn't steep enough, so I chained 3 of them together, creating an amplitude rolloff of 30 dB per decade (equivalently, a power rolloff of 60 dB per decade).</li>
     <li>Bitcrush resolution reduction uses a novel formula for fractional bits to make the effect continuous. If it's between B bits and B+1 bits, it uses B+1 bits, but the rounding has a fractional bias towards even numbers. (Notice that a complete bias towards even numbers is the same as using one less bit.) I also tried a different method, where I used normal rounding and the possible sample values were 2^bits distance away from each other (using the fractional value of bits), but that didn't sound quite as continuous during a slide, despite being more elegant in some ways.</li>
-    <li>The envelope doesn't <em>exactly</em> determine the length of the sound. Flanger and bitcrush frequency can make the sound slightly longer, because the envelope is applied first, and those can make the sound continue.</li>
+    <li>The envelope doesn't <em>exactly</em> determine the length of the sound. Chorus, flanger, and bitcrush frequency can make the sound slightly longer, because the envelope is applied first, and those can make the sound linger.</li>
     </ul>
     <!-- /eliduprees-website-source body -->
     

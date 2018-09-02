@@ -507,6 +507,9 @@ impl Envelope {
 impl SoundDefinition {
   pub fn duration(&self)->f64 {
     let mut result = self.envelope.duration();
+    if self.enabled::<Chorus>() {
+      result += CHORUS_OSCILLATOR_MAX_LINGER_DURATION;
+    }
     if self.enabled::<LogFlangerFrequency>() {
       result += 1.0/self.signals.log_flanger_frequency.range() [0].exp2();
     }

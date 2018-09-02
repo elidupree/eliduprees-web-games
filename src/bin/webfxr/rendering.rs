@@ -15,6 +15,9 @@ pub fn logistic_curve (input: f64)->f64 {
 // So I chain multiples of them together.
 const FILTER_ITERATIONS: usize = 3;
 
+pub const CHORUS_OSCILLATOR_AMPLITUDE: f64 = 0.05;
+pub const CHORUS_OSCILLATOR_MAX_LINGER_DURATION: f64 = CHORUS_OSCILLATOR_AMPLITUDE*2.0;
+
 //#[derive (Default)]
 pub type FirstOrderLowpassFilterState = f64;
 #[derive (Default)]
@@ -471,12 +474,13 @@ impl RenderingState {
       let voices = self.sample_signal::<Chorus> (sound, true);
       if voices > 0.0 {for voice in 0..voices.ceil() as usize {
         let fraction = if voices >= (voice + 1) as f64 {1.0} else {(voices - voice as f64).sqrt()};
-        let oscillator_amplitude = 0.05;
+        let oscillator_amplitude = CHORUS_OSCILLATOR_AMPLITUDE;
         let oscillator_max_derivative = 0.006;
         let oscillator_max_speed = oscillator_max_derivative/oscillator_amplitude;
         let oscillator_speed = oscillator_max_speed*5.0/(5.0 + voice as f64);
         let initial_phase = TURN*5.0/(5.0 + voice as f64);
         let offset = ((time*oscillator_speed + initial_phase).sin() - 1.0)*oscillator_amplitude;
+        assert!(offset >= -(0.000001+CHORUS_OSCILLATOR_MAX_LINGER_DURATION), "oscillator offset outside of allowed range; the max range is relied upon in Sound::duration() to make sure there is no pop at the end of the sound");
         sample += self.signals.volume.rendered_after.resample (time + offset, & self.constants)*fraction;
       }
         sample /= voices + 1.0;
