@@ -85,6 +85,14 @@ fn restart_rendering (state: & Rc<RefCell<State>>) {
   state.rendering_state = RenderingState::new (& state.sound);
 }
 
+
+
+pub struct RedrawState {
+  pub rows: u32,
+  pub main_grid: Value,
+  //pub
+}
+
 fn redraw(state: & Rc<RefCell<State>>) {
   let waveform_canvas;
   {
@@ -276,6 +284,8 @@ fn redraw_waveform_canvas (state: & State, time: f64) {
   //draw_samples (state.waveform_canvas.clone(), &waveform_samples, sample_rate, 40.0, [-1.0, 1.0], 3.0);
 }
 
+const SWITCH_PLAYBACK_DELAY: f64 = 0.05;
+
 fn render_loop (state: Rc<RefCell<State>>) {
   {
     let mut guard = state.borrow_mut();
@@ -292,10 +302,10 @@ fn render_loop (state: Rc<RefCell<State>>) {
       }
     }
     
-    let mut updated =!already_finished ;
+    let mut stopped_waiting = false;
     
     let rendered_duration = state.rendering_state.final_samples.samples.len() as f64/state.sound.sample_rate() as f64;
-    if let Some(ref mut playback) = state.playback_state {if let PlaybackTime::WaitingAtOffset (offset) = playback.time {
+    if state.rendering_state.finished() || rendered_duration >= 0.02 {if let Some(ref mut playback) = state.playback_state {if let PlaybackTime::WaitingAtOffset (offset) = playback.time {
       let time_spent_rendering = now() - state.rendering_state.constants.started_rendering_at;
       let rendering_speed = rendered_duration/time_spent_rendering;
       let currently_available_playback_time = rendered_duration - offset;
@@ -303,16 +313,16 @@ fn render_loop (state: Rc<RefCell<State>>) {
       if state.rendering_state.finished() || conservative_rendering_speed >= 1.0 || {
         let expected_available_playback_time = currently_available_playback_time/(1.0 - conservative_rendering_speed);
         expected_available_playback_time > 1.2} {
-        playback.time = PlaybackTime::RunningSinceAudioTime (audio_now() - offset);
-        updated = true;
+        playback.time = PlaybackTime::RunningSinceAudioTime (audio_now() + SWITCH_PLAYBACK_DELAY - offset);
+        stopped_waiting = true;
       }
-    }}
+    }}}
     
-    if updated {
+    if stopped_waiting || !already_finished {
       if let Some(ref mut playback) = state.playback_state {if let PlaybackTime::RunningSinceAudioTime (start) = playback.time {
         let now: f64 = audio_now();
         let offset = now - start;
-        let transition_time = now + 0.05;
+        let transition_time = now + SWITCH_PLAYBACK_DELAY;
         let offset_then = transition_time - start;
         if offset_then > rendered_duration {
           if !state.rendering_state.finished() {
