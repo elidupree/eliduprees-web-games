@@ -471,7 +471,7 @@ impl RenderingState {
     let mut previous_getter = Volume::rendering_getter();
     
     if sound.enabled::<Chorus>() {
-      let voices = self.sample_signal::<Chorus> (sound, true);
+      let voices = min(100.0, self.sample_signal::<Chorus> (sound, true));
       if voices > 0.0 {for voice in 0..voices.ceil() as usize {
         let fraction = if voices >= (voice + 1) as f64 {1.0} else {(voices - voice as f64).sqrt()};
         let oscillator_amplitude = CHORUS_OSCILLATOR_AMPLITUDE;
