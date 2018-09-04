@@ -50,9 +50,9 @@ pub fn random_signal <G: Rng, T: UserNumberType>(generator: &mut G, duration: f6
   }
 }
 
-pub fn random_difference <G: Rng>(generator: &mut G, info: & SignalInfo)->f64 {
-  if !info.differences_are_intervals || generator.gen() {
-    generator.gen_range (- info.difference_slider_range, info.difference_slider_range)
+pub fn random_difference <G: Rng, T: UserNumberType>(generator: &mut G, info: & SignalInfo)->UserNumber <T> {
+  if !info.differences_are_intervals || (generator.gen_range (0, 3)==0) {
+    UserNumber::from_rendered (generator.gen_range (- info.difference_slider_range, info.difference_slider_range))
   }
   else {
     let intervals = [
@@ -63,9 +63,8 @@ pub fn random_difference <G: Rng>(generator: &mut G, info: & SignalInfo)->f64 {
       (9, 8), (15, 16),
     ];
     let (first, second) = generator.choose (&intervals).unwrap().clone();
-    let ratio = first as f64/second as f64;
-    let log = ratio.log2();
-    if generator.gen() {log} else {-log}
+    let ratio = if generator.gen() {first as f64/second as f64} else {second as f64/first as f64};
+    static_downcast (UserNumber::new (IntervalType::Ratio, format_number (ratio, 5)).unwrap())
   }
 }
 
@@ -81,7 +80,7 @@ pub fn random_jump_effect <G: Rng, T: UserNumberType>(generator: &mut G, duratio
   let buffer_duration = min(1.0,duration)*0.02;
   SignalEffect::Jump {
     time: random_time_linear(generator, buffer_duration, duration - buffer_duration),
-    size: UserNumber::from_rendered (random_difference (generator, info)),
+    size: random_difference (generator, info),
   }
 }
 pub fn random_slide_effect <G: Rng, T: UserNumberType>(generator: &mut G, duration: f64, info: & SignalInfo)->SignalEffect <T> {
@@ -89,14 +88,14 @@ pub fn random_slide_effect <G: Rng, T: UserNumberType>(generator: &mut G, durati
   SignalEffect::Slide {
     start: random_time_linear(generator, 0.0, duration - buffer_duration),
     duration: random_time_linear(generator, 0.01, 2.0),
-    size: UserNumber::from_rendered (random_difference (generator, info)),
+    size: random_difference (generator, info),
     smooth_start: generator.gen(),
     smooth_stop: generator.gen(),
   }
 }
 pub fn random_oscillation_effect <G: Rng, T: UserNumberType>(generator: &mut G, _duration: f64, info: & SignalInfo)->SignalEffect <T> {
   SignalEffect::Oscillation {
-    size: UserNumber::from_rendered (random_difference (generator, info)),
+    size: random_difference (generator, info),
     waveform: random_waveform (generator),
     frequency: UserNumber::from_rendered (generator.gen_range (1f64.log2(), 20f64.log2())),
   }
