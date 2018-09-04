@@ -248,6 +248,7 @@ pub struct SignalInfo {
   pub id: & 'static str,
   pub name: & 'static str,
   pub slider_range: [f64; 2],
+  pub differences_are_intervals: bool,
   pub default: f64,
   #[derivative (Default (value = "0.0"))]
   pub slider_step: f64,
@@ -333,6 +334,7 @@ impl SignalIdentity for LogFrequency {
     id: "frequency",
     name: "Frequency",
     slider_range: [20f64.log2(), 2000f64.log2()],
+    differences_are_intervals: true,
     default: 220.0_f64.log2(),
     difference_slider_range: 2.0,
     average_effects: 2.0,
