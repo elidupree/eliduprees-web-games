@@ -15,7 +15,7 @@ input_column = toggle_column + 1
 add_effect_column = input_column + 1
 canvas_column = add_effect_column + 1
 
-file.write ("""
+file.write ('''
 html,body {background-color: white;}
 p.disclaimer {font-size: 200%; text-align: center; margin:0.4em 0.8em;}
 /*
@@ -49,12 +49,12 @@ input[type='button'].down {
   background-image: linear-gradient(to top,#ddd,#999);
   border-color:#888 #777 #555 #888;
 }
-.signal_not_applicable {grid-column: '''+ str(input_column) +''' / span '''+ (canvas_column + 1 - input_column) +'''; white-space: nowrap; font-style: italic; color: #555; padding:0.25em; }
+.signal_not_applicable {grid-column: '''+ str(input_column) +''' / span '''+ str(canvas_column + 1 - input_column) +'''; white-space: nowrap; font-style: italic; color: #555; padding:0.25em; }
 
 @media screen and (max-width: 30em) {
   p.disclaimer {font-size: 85%;}
   #panels { }
 }
-""")
+''')
 
 file.close()
