@@ -33,11 +33,13 @@ mod misc;
 mod data;
 mod rendering;
 mod ui;
+mod inputs;
 mod randomization;
 pub use misc::*;
 pub use data::*;
 pub use rendering::*;
 pub use ui::*;
+pub use inputs::*;
 pub use randomization::*;
 
 

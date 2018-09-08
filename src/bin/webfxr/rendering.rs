@@ -1,10 +1,11 @@
 use super::*;
+use ordered_float::OrderedFloat;
 
 use rand::{Rng, IsaacRng, SeedableRng};
 type Generator = IsaacRng;
 
-pub fn root_mean_square (samples: & [f32])->f32{
-  (samples.iter().map (| sample | sample*sample).sum::<f32>()/samples.len() as f32).sqrt()
+pub fn root_mean_square <T: Into <f64>> (samples: & [T])->f64 {
+  (samples.iter().map (| sample | sample.into()*sample.into()).sum::<f64>()/samples.len() as f64).sqrt()
 }
 pub fn logistic_curve (input: f64)->f64 {
   0.5+0.5*(input*0.5).tanh()
@@ -53,26 +54,28 @@ impl HighpassFilterState {
 }
 
 pub struct IllustrationLine {
-  pub root_mean_square: f32,
+  pub range: [f64; 2],
   pub clipping: bool,
 }
+#[derive (Derivative)]
+#[derivative (Default)]
+pub struct Illustration {
+  #[derivative (Default (value = "[- 0.5, 0.5]"))]
+  pub range: [f64; 2],
+  pub lines: Vec<IllustrationLine>,
+}
 pub struct RenderedSamples {
-  pub serial_number: SerialNumber,
+  //pub serial_number: SerialNumber,
   pub samples: Vec<f32>,
-  pub illustration: Vec<IllustrationLine>,
-  pub canvas: Value,
-  pub context: Value,
+  pub illustration: Illustration,
   pub audio_buffer: Value,
 }
 impl Default for RenderedSamples {
   fn default()->Self {
-    let canvas = js!{ return $(new_canvas ()); };
-    let context = js!{ return @{&canvas}[0].getContext ("2d"); };
     RenderedSamples {
-      serial_number: Default::default(),
+      //serial_number: Default::default(),
       samples: Vec::new(),
-      illustration: Vec::new(),
-      canvas: canvas, context: context,
+      illustration: Default::default(),
       audio_buffer: js!{
         if (window.webfxr_num_samples) {
           return audio.createBuffer (1, window.webfxr_num_samples, window.webfxr_sample_rate);
@@ -82,7 +85,6 @@ impl Default for RenderedSamples {
     }
   }
 }
-
 
 #[derive (Derivative)]
 #[derivative (Default)]
@@ -108,6 +110,7 @@ pub struct SignalEffectRenderingState {
 pub struct SignalRenderingState {
   pub effects: Vec<SignalEffectRenderingState>,
   pub samples: Vec<f64>,
+  pub illustration: Illustration,
   pub rendered_after: RenderedSamples,
 }
 
@@ -150,59 +153,28 @@ pub struct RenderingState {
   pub constants: RenderingStateConstants,
 }
 
+pub fn maybe_batch <T, F: FnMut(usize, &[T])> (samples: &[T], constants: &RenderingStateConstants, batch_function: F) {
+  if samples.len() % constants.samples_per_illustrated == 0 || samples.len() == constants.num_samples {
+    let batch_start = ((samples.len()-1) / constants.samples_per_illustrated) * constants.samples_per_illustrated;
+    let rendered_slice = & samples [batch_start..];
+    (batch_function)(batch_start, rendered_slice) ;
+  }
+}
+
 impl RenderedSamples {
   pub fn push (&mut self, value: f64, constants: &RenderingStateConstants) {
     self.samples.push (value as f32);
-    if self.samples.len() % constants.samples_per_illustrated == 0 || self.samples.len() == constants.num_samples {
-        let batch_start = ((self.samples.len()-1) / constants.samples_per_illustrated) * constants.samples_per_illustrated;
-        let rendered_slice = & self.samples [batch_start..];
+    maybe_batch (& self.samples, constants, | batch_start, rendered_slice | {
         let value = root_mean_square (rendered_slice);
         
-        self.illustration.push (IllustrationLine {root_mean_square: value, clipping: rendered_slice.iter().any (| value | value.abs() > 1.0)});
-        self.draw_line (self.illustration.len() - 1) ;
+        self.illustration.lines.push (IllustrationLine {range: [-value, value], clipping: rendered_slice.iter().any (| value | value.abs() > 1.0)});
         
         let rendered: TypedArray <f32> = rendered_slice.into();
         js! {
           const rendered = @{rendered};
           @{&self.audio_buffer}.copyToChannel (rendered, 0, @{batch_start as f64});
         }  
-    }
-  }
-  
-  pub fn draw_line (&self, index: usize) {
-    let line = &self.illustration [index];
-    // assume that root-mean-square only goes up to 0.5; the radius should also range from 0 to 0.5
-    let radius = line.root_mean_square;
-    
-    js!{
-      var canvas = @{&self.canvas}[0];
-      var context = @{&self.context};
-      context.fillStyle = @{line.clipping} ? "rgb(255,0,0)" : "rgb(0,0,0)";
-      
-      var radius = canvas.height*@{radius};
-      context.fillRect (@{index as f64}, canvas.height*0.5 - radius, 1, radius*2);
-    }
-  }
-  
-  pub fn redraw (&self, playback_position: Option <f64>, constants: & RenderingStateConstants) {
-    js!{
-      var canvas = @{&self.canvas}[0];
-      var context = @{&self.context};
-      context.clearRect (0, 0, canvas.width, canvas.height);
-    }
-    for index in 0..self.illustration.len() {
-      self.draw_line (index);
-    }
-    if let Some(playback_position) = playback_position {
-    let index = (playback_position*constants.sample_rate as f64/constants.samples_per_illustrated as f64).floor();
-    js!{
-      var canvas = @{&self.canvas}[0];
-      var context = @{&self.context};
-      context.fillStyle = "rgb(255,255,0)";
-      
-      context.fillRect (@{index as f64}, 0, 1, canvas.height);
-    }
-    }
+    });
   }
   
   pub fn resample (&self, time: f64, constants: &RenderingStateConstants)->f64 {
@@ -360,9 +332,14 @@ impl RenderingState {
     let time = self.next_time;
     let rendering = Identity::rendering_getter().get_mut (&mut self.signals);
     let sample = rendering.next_sample (Identity::definition_getter().get (& definition.signals), index, time, smooth, &self.constants);
-    if index % self.constants.samples_per_signal_sample == 0 {
-      rendering.samples.push (sample);
-    }
+    rendering.samples.push (sample);
+    maybe_batch (& rendering.samples, &self.constants, |_, sample_slice | {
+        let range = [sample_slice.iter().map (|f|OrderedFloat(*f)).min().unwrap().0, sample_slice.iter().map (|f|OrderedFloat(*f)).max().unwrap().0];
+        for value in &mut range {
+          *value = (*value - rendering.illustration.range [0])/(rendering.illustration.range [1] - rendering.illustration.range [0]);
+        }
+        rendering.illustration.lines.push (IllustrationLine {range: range, clipping: false });
+    });
     sample
   }
 
