@@ -77,7 +77,7 @@ pub struct State {
 
 fn update_for_changed_sound (state: & Rc<RefCell<State>>) {
   restart_rendering (state);
-  redraw (state);
+  redraw_app (state);
   play (&mut state.borrow_mut(), getter! (state => state.final_samples));
 }
 
@@ -92,10 +92,10 @@ fn restart_rendering (state: & Rc<RefCell<State>>) {
 pub struct RedrawState {
   pub rows: u32,
   pub main_grid: Value,
-  //pub
+  pub render_progress_functions: Vec<Rc<dyn FnMut()>>,
 }
 
-fn redraw(state: & Rc<RefCell<State>>) {
+fn redraw_app(state: & Rc<RefCell<State>>) {
   let waveform_canvas;
   {
     let mut guard = state.borrow_mut();
@@ -108,7 +108,6 @@ fn redraw(state: & Rc<RefCell<State>>) {
   let guard = state.borrow();
   let sound = & guard.sound;
   
-  let mut rows = 1;
   pub fn assign_row (rows: u32, element: Value)->Value {
     js!{@{&element}.css("grid-row", @{rows}+" / span 1")};
     element
@@ -128,36 +127,35 @@ fn redraw(state: & Rc<RefCell<State>>) {
     return $("<div>", {id: "main_grid", class: "main_grid"}).appendTo (@{app_element});
   };
   let grid_element = &grid_element;
-  
+  let mut redraw = RedrawState {rows: 1, main_grid: grid_element.clone(), render_progress_functions: Vec::new()};
   
 
-  let final_samples = & guard.rendering_state.final_samples;
-  let main_canvas = final_samples.canvas.clone();
-  setup_rendered_canvas (state, getter! (state => state.final_samples), 100);
-  js!{@{left_column}.append (@{main_canvas}.parent());}
-  //rows += 1;
+  let main_canvas = make_rendered_canvas (state, getter! (state => state.final_samples), 100);
+  js!{@{left_column}.append (@{& main_canvas.canvas.canvas}.parent());}
+  redraw.render_progress_functions.push (Rc::new (move | | main_canvas.update()));
+  //redraw.rows += 1;
       
-  let play_button = assign_row (rows, button_input ("Play",
+  let play_button = assign_row (redraw.rows, button_input ("Play",
     { let state = state.clone(); move || {
       play (&mut state.borrow_mut(), getter! (state => state.final_samples));
     }}
   ));
   js!{@{left_column}.append (@{play_button});}
   
-  let loop_button = assign_row (rows, checkbox_input (state, "loop", "Loop", getter! (state => state.loop_playback)));
+  let loop_button = assign_row (redraw.rows, checkbox_input (state, "loop", "Loop", getter! (state => state.loop_playback)));
   js!{@{left_column}.append (@{loop_button});}
   
-  let undo_button = assign_row (rows, button_input ("Undo (z)",
+  let undo_button = assign_row (redraw.rows, button_input ("Undo (z)",
     { let state = state.clone(); move || undo (&state) }
   ));
   js!{@{left_column}.append (@{undo_button});}
   
-  let redo_button = assign_row (rows, button_input ("Redo (shift-Z)",
+  let redo_button = assign_row (redraw.rows, button_input ("Redo (shift-Z)",
     { let state = state.clone(); move || redo (&state) }
   ));
   js!{@{left_column}.append (@{redo_button});}
       
-  let randomize_button = assign_row (rows, button_input ("Randomize",
+  let randomize_button = assign_row (redraw.rows, button_input ("Randomize",
     input_callback_nullary (state, move | state | {
       state.sound = random_sound (&mut rand::thread_rng());
     })
@@ -182,7 +180,7 @@ fn redraw(state: & Rc<RefCell<State>>) {
   
   macro_rules! add_envelope_input {
   ($variable: ident, $name: expr, $range: expr) => {
-    let input = assign_row(rows, numerical_input (
+    let input = assign_row(redraw.rows, numerical_input (
       state,
       stringify! ($variable),
       $name, 
@@ -190,79 +188,78 @@ fn redraw(state: & Rc<RefCell<State>>) {
       $range
     ));
     
-    let label = assign_row(rows, js!{ return @{&input}.children("label");});
+    let label = assign_row(redraw.rows, js!{ return @{&input}.children("label");});
     js!{@{&label}.append(":").addClass("toplevel_input_label")}
     js!{@{grid_element}.append (@{label},@{input});}
-    rows += 1;
+    redraw.rows += 1;
     }
   }
 
   js!{@{grid_element}.append (
     @{canvas_of_samples (&envelope_samples, sample_rate, 90.0, [0.0, 1.0], sound.duration())}.parent()
-    .css("grid-row", @{rows}+" / span 3")
+    .css("grid-row", @{redraw.rows}+" / span 3")
   );}
-  js!{ @{grid_element}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{rows}+" / span 3")); }
+  js!{ @{grid_element}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{redraw.rows}+" / span 3")); }
   add_envelope_input!(attack, "Attack", [0.0, 1.0]);
   add_envelope_input!(sustain, "Sustain", [0.0, 3.0]);
   add_envelope_input!(decay, "Decay", [0.0, 3.0]);
   
   
   
-  let waveform_start = rows;
-  let waveform_input = assign_row (rows, waveform_input (state, "waveform", "Waveform", getter! (state => state.sound.waveform)));
-  let label = assign_row(rows, js!{ return @{&waveform_input}.children("label").first();});
+  let waveform_start = redraw.rows;
+  let waveform_input = assign_row (redraw.rows, waveform_input (state, "waveform", "Waveform", getter! (state => state.sound.waveform)));
+  let label = assign_row(redraw.rows, js!{ return @{&waveform_input}.children("label").first();});
   js!{@{&label}.addClass("toplevel_input_label")}
   
-  js!{@{grid_element}.append (@{assign_row(rows, js!{ return @{waveform_canvas}.parent()})});}
+  js!{@{grid_element}.append (@{assign_row(redraw.rows, js!{ return @{waveform_canvas}.parent()})});}
   redraw_waveform_canvas (& guard, 0.0);
   js!{@{grid_element}.append (@{label},@{waveform_input}.addClass("sound_radio_input"));}
-  rows += 1;
+  redraw.rows += 1;
   
-  js!{ @{grid_element}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{waveform_start}+" / "+@{rows})); }
+  js!{ @{grid_element}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{waveform_start}+" / "+@{redraw.rows})); }
   
   
   
-  struct Visitor <'a> (& 'a Rc<RefCell<State>>, & 'a mut u32, & 'a Value);
+  struct Visitor <'a> (& 'a Rc<RefCell<State>>, & 'a mut RedrawState);
   impl<'a> SignalVisitor for Visitor<'a> {
     fn visit <Identity: SignalIdentity> (&mut self) {
       let specification: SignalEditorSpecification<Identity> = SignalEditorSpecification {
         state: self.0,
-        rows: self.1,
-        main_grid: self.2,
+        redraw: self.1,
         _marker: PhantomData,
       };
       specification.render();
     }
   }
   
-  visit_signals (&mut Visitor (state, &mut rows, grid_element));
+  visit_signals (&mut Visitor (state, &mut redraw, grid_element));
   
-  let clipping_input = assign_row (rows, RadioInputSpecification {
+  let clipping_input = assign_row (redraw.rows, RadioInputSpecification {
     state: state, id: "clipping", name: "Clipping behavior", getter: getter! (state => state.sound.soft_clipping),
     options: &[
       (false, "Hard clipping"),
       (true, "Soft clipping"),
     ],  
   }.render());
-  let label = assign_row(rows, js!{ return @{& clipping_input}.children("label").first();});
+  let label = assign_row(redraw.rows, js!{ return @{& clipping_input}.children("label").first();});
   js!{@{&label}.addClass("toplevel_input_label")}
-  js!{ @{grid_element}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{rows}+" / span 1")); }
+  js!{ @{grid_element}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{redraw.rows}+" / span 1")); }
   js!{@{grid_element}.append (@{label},@{clipping_input}.addClass("sound_radio_input"));}
-  rows += 1;
+  redraw.rows += 1;
   
   
-  let sample_rate_input = assign_row (rows, RadioInputSpecification {
+  let sample_rate_input = assign_row (redraw.rows, RadioInputSpecification {
     state: state, id: "sample_rate", name: "Output sample rate", getter: getter! (state => state.sound.output_sample_rate),
     options: &[
       (44100, "44100"),
       (48000, "48000"),
     ],  
   }.render());
-  let label = assign_row(rows, js!{ return @{& sample_rate_input}.children("label").first();});
+  let label = assign_row(redraw.rows, js!{ return @{& sample_rate_input}.children("label").first();});
   js!{@{&label}.addClass("toplevel_input_label")}
-  js!{ @{grid_element}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{rows}+" / span 1")); }
+  js!{ @{grid_element}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{redraw.rows}+" / span 1")); }
   js!{@{grid_element}.append (@{label},@{sample_rate_input}.addClass("sound_radio_input"));}
-  rows += 1;
+  redraw.rows += 1;
 
   
   //js! {window.before_render = Date.now();}
@@ -273,7 +270,7 @@ fn redraw(state: & Rc<RefCell<State>>) {
   js!{morphdom($("#app")[0], @{app_element}[0]);} 
   
   // hack – suppress warning from incrementing rows unnecessarily at the end
-  #[allow (unused_variables)] let whatever = rows;
+  #[allow (unused_variables)] let whatever = redraw.rows;
   
   }
 }

@@ -98,7 +98,7 @@ pub struct Canvas {
 }*/
 
 #[derive (Default)]
-pub struct SamplesCanvas {
+pub struct IllustrationCanvas {
   pub canvas: Canvas,
   //pub kind: SamplesCanvasKind,
   pub lines_drawn: usize,
@@ -112,7 +112,8 @@ impl Default for Canvas {
   }
 }
 
-impl SamplesCanvas {
+impl IllustrationCanvas {
+  
  pub fn draw_line (&self, illustration: & Illustration, index: usize) {
     let line = & illustration.lines [index];
     

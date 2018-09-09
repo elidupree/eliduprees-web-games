@@ -211,14 +211,13 @@ impl <'a, F: 'static + Fn (UserNumber <T>), T: UserNumberType> NumericalInputSpe
 
 pub struct SignalEditorSpecification <'a, Identity: SignalIdentity> {
   pub state: & 'a Rc<RefCell<State>>,
-  pub rows: &'a mut u32,
-  pub main_grid: & 'a Value,
+  pub redraw: &'a mut RedrawState,
   pub _marker: PhantomData <Identity>,
 }
 
 impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
   pub fn assign_row (&self, element: Value)->Value {
-    js!{@{&element}.css("grid-row", @{*self.rows}+" / span 1")};
+    js!{@{&element}.css("grid-row", @{self.redraw.rows}+" / span 1")};
     element
   }
 
@@ -262,7 +261,6 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
 
 
   pub fn render (self) {
-    
       let guard = self.state.borrow();
       let sound = & guard.sound;
       let signals_getter = Identity::definition_getter();
@@ -270,9 +268,9 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
       let state_getter = uh + signals_getter.clone();
       let info = Identity::info();
     let signal = signals_getter.get (& guard.sound.signals);
-    let first_row = *self.rows;
+    let first_row = self.redraw.rows;
       
-  let container = self.main_grid;
+  let container = self.redraw.main_grid;
   
   let applicable = Identity::applicable (sound);
   let enabled = applicable && (signal.enabled || !info.can_disable);
@@ -340,11 +338,10 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
   
   let rendered_canvas = make_rendered_canvas(self.state, getter! (rendering: RenderingState => rendering.signals) + Identity::rendering_getter() + getter! (rendered: SignalRenderingState => rendered.rendered_after.illustration), 32);
   
-  redraw.render_progress_functions.push (Rc::new (move || rendered_canvas.update ()));
-  
   js!{@{& container}.append (@{self.assign_row (js!{ return @{rendered_canvas.canvas.canvas.clone()}.parent()})});}
+  self.redraw.render_progress_functions.push (Rc::new (move || rendered_canvas.update ()));
   
-  } *self.rows += 1; if enabled {
+  } self.redraw.rows += 1; if enabled {
   
   if info.id == "harmonics" {
     let toggle = self.checkbox_input (
@@ -353,7 +350,7 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
       getter! (state => state.sound.odd_harmonics)
     );
     js!{@{&toggle}.appendTo(@{& container}).addClass("odd_harmonics_toggle")}
-    *self.rows += 1;
+    self.redraw.rows += 1;
   }
   
   let effects_shown = guard.effects_shown.contains (info.id);
@@ -375,7 +372,7 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
       }}
     ));
     js!{@{&view_toggle}.appendTo(@{& container}).addClass("view_toggle")}
-    *self.rows += 1;
+    self.redraw.rows += 1;
   }
     
   if effects_shown {for (index, effect) in signal.effects.iter().enumerate() {
@@ -395,14 +392,14 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
           $(SignalEffect::$Variant {..} => {
             let header = self.assign_row(js!{ return jQuery("<div>", {class: "signal_effect effect_header"}).append (@{info.name}+" "+@{$variant_name}+": ",@{delete_button})});
             js!{@{& container}.append (@{header});}
-            *self.rows += 1;
+            self.redraw.rows += 1;
             $(
               js!{@{& container}.append (@{self.$input_method(
                 & format! ("{}_{}_{}", & info.id, index, stringify! ($field)),
                 $name,
                 effect_getter.clone() + variant_field_getter! (SignalEffect::$Variant => $field)
               )}.addClass("signal_effect input"))}
-              *self.rows += 1;
+              self.redraw.rows += 1;
             )*
           },)*
           //_=>(),
@@ -430,20 +427,18 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
   }}
   
     if signal.effects.len() > 0 {
-      let sample_rate = 500.0;
-      let samples = display_samples (sample_rate, max (sound.duration(), signal.draw_through_time()), | time | 0.0/*signal.sample (time, false)*/);
-      let canvas = canvas_of_samples (& samples, sample_rate, , info.slider_range, sound.duration());
+      //let sample_rate = 500.0;
+      //let samples = display_samples (sample_rate, max (sound.duration(), signal.draw_through_time()), | time | 0.0/*signal.sample (time, false)*/);
+      //let canvas = canvas_of_samples (& samples, sample_rate, , info.slider_range, sound.duration());
       
       let signal_canvas = IllustrationCanvas::new(state.clone(), getter! (rendering: RenderingState => rendering.signals) + Identity::rendering_getter() + getter! (rendered: SignalRenderingState => rendered.illustration));
       
       js!{@{& signal_canvas.canvas.canvas} [0].height = @{if effects_shown {100.0} else {32.0}}}
-      
-      redraw.render_progress_functions.push (Rc::new (move || signal_canvas.update ()));
-      
-      js!{ @{& container}.append (@{canvas}.parent().css("grid-row", @{first_row + 1}+" / "+@{*self.rows})); }
+      js!{ @{& container}.append (@{& signal_canvas.canvas.canvas}.parent().css("grid-row", @{first_row + 1}+" / "+@{self.redraw.rows})); }
+      self.redraw.render_progress_functions.push (Rc::new (move || signal_canvas.update ()));
     }
   }
-    js!{ @{& container}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{first_row}+" / "+@{*self.rows})); }
+    js!{ @{& container}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{first_row}+" / "+@{self.redraw.rows})); }
   }
 }
 
