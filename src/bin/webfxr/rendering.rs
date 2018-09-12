@@ -4,8 +4,8 @@ use ordered_float::OrderedFloat;
 use rand::{Rng, IsaacRng, SeedableRng};
 type Generator = IsaacRng;
 
-pub fn root_mean_square <T: Into <f64>> (samples: & [T])->f64 {
-  (samples.iter().map (| sample | sample.into()*sample.into()).sum::<f64>()/samples.len() as f64).sqrt()
+pub fn root_mean_square <T: Clone + Into <f64>> (samples: & [T])->f64 {
+  (samples.iter().map (| sample | sample.clone().into()*sample.clone().into()).sum::<f64>()/samples.len() as f64).sqrt()
 }
 pub fn logistic_curve (input: f64)->f64 {
   0.5+0.5*(input*0.5).tanh()
@@ -153,7 +153,7 @@ pub struct RenderingState {
   pub constants: RenderingStateConstants,
 }
 
-pub fn maybe_batch <T, F: FnMut(usize, &[T])> (samples: &[T], constants: &RenderingStateConstants, batch_function: F) {
+pub fn maybe_batch <T, F: FnMut(usize, &[T])> (samples: &[T], constants: &RenderingStateConstants, mut batch_function: F) {
   if samples.len() % constants.samples_per_illustrated == 0 || samples.len() == constants.num_samples {
     let batch_start = ((samples.len()-1) / constants.samples_per_illustrated) * constants.samples_per_illustrated;
     let rendered_slice = & samples [batch_start..];
@@ -164,15 +164,17 @@ pub fn maybe_batch <T, F: FnMut(usize, &[T])> (samples: &[T], constants: &Render
 impl RenderedSamples {
   pub fn push (&mut self, value: f64, constants: &RenderingStateConstants) {
     self.samples.push (value as f32);
+    let illustration = &mut self.illustration;
+    let buffer = &self.audio_buffer;
     maybe_batch (& self.samples, constants, | batch_start, rendered_slice | {
         let value = root_mean_square (rendered_slice);
         
-        self.illustration.lines.push (IllustrationLine {range: [-value, value], clipping: rendered_slice.iter().any (| value | value.abs() > 1.0)});
+        illustration.lines.push (IllustrationLine {range: [0.5-value, 0.5+value], clipping: rendered_slice.iter().any (| value | value.abs() > 1.0)});
         
         let rendered: TypedArray <f32> = rendered_slice.into();
         js! {
           const rendered = @{rendered};
-          @{&self.audio_buffer}.copyToChannel (rendered, 0, @{batch_start as f64});
+          @{buffer}.copyToChannel (rendered, 0, @{batch_start as f64});
         }  
     });
   }
@@ -333,12 +335,13 @@ impl RenderingState {
     let rendering = Identity::rendering_getter().get_mut (&mut self.signals);
     let sample = rendering.next_sample (Identity::definition_getter().get (& definition.signals), index, time, smooth, &self.constants);
     rendering.samples.push (sample);
+    let illustration = &mut rendering.illustration;
     maybe_batch (& rendering.samples, &self.constants, |_, sample_slice | {
-        let range = [sample_slice.iter().map (|f|OrderedFloat(*f)).min().unwrap().0, sample_slice.iter().map (|f|OrderedFloat(*f)).max().unwrap().0];
+        let mut range = [sample_slice.iter().map (|f|OrderedFloat(*f)).min().unwrap().0, sample_slice.iter().map (|f|OrderedFloat(*f)).max().unwrap().0];
         for value in &mut range {
-          *value = (*value - rendering.illustration.range [0])/(rendering.illustration.range [1] - rendering.illustration.range [0]);
+          *value = (*value - illustration.range [0])/(illustration.range [1] - illustration.range [0]);
         }
-        rendering.illustration.lines.push (IllustrationLine {range: range, clipping: false });
+        illustration.lines.push (IllustrationLine {range: range, clipping: false });
     });
     sample
   }

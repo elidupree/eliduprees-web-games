@@ -20,8 +20,9 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::{VecDeque, HashSet};
 use std::marker::PhantomData;
+use std::mem;
 use stdweb::Value;
-use stdweb::unstable::TryInto;
+//use stdweb::unstable::TryInto;
 use stdweb::web::{self, TypedArray};
 pub use array_ext::Array;
 pub use eliduprees_web_games::*;
@@ -71,6 +72,7 @@ pub struct State {
   pub loop_playback: bool,
   pub waveform_canvas: Value,
   pub effects_shown: HashSet <&'static str>,
+  pub render_progress_functions: Vec<Box<dyn FnMut(& State)>>,
 }
 
 
@@ -92,11 +94,12 @@ fn restart_rendering (state: & Rc<RefCell<State>>) {
 pub struct RedrawState {
   pub rows: u32,
   pub main_grid: Value,
-  pub render_progress_functions: Vec<Rc<dyn FnMut()>>,
+  pub render_progress_functions: Vec<Box<dyn FnMut(& State)>>,
 }
 
 fn redraw_app(state: & Rc<RefCell<State>>) {
   let waveform_canvas;
+  let mut redraw;
   {
     let mut guard = state.borrow_mut();
     let state = &mut*guard;
@@ -114,7 +117,7 @@ fn redraw_app(state: & Rc<RefCell<State>>) {
   }
   
   let sample_rate = 500.0;
-  let envelope_samples = display_samples (sample_rate, sound.duration(), | time | sound.envelope.sample (time));
+  //let envelope_samples = display_samples (sample_rate, sound.duration(), | time | sound.envelope.sample (time));
       
   js!{clear_callbacks();}  
   let app_element = js!{ return $("<div>", {id: "app"});};
@@ -127,12 +130,12 @@ fn redraw_app(state: & Rc<RefCell<State>>) {
     return $("<div>", {id: "main_grid", class: "main_grid"}).appendTo (@{app_element});
   };
   let grid_element = &grid_element;
-  let mut redraw = RedrawState {rows: 1, main_grid: grid_element.clone(), render_progress_functions: Vec::new()};
+  redraw = RedrawState {rows: 1, main_grid: grid_element.clone(), render_progress_functions: Vec::new()};
   
 
-  let main_canvas = make_rendered_canvas (state, getter! (state => state.final_samples), 100);
+  let mut main_canvas = make_rendered_canvas (state, getter! (state => state.final_samples), 100);
   js!{@{left_column}.append (@{& main_canvas.canvas.canvas}.parent());}
-  redraw.render_progress_functions.push (Rc::new (move | | main_canvas.update()));
+  redraw.render_progress_functions.push (Box::new (move | state | main_canvas.update(state)));
   //redraw.rows += 1;
       
   let play_button = assign_row (redraw.rows, button_input ("Play",
@@ -195,10 +198,10 @@ fn redraw_app(state: & Rc<RefCell<State>>) {
     }
   }
 
-  js!{@{grid_element}.append (
+  /*js!{@{grid_element}.append (
     @{canvas_of_samples (&envelope_samples, sample_rate, 90.0, [0.0, 1.0], sound.duration())}.parent()
     .css("grid-row", @{redraw.rows}+" / span 3")
-  );}
+  );}*/
   js!{ @{grid_element}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{redraw.rows}+" / span 3")); }
   add_envelope_input!(attack, "Attack", [0.0, 1.0]);
   add_envelope_input!(sustain, "Sustain", [0.0, 3.0]);
@@ -232,7 +235,7 @@ fn redraw_app(state: & Rc<RefCell<State>>) {
     }
   }
   
-  visit_signals (&mut Visitor (state, &mut redraw, grid_element));
+  visit_signals (&mut Visitor (state, &mut redraw));
   
   let clipping_input = assign_row (redraw.rows, RadioInputSpecification {
     state: state, id: "clipping", name: "Clipping behavior", getter: getter! (state => state.sound.soft_clipping),
@@ -270,8 +273,16 @@ fn redraw_app(state: & Rc<RefCell<State>>) {
   js!{morphdom($("#app")[0], @{app_element}[0]);} 
   
   // hack – suppress warning from incrementing rows unnecessarily at the end
-  #[allow (unused_variables)] let whatever = redraw.rows;
+  //#[allow (unused_variables)] let whatever = redraw.rows;
   
+  
+  
+  }
+  {
+    let mut guard = state.borrow_mut();
+    let state = &mut*guard;
+    
+    state.render_progress_functions = redraw.render_progress_functions;
   }
 }
 
@@ -299,6 +310,12 @@ fn render_loop (state: Rc<RefCell<State>>) {
       if elapsed > 0.005 {
         break;
       }
+    }
+    
+    if !already_finished {
+      let mut functions = mem::replace (&mut state.render_progress_functions, Default::default());
+      for function in &mut functions {(function)(state);}
+      state.render_progress_functions = functions;
     }
     
     let mut stopped_waiting = false;
@@ -343,12 +360,12 @@ fn render_loop (state: Rc<RefCell<State>>) {
           play (state, playback.samples_getter);
         } else {
           let samples = playback.samples_getter.get (&state.rendering_state);
-          samples.redraw (None, & state.rendering_state.constants);
+          //samples.redraw (None, & state.rendering_state.constants);
           state.playback_state = None;
         }
       } else if let PlaybackTime::RunningSinceAudioTime (_) = playback.time {
         let samples = playback.samples_getter.get (&state.rendering_state);
-        samples.redraw (Some(offset), & state.rendering_state.constants);
+        //samples.redraw (Some(offset), & state.rendering_state.constants);
         redraw_waveform_canvas (state, offset);
       }
     }
@@ -359,12 +376,12 @@ fn render_loop (state: Rc<RefCell<State>>) {
 
 fn play (state: &mut State, getter: Getter <RenderingState, RenderedSamples>) {
   let samples = getter.get (&state.rendering_state);
-  if let Some(ref playback) = state.playback_state {
+  /*if let Some(ref playback) = state.playback_state {
     let old_samples = playback.samples_getter.get (&state.rendering_state);
     if old_samples.serial_number != samples.serial_number {
       old_samples.redraw (None, & state.rendering_state.constants);
     }
-  }
+  }*/
 
   //let now: f64 = js!{return audio.currentTime;}.try_into().unwrap();
   state.playback_state = Some(Playback {
@@ -394,6 +411,7 @@ fn main() {
     loop_playback: false,
     waveform_canvas: Value::Undefined,
     effects_shown: HashSet::new(),
+    render_progress_functions: Default::default(),
   }));
   
   js!{ $(document.body).on ("keydown", function(event) {

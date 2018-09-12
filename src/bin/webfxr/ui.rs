@@ -97,11 +97,13 @@ pub struct Canvas {
   Rendered,
 }*/
 
-#[derive (Default)]
+
 pub struct IllustrationCanvas {
   pub canvas: Canvas,
   //pub kind: SamplesCanvasKind,
   pub lines_drawn: usize,
+  pub state: Rc<RefCell<State>>,
+  pub getter: Getter <RenderingState, Illustration>,
 }
 
 impl Default for Canvas {
@@ -113,7 +115,14 @@ impl Default for Canvas {
 }
 
 impl IllustrationCanvas {
-  
+  pub fn new (state: Rc<RefCell<State>>, getter: Getter <RenderingState, Illustration>)->IllustrationCanvas {
+    IllustrationCanvas {
+      canvas: Default::default(),
+      lines_drawn: 0,
+      state: state,
+      getter: getter,
+    }
+  }
  pub fn draw_line (&self, illustration: & Illustration, index: usize) {
     let line = & illustration.lines [index];
     
@@ -123,7 +132,7 @@ impl IllustrationCanvas {
 
       context.fillStyle = @{line.clipping} ? "rgb(255,0,0)" : "rgb(0,0,0)";
       
-      context.fillRect (@{index as f64}, canvas.height*(1 -@{line.range [0]}), 1, canvas.height*@{line.range [1] - line.range [0]});
+      context.fillRect (@{index as f64}, canvas.height*(1 -@{line.range [1]}), 1, canvas.height*@{line.range [1] - line.range [0]});
     }
   }
   
@@ -141,12 +150,17 @@ impl IllustrationCanvas {
     }
   }
   
-  pub fn redraw (&mut self, playback_position: Option <f64>, illustration: & Illustration, constants: & RenderingStateConstants) {
-    self.reset();
-    
+  pub fn update (&mut self, state: & State) {
+    let illustration = self.getter.get (& state.rendering_state);
+    //println!("{:?}", (self.lines_drawn, illustration.lines.len()));
     while self.lines_drawn <illustration.lines.len() {
       self.draw_next_line(illustration);
     }
+  }
+  
+  pub fn redraw (&mut self, state: & State, playback_position: Option <f64>, constants: & RenderingStateConstants) {
+    self.reset();
+    self.update(state);
     
     if let Some(playback_position) = playback_position {
       let index = (playback_position*constants.sample_rate as f64/constants.samples_per_illustrated as f64).floor();
@@ -249,12 +263,13 @@ pub fn draw_samples (canvas: Value, samples: & [f64], sample_rate: f64, canvas_h
     context.stroke();
   }
 }*/
-/*
-pub fn setup_rendered_canvas (state: &Rc<RefCell<State>>, rendered_getter: Getter <RenderingState, RenderedSamples>, height: i32) {
-  let guard = state.borrow();
-  let rendered = rendered_getter.get (& guard.rendering_state);
+
+pub fn make_rendered_canvas (state: &Rc<RefCell<State>>, rendered_getter: Getter <RenderingState, RenderedSamples>, height: i32)->IllustrationCanvas {
+  let result = IllustrationCanvas::new (state.clone(), rendered_getter.clone() + getter! (samples: RenderedSamples => samples.illustration));
+  //let guard = state.borrow();
+  //let rendered = rendered_getter.get (& guard.rendering_state);
   js!{
-    var canvas = @{rendered.canvas.clone()};
+    var canvas = @{result.canvas.canvas.clone()};
     canvas[0].height =@{height};
     canvas[0].width =@{MAX_RENDER_LENGTH*DISPLAY_SAMPLE_RATE};
     on (canvas, "click", function() {@{{
@@ -266,6 +281,6 @@ pub fn setup_rendered_canvas (state: &Rc<RefCell<State>>, rendered_getter: Gette
       }
     }}();});
   }
-  rendered.redraw (None, & guard.rendering_state.constants);
+  //rendered.redraw (None, & guard.rendering_state.constants);
+  result
 }
-*/
