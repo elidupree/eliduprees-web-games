@@ -370,15 +370,25 @@ impl RenderingState {
     impl<'a> SignalVisitor for Visitor<'a> {
       fn visit <Identity: SignalIdentity> (&mut self) {
         let mut generator = Generator::from_rng (&mut self.1.generator).unwrap();
-        let signal = Identity::definition_getter().get (& self.0.signals);
-        let rendering = Identity::rendering_getter().get_mut (&mut self.1.signals);
-        for _effect in signal.effects.iter() {
-          rendering.effects.push (SignalEffectRenderingState {
-            waveform: WaveformRenderingState {
-              generator: Generator::from_rng (&mut generator).unwrap(),
-              .. Default::default()
-            },
-          });
+        if self.0.enabled::<Identity>() {
+          let signal = Identity::definition_getter().get (& self.0.signals);
+          let rendering = Identity::rendering_getter().get_mut (&mut self.1.signals);
+          let info = Identity::info();
+          
+          let observed_range = signal.range();
+          rendering.illustration.range = [
+            min (observed_range [0], info.slider_range [0]),
+            max (observed_range [1], info.slider_range [1]),
+          ];
+          
+          for _effect in signal.effects.iter() {
+            rendering.effects.push (SignalEffectRenderingState {
+              waveform: WaveformRenderingState {
+                generator: Generator::from_rng (&mut generator).unwrap(),
+                .. Default::default()
+              },
+            });
+          }
         }
       }
     }
