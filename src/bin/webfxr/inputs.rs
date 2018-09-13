@@ -435,6 +435,7 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
       
       js!{@{& signal_canvas.canvas.canvas} [0].height = @{if effects_shown {100.0} else {32.0}}}
       js!{ @{& container}.append (@{& signal_canvas.canvas.canvas}.parent().css("grid-row", @{first_row + 1}+" / "+@{self.redraw.rows})); }
+      signal_canvas.reset(); signal_canvas.update(& guard);
       self.redraw.render_progress_functions.push (Box::new (move | state | signal_canvas.update (state)));
     }
   }

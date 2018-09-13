@@ -265,7 +265,7 @@ pub fn draw_samples (canvas: Value, samples: & [f64], sample_rate: f64, canvas_h
 }*/
 
 pub fn make_rendered_canvas (state: &Rc<RefCell<State>>, rendered_getter: Getter <RenderingState, RenderedSamples>, height: i32)->IllustrationCanvas {
-  let result = IllustrationCanvas::new (state.clone(), rendered_getter.clone() + getter! (samples: RenderedSamples => samples.illustration));
+  let mut result = IllustrationCanvas::new (state.clone(), rendered_getter.clone() + getter! (samples: RenderedSamples => samples.illustration));
   //let guard = state.borrow();
   //let rendered = rendered_getter.get (& guard.rendering_state);
   js!{
@@ -282,5 +282,7 @@ pub fn make_rendered_canvas (state: &Rc<RefCell<State>>, rendered_getter: Getter
     }}();});
   }
   //rendered.redraw (None, & guard.rendering_state.constants);
+  result.reset();
+  result.update(& state.borrow());
   result
 }
