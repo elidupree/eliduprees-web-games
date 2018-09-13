@@ -4,9 +4,6 @@ use ordered_float::OrderedFloat;
 use rand::{Rng, IsaacRng, SeedableRng};
 type Generator = IsaacRng;
 
-pub fn root_mean_square <T: Clone + Into <f64>> (samples: & [T])->f64 {
-  (samples.iter().map (| sample | sample.clone().into()*sample.clone().into()).sum::<f64>()/samples.len() as f64).sqrt()
-}
 pub fn logistic_curve (input: f64)->f64 {
   0.5+0.5*(input*0.5).tanh()
 }
@@ -167,9 +164,14 @@ impl RenderedSamples {
     let illustration = &mut self.illustration;
     let buffer = &self.audio_buffer;
     maybe_batch (& self.samples, constants, | batch_start, rendered_slice | {
-        let value = root_mean_square (rendered_slice);
-        
-        illustration.lines.push (IllustrationLine {range: [0.5-value, 0.5+value], clipping: rendered_slice.iter().any (| value | value.abs() > 1.0)});
+    
+        //let average = rendered_slice.iter().map (| sample | *sample as f64).sum::<f64>()/rendered_slice.len() as f64;
+        let root_mean_square = (rendered_slice.iter().map (| sample | {
+          let sample = *sample as f64;// - average;
+          sample*sample
+        }).sum::<f64>()/rendered_slice.len() as f64).sqrt();
+                
+        illustration.lines.push (IllustrationLine {range: [0.5-root_mean_square, 0.5+root_mean_square], clipping: rendered_slice.iter().any (| value | value.abs() > 1.0)});
         
         let rendered: TypedArray <f32> = rendered_slice.into();
         js! {
