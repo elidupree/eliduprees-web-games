@@ -273,7 +273,7 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
   let container = &self.redraw.main_grid;
   
   let applicable = Identity::applicable (sound);
-  let enabled = applicable && (signal.enabled || !info.can_disable);
+  let enabled = sound.enabled::<Identity>();
   
   //js!{@{& container}.append (@{info.name} + ": ");}
   

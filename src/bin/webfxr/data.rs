@@ -523,7 +523,7 @@ impl SoundDefinition {
   pub fn sample_rate (&self)->usize {self.output_sample_rate as usize}
     
   pub fn enabled <Identity: SignalIdentity> (&self)->bool {
-    Identity::applicable (self) && Identity::definition_getter ().get (&self.signals).enabled
+    Identity::applicable (self) && (Identity::definition_getter ().get (&self.signals).enabled || ! Identity::info().can_disable)
   }
 }
 
