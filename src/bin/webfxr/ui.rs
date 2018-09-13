@@ -132,7 +132,7 @@ impl IllustrationCanvas {
 
       context.fillStyle = @{line.clipping} ? "rgb(255,0,0)" : "rgb(0,0,0)";
       
-      context.fillRect (@{index as f64}, canvas.height*(1 -@{line.range [1]}), 1, canvas.height*@{line.range [1] - line.range [0]});
+      context.fillRect (@{index as f64}, canvas.height*(1 -@{line.range [1]})-0.5, 1, canvas.height*@{line.range [1] - line.range [0]}+1.0);
     }
   }
   
