@@ -355,7 +355,7 @@ fn redraw_waveform_canvas (state: & State) {
   }
 }
 
-const SWITCH_PLAYBACK_DELAY: f64 = 0.05;
+const SWITCH_PLAYBACK_DELAY: f64 = 0.15;
 
 fn render_loop (state: Rc<RefCell<State>>) {
   {
