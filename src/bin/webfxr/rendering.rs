@@ -1,4 +1,5 @@
 use super::*;
+use std::collections::BTreeSet;
 use ordered_float::OrderedFloat;
 
 use rand::{Rng, IsaacRng, SeedableRng};
@@ -132,6 +133,7 @@ pub struct RenderingState {
   pub generator: Generator,
   
   pub wave_phase: f64,
+  pub cycle_starts: BTreeSet < OrderedFloat <f64>>,
   pub waveform_samples: Vec<f64>,
   
   pub harmonics: Vec<WaveformRenderingState>,
@@ -359,7 +361,9 @@ impl RenderingState {
 
   pub fn new (sound: & SoundDefinition)->RenderingState {
     let num_samples = (min(MAX_RENDER_LENGTH, sound.duration())*sound.sample_rate() as f64).ceil() as usize;
-    js! { window.webfxr_num_samples = @{num_samples as f64}; window.webfxr_sample_rate = @{sound.sample_rate() as f64}; } 
+    js! { window.webfxr_num_samples = @{num_samples as f64}; window.webfxr_sample_rate = @{sound.sample_rate() as f64}; }
+    let mut cycle_starts = BTreeSet::new();
+    cycle_starts.insert (OrderedFloat (0.0));
     let mut result = RenderingState {
       constants: RenderingStateConstants {
         num_samples: num_samples,
@@ -370,6 +374,7 @@ impl RenderingState {
         started_rendering_at: now(),
       },
       bitcrush_phase: 1.0,
+      cycle_starts: cycle_starts,
       .. Default::default()
     };
     
@@ -449,8 +454,15 @@ impl RenderingState {
     //};
     self.waveform_samples.push (sample);
     
-    
-    self.wave_phase += frequency*self.constants.sample_duration;
+    let previous_floor = self.wave_phase.floor();
+    let phase_increment = frequency*self.constants.sample_duration;
+    self.wave_phase += phase_increment;
+    let new_floor = self.wave_phase.floor();
+    if new_floor != previous_floor {
+      let time_fraction = 1.0 - (self.wave_phase.fract()/phase_increment);
+      let switch_time = time + time_fraction*self.constants.sample_duration;
+      self.cycle_starts.insert (OrderedFloat (switch_time)) ;
+    }
     
     sample
   }

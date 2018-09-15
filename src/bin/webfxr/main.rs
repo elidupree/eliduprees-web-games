@@ -21,9 +21,11 @@ use std::cell::RefCell;
 use std::collections::{VecDeque, HashSet};
 use std::marker::PhantomData;
 use std::mem;
+use std::ops::Bound;
 use stdweb::Value;
 //use stdweb::unstable::TryInto;
 use stdweb::web::{self, TypedArray};
+use ordered_float::OrderedFloat;
 pub use array_ext::Array;
 pub use eliduprees_web_games::*;
 
@@ -305,12 +307,18 @@ fn redraw_waveform_canvas (state: & State, start_time: f64) {
   };*/
   
   let rendering = & state.rendering_state;
+  let start_time = match rendering.cycle_starts.range ((Bound::Unbounded, Bound::Included (OrderedFloat (start_time)))).rev().next() {
+    None => return,
+    Some (time) => time.0,
+  };
+  
   let frequency = resample (& rendering.signals.get::<LogFrequency>().samples, start_time*rendering.constants.sample_rate as f64).exp2();
   let wavelength = 1.0/frequency;
   let duration = wavelength*3.0;
   let rendered_duration = rendering.final_samples.samples.len() as f64/rendering.constants.sample_rate as f64;
   eprintln!("{:?}", (rendered_duration, wavelength, start_time));
   if rendered_duration >= start_time + duration {
+    
     js!{
       var canvas =@{&state.waveform_canvas.canvas}[0];
       var context =@{&state.waveform_canvas.context};
