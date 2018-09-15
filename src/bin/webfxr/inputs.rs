@@ -185,8 +185,10 @@ impl <'a, F: 'static + Fn (UserNumber <T>), T: UserNumberType> NumericalInputSpe
         var value = @{to_rendered_callback} (number_input.val());
         var range_input = parent.children ("input[type=range]");
         if (isNaN (value)) {var value = range_input[0].valueAsNumber;}
-        //console.log (event.originalEvent.deltaY);
+        //console.log (event.originalEvent.deltaY, event.originalEvent.deltaX, event.originalEvent.deltaMode);
         var increment = ((-event.originalEvent.deltaY) || event.originalEvent.deltaX || 0)*@{slider_step*0.5};
+        if (event.originalEvent.deltaMode === 1) {increment *= 18;}
+        if (event.originalEvent.deltaMode === 2) {increment *= 400;}
         if (@{slider_step == 1.0}) {
           if (increment > 0) {
             value = Math.floor(value) + 1;
