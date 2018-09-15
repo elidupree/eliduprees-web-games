@@ -215,7 +215,7 @@ fn redraw_app(state: & Rc<RefCell<State>>) {
   js!{@{&label}.addClass("toplevel_input_label")}
   
   js!{@{grid_element}.append (@{assign_row(redraw.rows, js!{ return @{&guard.waveform_canvas.canvas}.parent()})});}
-  redraw_waveform_canvas (& guard, 0.0);
+  redraw_waveform_canvas (& guard);
   js!{@{grid_element}.append (@{label},@{waveform_input}.addClass("sound_radio_input"));}
   redraw.rows += 1;
   
@@ -287,7 +287,7 @@ fn redraw_app(state: & Rc<RefCell<State>>) {
 }
 
 
-fn redraw_waveform_canvas (state: & State, start_time: f64) {
+fn redraw_waveform_canvas (state: & State) {
   //let sample_rate = 500.0;
   //let waveform_samples = display_samples (sample_rate, 3.0, | phase | state.sound.sample_waveform (time, phase));
   
@@ -301,12 +301,12 @@ fn redraw_waveform_canvas (state: & State, start_time: f64) {
     context.clearRect (0, 0, canvas.width, canvas.height);
   }
   
-  /*let start_time = match state.playback_state {
-    None => 0.0,
-    Some (ref playback) => playback.time.current_offset(),
-  };*/
-  
   let rendering = & state.rendering_state;
+  let (start_time, samples) = match state.playback_state {
+    None => (state.sound.envelope.attack.rendered, & rendering.final_samples),
+    Some (ref playback) => (playback.time.current_offset(), playback.samples_getter.get (rendering)),
+  };
+  
   let start_time = match rendering.cycle_starts.range ((Bound::Unbounded, Bound::Included (OrderedFloat (start_time)))).rev().next() {
     None => return,
     Some (time) => time.0,
@@ -315,7 +315,7 @@ fn redraw_waveform_canvas (state: & State, start_time: f64) {
   let frequency = resample (& rendering.signals.get::<LogFrequency>().samples, start_time*rendering.constants.sample_rate as f64).exp2();
   let wavelength = 1.0/frequency;
   let duration = wavelength*3.0;
-  let rendered_duration = rendering.final_samples.samples.len() as f64/rendering.constants.sample_rate as f64;
+  let rendered_duration = samples.samples.len() as f64/rendering.constants.sample_rate as f64;
   eprintln!("{:?}", (rendered_duration, wavelength, start_time));
   if rendered_duration >= start_time + duration {
     
@@ -329,7 +329,7 @@ fn redraw_waveform_canvas (state: & State, start_time: f64) {
     for index in 0..num_samples {
       let fraction = index as f64/(num_samples-1) as f64;
       let time = start_time + duration*fraction;
-      let value = rendering.final_samples.resample (time, & rendering.constants);
+      let value = samples.resample (time, & rendering.constants);
       //eprintln!("{:?}", (time, value));
       js!{
         var canvas =@{&state.waveform_canvas.canvas}[0];
@@ -427,8 +427,8 @@ fn render_loop (state: Rc<RefCell<State>>) {
       } else if let PlaybackTime::RunningSinceAudioTime (_) = playback.time {
         let samples = playback.samples_getter.get (&state.rendering_state);
         //samples.redraw (Some(offset), & state.rendering_state.constants);
-        redraw_waveform_canvas (state, offset);
       }
+      redraw_waveform_canvas (state);
     }
   }
   
