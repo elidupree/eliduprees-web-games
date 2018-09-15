@@ -158,6 +158,21 @@ pub fn maybe_batch <T, F: FnMut(usize, &[T])> (samples: &[T], constants: &Render
   }
 }
 
+pub fn resample <T: Clone + Into <f64>> (samples: & [T], position: f64)->f64 {
+  // Linear interpolation because it doesn't matter that much anyway.
+  let previous_index = position.floor() as isize as usize;
+  let fraction = position.fract();
+  let previous = match samples.get (previous_index) {
+    Some (value) => value.clone().into(),
+    None => 0.0,
+  };
+  let next = match samples.get (previous_index.wrapping_add (1)) {
+    Some (value) => value.clone().into(),
+    None => 0.0,
+  };
+  previous*(1.0 - fraction) + next*fraction
+}
+
 impl RenderedSamples {
   pub fn push (&mut self, value: f64, constants: &RenderingStateConstants) {
     self.samples.push (value as f32);
@@ -182,14 +197,8 @@ impl RenderedSamples {
   }
   
   pub fn resample (&self, time: f64, constants: &RenderingStateConstants)->f64 {
-    // Linear interpolation because it doesn't matter that much anyway.
-    
     let scaled = time*constants.sample_rate as f64;
-    let previous_index = scaled.floor() as isize as usize;
-    let fraction = scaled.fract();
-    let previous = self.samples.get (previous_index).cloned().unwrap_or (0.0) as f64;
-    let next = self.samples.get (previous_index.wrapping_add (1)).cloned().unwrap_or (0.0) as f64;
-    previous*(1.0 - fraction) + next*fraction
+    resample (& self.samples, scaled)
   }
 }
 

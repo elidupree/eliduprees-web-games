@@ -70,7 +70,7 @@ pub struct State {
   pub rendering_state: RenderingState,
   pub playback_state: Option <Playback>,
   pub loop_playback: bool,
-  pub waveform_canvas: Value,
+  pub waveform_canvas: Canvas,
   pub effects_shown: HashSet <&'static str>,
   pub render_progress_functions: Vec<Box<dyn FnMut(& State)>>,
 }
@@ -98,14 +98,12 @@ pub struct RedrawState {
 }
 
 fn redraw_app(state: & Rc<RefCell<State>>) {
-  let waveform_canvas;
   let mut redraw;
   {
     let mut guard = state.borrow_mut();
     let state = &mut*guard;
     
-    waveform_canvas = js!{ return $(new_canvas());};
-    state.waveform_canvas = waveform_canvas.clone();
+    state.waveform_canvas = Canvas::default();
   }
   {
   let guard = state.borrow();
@@ -214,7 +212,7 @@ fn redraw_app(state: & Rc<RefCell<State>>) {
   let label = assign_row(redraw.rows, js!{ return @{&waveform_input}.children("label").first();});
   js!{@{&label}.addClass("toplevel_input_label")}
   
-  js!{@{grid_element}.append (@{assign_row(redraw.rows, js!{ return @{waveform_canvas}.parent()})});}
+  js!{@{grid_element}.append (@{assign_row(redraw.rows, js!{ return @{&guard.waveform_canvas.canvas}.parent()})});}
   redraw_waveform_canvas (& guard, 0.0);
   js!{@{grid_element}.append (@{label},@{waveform_input}.addClass("sound_radio_input"));}
   redraw.rows += 1;
@@ -287,11 +285,66 @@ fn redraw_app(state: & Rc<RefCell<State>>) {
 }
 
 
-fn redraw_waveform_canvas (state: & State, time: f64) {
-  let sample_rate = 500.0;
+fn redraw_waveform_canvas (state: & State, start_time: f64) {
+  //let sample_rate = 500.0;
   //let waveform_samples = display_samples (sample_rate, 3.0, | phase | state.sound.sample_waveform (time, phase));
   
   //draw_samples (state.waveform_canvas.clone(), &waveform_samples, sample_rate, 40.0, [-1.0, 1.0], 3.0);
+  
+  js!{
+    var canvas =@{&state.waveform_canvas.canvas}[0];
+    var context =@{&state.waveform_canvas.context};
+    //canvas.width = 100;
+    //canvas.height = 200;
+    context.clearRect (0, 0, canvas.width, canvas.height);
+  }
+  
+  /*let start_time = match state.playback_state {
+    None => 0.0,
+    Some (ref playback) => playback.time.current_offset(),
+  };*/
+  
+  let rendering = & state.rendering_state;
+  let frequency = resample (& rendering.signals.get::<LogFrequency>().samples, start_time*rendering.constants.sample_rate as f64).exp2();
+  let wavelength = 1.0/frequency;
+  let duration = wavelength*3.0;
+  let rendered_duration = rendering.final_samples.samples.len() as f64/rendering.constants.sample_rate as f64;
+  eprintln!("{:?}", (rendered_duration, wavelength, start_time));
+  if rendered_duration >= start_time + duration {
+    js!{
+      var canvas =@{&state.waveform_canvas.canvas}[0];
+      var context =@{&state.waveform_canvas.context};
+      
+      context.beginPath();
+    }
+    let num_samples = 500;
+    for index in 0..num_samples {
+      let fraction = index as f64/(num_samples-1) as f64;
+      let time = start_time + duration*fraction;
+      let value = rendering.final_samples.resample (time, & rendering.constants);
+      //eprintln!("{:?}", (time, value));
+      js!{
+        var canvas =@{&state.waveform_canvas.canvas}[0];
+        var context =@{&state.waveform_canvas.context};
+        var first =@{fraction}*canvas.width;
+        var second =(0.5 - @{value}*0.5)*canvas.height;
+        
+        if (@{index == 0}) {
+          context.moveTo (first, second);
+        } else {
+          context.lineTo (first, second);
+          //console.log(first, second);
+        }
+      }
+    }
+    js!{
+      var canvas =@{&state.waveform_canvas.canvas}[0];
+      var context =@{&state.waveform_canvas.context};
+      
+      context.strokeStyle = "rgb(0,0,0)";
+      context.stroke();
+    }
+  }
 }
 
 const SWITCH_PLAYBACK_DELAY: f64 = 0.05;
@@ -320,7 +373,7 @@ fn render_loop (state: Rc<RefCell<State>>) {
     
     let mut stopped_waiting = false;
     
-    let rendered_duration = state.rendering_state.final_samples.samples.len() as f64/state.sound.sample_rate() as f64;
+    let rendered_duration = state.rendering_state.final_samples.samples.len() as f64/state.rendering_state.constants.sample_rate as f64;
     if state.rendering_state.finished() || rendered_duration >= 0.02 {if let Some(ref mut playback) = state.playback_state {if let PlaybackTime::WaitingAtOffset (offset) = playback.time {
       let time_spent_rendering = now() - state.rendering_state.constants.started_rendering_at;
       let rendering_speed = rendered_duration/time_spent_rendering;
@@ -409,7 +462,7 @@ fn main() {
     rendering_state: Default::default(),
     playback_state: None,
     loop_playback: false,
-    waveform_canvas: Value::Undefined,
+    waveform_canvas: Canvas::default(),
     effects_shown: HashSet::new(),
     render_progress_functions: Default::default(),
   }));
