@@ -506,6 +506,8 @@ impl RenderingState {
       let flanger_frequency = self.sample_signal::<LogFlangerFrequency> (sound, true).exp2();
       let flanger_offset = 1.0/flanger_frequency;
       sample += previous_getter.get (& self.signals).rendered_after.resample (time - flanger_offset, & self.constants);
+      sample += self.signals.get::<LogFlangerFrequency>().rendered_after.resample (time - flanger_offset, & self.constants);
+      sample /= 2.0;
       self.signals.log_flanger_frequency.rendered_after.push (sample, &self.constants);
     }
     
