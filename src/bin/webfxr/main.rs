@@ -316,7 +316,7 @@ fn redraw_waveform_canvas (state: & State) {
   let wavelength = 1.0/frequency;
   let duration = wavelength*3.0;
   let rendered_duration = samples.samples.len() as f64/rendering.constants.sample_rate as f64;
-  eprintln!("{:?}", (rendered_duration, wavelength, start_time));
+  //eprintln!("{:?}", (rendered_duration, wavelength, start_time));
   if rendered_duration >= start_time + duration {
     
     js!{
