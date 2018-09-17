@@ -1,13 +1,21 @@
-
 use std::rc::Rc;
 use std::cell::Cell;
-
+use stdweb::unstable::TryInto;
 
 //use super::*;
 
 
 pub fn min (first: f64, second: f64)->f64 {if first < second {first} else {second}}
 pub fn max (first: f64, second: f64)->f64 {if first > second {first} else {second}}
+
+pub fn now ()->f64 {
+  let milliseconds: f64 = js!{ return Date.now()}.try_into().unwrap();
+  milliseconds*0.001
+}
+pub fn audio_now ()->f64 {
+  let seconds: f64 = js!{ return audio.currentTime}.try_into().unwrap();
+  seconds
+}
 
 
 #[derive (Clone, PartialEq, Eq)]
@@ -60,18 +68,24 @@ macro_rules! getter {
       get    : Rc::new (move | $value | &    $($path)*),
       get_mut: Rc::new (move | $value | &mut $($path)*),
     }
-  }
+  };
+  ($value: ident: $Type: ty => $($path:tt)*) => {
+    Getter {
+      get    : Rc::new (move | $value: &    $Type | &    $($path)*),
+      get_mut: Rc::new (move | $value: &mut $Type | &mut $($path)*),
+    }
+  };
 }
 macro_rules! variant_field_getter {
   ($Enum: ident::$Variant: ident => $field: ident) => {
     Getter {
       get    : Rc::new (| value | match value {
         &    $Enum::$Variant {ref     $field,..} => $field,
-        _ => unreachable!(),
+        _ => panic!("Variant field getter used with the incorrect variant"),
       }),
       get_mut: Rc::new (| value | match value {
         &mut $Enum::$Variant {ref mut $field,..} => $field,
-        _ => unreachable!(),
+        _ => panic!("Variant field getter used with the incorrect variant"),
       }),
     }
   }

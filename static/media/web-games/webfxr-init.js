@@ -39,12 +39,12 @@ function new_canvas () {
   return result;
 }
 
-function play_buffer (buffer, offset, duration) {
-  if (audio_source) {audio_source.stop();}
+function play_buffer (transition_time, buffer, offset, duration) {
+  if (audio_source) {audio_source.stop(transition_time);}
   audio_source = audio.createBufferSource();
   audio_source.buffer = buffer;
   audio_source.connect (audio.destination);
-  audio_source.start (audio.currentTime, offset, duration);
+  audio_source.start (transition_time, offset, duration);
 }
 
 
