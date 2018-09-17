@@ -197,11 +197,29 @@ fn redraw_app(state: & Rc<RefCell<State>>) {
     redraw.rows += 1;
     }
   }
+  
+  let envelope_canvas = Canvas::default();
+  js!{
+    var canvas =@{&envelope_canvas.canvas}[0];
+    var context =@{&envelope_canvas.context};
+    canvas.height = 90;
+    context.beginPath();
+    var horizontal = 0;
+    context.moveTo (0, canvas.height);
+    horizontal += @{sound.envelope.attack.rendered*DISPLAY_SAMPLE_RATE};
+    context.lineTo (horizontal, 0);
+    horizontal += @{sound.envelope.sustain.rendered*DISPLAY_SAMPLE_RATE};
+    context.lineTo (horizontal, 0);
+    horizontal += @{sound.envelope.decay.rendered*DISPLAY_SAMPLE_RATE};
+    context.lineTo (horizontal, canvas.height);
+    context.strokeStyle = "rgb(0,0,0)";
+    context.stroke();
+  }
 
-  /*js!{@{grid_element}.append (
-    @{canvas_of_samples (&envelope_samples, sample_rate, 90.0, [0.0, 1.0], sound.duration())}.parent()
+  js!{@{grid_element}.append (
+    @{& envelope_canvas.canvas}.parent()
     .css("grid-row", @{redraw.rows}+" / span 3")
-  );}*/
+  );}
   js!{ @{grid_element}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{redraw.rows}+" / span 3")); }
   add_envelope_input!(attack, "Attack", [0.0, 1.0]);
   add_envelope_input!(sustain, "Sustain", [0.0, 3.0]);
