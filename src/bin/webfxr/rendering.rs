@@ -1,11 +1,10 @@
 use super::*;
+use std::collections::BTreeSet;
+use ordered_float::OrderedFloat;
 
 use rand::{Rng, IsaacRng, SeedableRng};
 type Generator = IsaacRng;
 
-pub fn root_mean_square (samples: & [f32])->f32{
-  (samples.iter().map (| sample | sample*sample).sum::<f32>()/samples.len() as f32).sqrt()
-}
 pub fn logistic_curve (input: f64)->f64 {
   0.5+0.5*(input*0.5).tanh()
 }
@@ -53,26 +52,28 @@ impl HighpassFilterState {
 }
 
 pub struct IllustrationLine {
-  pub root_mean_square: f32,
+  pub range: [f64; 2],
   pub clipping: bool,
 }
+#[derive (Derivative)]
+#[derivative (Default)]
+pub struct Illustration {
+  #[derivative (Default (value = "[- 0.5, 0.5]"))]
+  pub range: [f64; 2],
+  pub lines: Vec<IllustrationLine>,
+}
 pub struct RenderedSamples {
-  pub serial_number: SerialNumber,
+  //pub serial_number: SerialNumber,
   pub samples: Vec<f32>,
-  pub illustration: Vec<IllustrationLine>,
-  pub canvas: Value,
-  pub context: Value,
+  pub illustration: Illustration,
   pub audio_buffer: Value,
 }
 impl Default for RenderedSamples {
   fn default()->Self {
-    let canvas = js!{ return $(new_canvas ()); };
-    let context = js!{ return @{&canvas}[0].getContext ("2d"); };
     RenderedSamples {
-      serial_number: Default::default(),
+      //serial_number: Default::default(),
       samples: Vec::new(),
-      illustration: Vec::new(),
-      canvas: canvas, context: context,
+      illustration: Default::default(),
       audio_buffer: js!{
         if (window.webfxr_num_samples) {
           return audio.createBuffer (1, window.webfxr_num_samples, window.webfxr_sample_rate);
@@ -82,7 +83,6 @@ impl Default for RenderedSamples {
     }
   }
 }
-
 
 #[derive (Derivative)]
 #[derivative (Default)]
@@ -108,6 +108,7 @@ pub struct SignalEffectRenderingState {
 pub struct SignalRenderingState {
   pub effects: Vec<SignalEffectRenderingState>,
   pub samples: Vec<f64>,
+  pub illustration: Illustration,
   pub rendered_after: RenderedSamples,
 }
 
@@ -132,6 +133,7 @@ pub struct RenderingState {
   pub generator: Generator,
   
   pub wave_phase: f64,
+  pub cycle_starts: BTreeSet < OrderedFloat <f64>>,
   pub waveform_samples: Vec<f64>,
   
   pub harmonics: Vec<WaveformRenderingState>,
@@ -150,70 +152,55 @@ pub struct RenderingState {
   pub constants: RenderingStateConstants,
 }
 
+pub fn maybe_batch <T, F: FnMut(usize, &[T])> (samples: &[T], constants: &RenderingStateConstants, mut batch_function: F) {
+  if samples.len() % constants.samples_per_illustrated == 0 || samples.len() == constants.num_samples {
+    let batch_start = ((samples.len()-1) / constants.samples_per_illustrated) * constants.samples_per_illustrated;
+    let rendered_slice = & samples [batch_start..];
+    (batch_function)(batch_start, rendered_slice) ;
+  }
+}
+
+pub fn resample <T: Clone + Into <f64>> (samples: & [T], position: f64)->f64 {
+  // Linear interpolation because it doesn't matter that much anyway.
+  let previous_index = position.floor() as isize as usize;
+  let fraction = position.fract();
+  let previous = match samples.get (previous_index) {
+    Some (value) => value.clone().into(),
+    None => 0.0,
+  };
+  let next = match samples.get (previous_index.wrapping_add (1)) {
+    Some (value) => value.clone().into(),
+    None => 0.0,
+  };
+  previous*(1.0 - fraction) + next*fraction
+}
+
 impl RenderedSamples {
   pub fn push (&mut self, value: f64, constants: &RenderingStateConstants) {
     self.samples.push (value as f32);
-    if self.samples.len() % constants.samples_per_illustrated == 0 || self.samples.len() == constants.num_samples {
-        let batch_start = ((self.samples.len()-1) / constants.samples_per_illustrated) * constants.samples_per_illustrated;
-        let rendered_slice = & self.samples [batch_start..];
-        let value = root_mean_square (rendered_slice);
-        
-        self.illustration.push (IllustrationLine {root_mean_square: value, clipping: rendered_slice.iter().any (| value | value.abs() > 1.0)});
-        self.draw_line (self.illustration.len() - 1) ;
+    let illustration = &mut self.illustration;
+    let buffer = &self.audio_buffer;
+    maybe_batch (& self.samples, constants, | batch_start, rendered_slice | {
+    
+        //let average = rendered_slice.iter().map (| sample | *sample as f64).sum::<f64>()/rendered_slice.len() as f64;
+        let root_mean_square = (rendered_slice.iter().map (| sample | {
+          let sample = *sample as f64;// - average;
+          sample*sample
+        }).sum::<f64>()/rendered_slice.len() as f64).sqrt();
+                
+        illustration.lines.push (IllustrationLine {range: [0.5-root_mean_square, 0.5+root_mean_square], clipping: rendered_slice.iter().any (| value | value.abs() > 1.0)});
         
         let rendered: TypedArray <f32> = rendered_slice.into();
         js! {
           const rendered = @{rendered};
-          @{&self.audio_buffer}.copyToChannel (rendered, 0, @{batch_start as f64});
+          @{buffer}.copyToChannel (rendered, 0, @{batch_start as f64});
         }  
-    }
-  }
-  
-  pub fn draw_line (&self, index: usize) {
-    let line = &self.illustration [index];
-    // assume that root-mean-square only goes up to 0.5; the radius should also range from 0 to 0.5
-    let radius = line.root_mean_square;
-    
-    js!{
-      var canvas = @{&self.canvas}[0];
-      var context = @{&self.context};
-      context.fillStyle = @{line.clipping} ? "rgb(255,0,0)" : "rgb(0,0,0)";
-      
-      var radius = canvas.height*@{radius};
-      context.fillRect (@{index as f64}, canvas.height*0.5 - radius, 1, radius*2);
-    }
-  }
-  
-  pub fn redraw (&self, playback_position: Option <f64>, constants: & RenderingStateConstants) {
-    js!{
-      var canvas = @{&self.canvas}[0];
-      var context = @{&self.context};
-      context.clearRect (0, 0, canvas.width, canvas.height);
-    }
-    for index in 0..self.illustration.len() {
-      self.draw_line (index);
-    }
-    if let Some(playback_position) = playback_position {
-    let index = (playback_position*constants.sample_rate as f64/constants.samples_per_illustrated as f64).floor();
-    js!{
-      var canvas = @{&self.canvas}[0];
-      var context = @{&self.context};
-      context.fillStyle = "rgb(255,255,0)";
-      
-      context.fillRect (@{index as f64}, 0, 1, canvas.height);
-    }
-    }
+    });
   }
   
   pub fn resample (&self, time: f64, constants: &RenderingStateConstants)->f64 {
-    // Linear interpolation because it doesn't matter that much anyway.
-    
     let scaled = time*constants.sample_rate as f64;
-    let previous_index = scaled.floor() as isize as usize;
-    let fraction = scaled.fract();
-    let previous = self.samples.get (previous_index).cloned().unwrap_or (0.0) as f64;
-    let next = self.samples.get (previous_index.wrapping_add (1)).cloned().unwrap_or (0.0) as f64;
-    previous*(1.0 - fraction) + next*fraction
+    resample (& self.samples, scaled)
   }
 }
 
@@ -360,15 +347,23 @@ impl RenderingState {
     let time = self.next_time;
     let rendering = Identity::rendering_getter().get_mut (&mut self.signals);
     let sample = rendering.next_sample (Identity::definition_getter().get (& definition.signals), index, time, smooth, &self.constants);
-    if index % self.constants.samples_per_signal_sample == 0 {
-      rendering.samples.push (sample);
-    }
+    rendering.samples.push (sample);
+    let illustration = &mut rendering.illustration;
+    maybe_batch (& rendering.samples, &self.constants, |_, sample_slice | {
+        let mut range = [sample_slice.iter().map (|f|OrderedFloat(*f)).min().unwrap().0, sample_slice.iter().map (|f|OrderedFloat(*f)).max().unwrap().0];
+        for value in &mut range {
+          *value = (*value - illustration.range [0])/(illustration.range [1] - illustration.range [0]);
+        }
+        illustration.lines.push (IllustrationLine {range: range, clipping: false });
+    });
     sample
   }
 
   pub fn new (sound: & SoundDefinition)->RenderingState {
     let num_samples = (min(MAX_RENDER_LENGTH, sound.duration())*sound.sample_rate() as f64).ceil() as usize;
-    js! { window.webfxr_num_samples = @{num_samples as f64}; window.webfxr_sample_rate = @{sound.sample_rate() as f64}; } 
+    js! { window.webfxr_num_samples = @{num_samples as f64}; window.webfxr_sample_rate = @{sound.sample_rate() as f64}; }
+    let mut cycle_starts = BTreeSet::new();
+    cycle_starts.insert (OrderedFloat (0.0));
     let mut result = RenderingState {
       constants: RenderingStateConstants {
         num_samples: num_samples,
@@ -379,6 +374,7 @@ impl RenderingState {
         started_rendering_at: now(),
       },
       bitcrush_phase: 1.0,
+      cycle_starts: cycle_starts,
       .. Default::default()
     };
     
@@ -390,15 +386,25 @@ impl RenderingState {
     impl<'a> SignalVisitor for Visitor<'a> {
       fn visit <Identity: SignalIdentity> (&mut self) {
         let mut generator = Generator::from_rng (&mut self.1.generator).unwrap();
-        let signal = Identity::definition_getter().get (& self.0.signals);
-        let rendering = Identity::rendering_getter().get_mut (&mut self.1.signals);
-        for _effect in signal.effects.iter() {
-          rendering.effects.push (SignalEffectRenderingState {
-            waveform: WaveformRenderingState {
-              generator: Generator::from_rng (&mut generator).unwrap(),
-              .. Default::default()
-            },
-          });
+        if self.0.enabled::<Identity>() {
+          let signal = Identity::definition_getter().get (& self.0.signals);
+          let rendering = Identity::rendering_getter().get_mut (&mut self.1.signals);
+          let info = Identity::info();
+          
+          let observed_range = signal.range();
+          rendering.illustration.range = [
+            min (observed_range [0], info.slider_range [0]),
+            max (observed_range [1], info.slider_range [1]),
+          ];
+          
+          for _effect in signal.effects.iter() {
+            rendering.effects.push (SignalEffectRenderingState {
+              waveform: WaveformRenderingState {
+                generator: Generator::from_rng (&mut generator).unwrap(),
+                .. Default::default()
+              },
+            });
+          }
         }
       }
     }
@@ -448,8 +454,15 @@ impl RenderingState {
     //};
     self.waveform_samples.push (sample);
     
-    
-    self.wave_phase += frequency*self.constants.sample_duration;
+    let previous_floor = self.wave_phase.floor();
+    let phase_increment = frequency*self.constants.sample_duration;
+    self.wave_phase += phase_increment;
+    let new_floor = self.wave_phase.floor();
+    if new_floor != previous_floor {
+      let time_fraction = 1.0 - (self.wave_phase.fract()/phase_increment);
+      let switch_time = time + time_fraction*self.constants.sample_duration;
+      self.cycle_starts.insert (OrderedFloat (switch_time)) ;
+    }
     
     sample
   }
@@ -493,6 +506,8 @@ impl RenderingState {
       let flanger_frequency = self.sample_signal::<LogFlangerFrequency> (sound, true).exp2();
       let flanger_offset = 1.0/flanger_frequency;
       sample += previous_getter.get (& self.signals).rendered_after.resample (time - flanger_offset, & self.constants);
+      sample += self.signals.get::<LogFlangerFrequency>().rendered_after.resample (time - flanger_offset, & self.constants);
+      sample /= 2.0;
       self.signals.log_flanger_frequency.rendered_after.push (sample, &self.constants);
     }
     

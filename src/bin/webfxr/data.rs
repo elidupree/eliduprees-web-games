@@ -305,6 +305,15 @@ pub fn visit_signals <Visitor: SignalVisitor> (visitor: &mut Visitor) {
   }
 }
 
+impl Signals {
+  pub fn get<Identity: SignalIdentity> (&self)->& Signal <Identity::NumberType> {Identity::definition_getter().get (self)}
+  pub fn get_mut<Identity: SignalIdentity> (&mut self)->&mut Signal <Identity::NumberType> {Identity::definition_getter().get_mut (self)}
+}
+impl SignalsRenderingState {
+  pub fn get<Identity: SignalIdentity> (&self)->& SignalRenderingState{Identity::rendering_getter().get (self)}
+  pub fn get_mut<Identity: SignalIdentity> (&mut self)->&mut SignalRenderingState {Identity::rendering_getter().get_mut (self)}
+}
+
 #[derive (Clone, PartialEq, Serialize, Deserialize)]
 #[serde (default)]
 pub struct SoundDefinition {
@@ -523,7 +532,7 @@ impl SoundDefinition {
   pub fn sample_rate (&self)->usize {self.output_sample_rate as usize}
     
   pub fn enabled <Identity: SignalIdentity> (&self)->bool {
-    Identity::applicable (self) && Identity::definition_getter ().get (&self.signals).enabled
+    Identity::applicable (self) && (Identity::definition_getter ().get (&self.signals).enabled || ! Identity::info().can_disable)
   }
 }
 

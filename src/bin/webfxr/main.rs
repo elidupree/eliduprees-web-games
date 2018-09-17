@@ -20,9 +20,12 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::{VecDeque, HashSet};
 use std::marker::PhantomData;
+use std::mem;
+use std::ops::Bound;
 use stdweb::Value;
-use stdweb::unstable::TryInto;
+//use stdweb::unstable::TryInto;
 use stdweb::web::{self, TypedArray};
+use ordered_float::OrderedFloat;
 pub use array_ext::Array;
 pub use eliduprees_web_games::*;
 
@@ -33,11 +36,13 @@ mod misc;
 mod data;
 mod rendering;
 mod ui;
+mod inputs;
 mod randomization;
 pub use misc::*;
 pub use data::*;
 pub use rendering::*;
 pub use ui::*;
+pub use inputs::*;
 pub use randomization::*;
 
 
@@ -67,15 +72,16 @@ pub struct State {
   pub rendering_state: RenderingState,
   pub playback_state: Option <Playback>,
   pub loop_playback: bool,
-  pub waveform_canvas: Value,
+  pub waveform_canvas: Canvas,
   pub effects_shown: HashSet <&'static str>,
+  pub render_progress_functions: Vec<Box<dyn FnMut(& State)>>,
 }
 
 
 
 fn update_for_changed_sound (state: & Rc<RefCell<State>>) {
   restart_rendering (state);
-  redraw (state);
+  redraw_app (state);
   play (&mut state.borrow_mut(), getter! (state => state.final_samples));
 }
 
@@ -90,30 +96,28 @@ fn restart_rendering (state: & Rc<RefCell<State>>) {
 pub struct RedrawState {
   pub rows: u32,
   pub main_grid: Value,
-  //pub
+  pub render_progress_functions: Vec<Box<dyn FnMut(& State)>>,
 }
 
-fn redraw(state: & Rc<RefCell<State>>) {
-  let waveform_canvas;
+fn redraw_app(state: & Rc<RefCell<State>>) {
+  let mut redraw;
   {
     let mut guard = state.borrow_mut();
     let state = &mut*guard;
     
-    waveform_canvas = js!{ return $(new_canvas());};
-    state.waveform_canvas = waveform_canvas.clone();
+    state.waveform_canvas = Canvas::default();
   }
   {
   let guard = state.borrow();
   let sound = & guard.sound;
   
-  let mut rows = 1;
   pub fn assign_row (rows: u32, element: Value)->Value {
     js!{@{&element}.css("grid-row", @{rows}+" / span 1")};
     element
   }
   
   let sample_rate = 500.0;
-  let envelope_samples = display_samples (sample_rate, sound.duration(), | time | sound.envelope.sample (time));
+  //let envelope_samples = display_samples (sample_rate, sound.duration(), | time | sound.envelope.sample (time));
       
   js!{clear_callbacks();}  
   let app_element = js!{ return $("<div>", {id: "app"});};
@@ -126,36 +130,35 @@ fn redraw(state: & Rc<RefCell<State>>) {
     return $("<div>", {id: "main_grid", class: "main_grid"}).appendTo (@{app_element});
   };
   let grid_element = &grid_element;
-  
+  redraw = RedrawState {rows: 1, main_grid: grid_element.clone(), render_progress_functions: Vec::new()};
   
 
-  let final_samples = & guard.rendering_state.final_samples;
-  let main_canvas = final_samples.canvas.clone();
-  setup_rendered_canvas (state, getter! (state => state.final_samples), 100);
-  js!{@{left_column}.append (@{main_canvas}.parent());}
-  //rows += 1;
+  let mut main_canvas = make_rendered_canvas (state, getter! (state => state.final_samples), 100);
+  js!{@{left_column}.append (@{& main_canvas.canvas.canvas}.parent());}
+  redraw.render_progress_functions.push (Box::new (move | state | main_canvas.update(state)));
+  //redraw.rows += 1;
       
-  let play_button = assign_row (rows, button_input ("Play",
+  let play_button = assign_row (redraw.rows, button_input ("Play",
     { let state = state.clone(); move || {
       play (&mut state.borrow_mut(), getter! (state => state.final_samples));
     }}
   ));
   js!{@{left_column}.append (@{play_button});}
   
-  let loop_button = assign_row (rows, checkbox_input (state, "loop", "Loop", getter! (state => state.loop_playback)));
+  let loop_button = assign_row (redraw.rows, checkbox_input (state, "loop", "Loop", getter! (state => state.loop_playback)));
   js!{@{left_column}.append (@{loop_button});}
   
-  let undo_button = assign_row (rows, button_input ("Undo (z)",
+  let undo_button = assign_row (redraw.rows, button_input ("Undo (z)",
     { let state = state.clone(); move || undo (&state) }
   ));
   js!{@{left_column}.append (@{undo_button});}
   
-  let redo_button = assign_row (rows, button_input ("Redo (shift-Z)",
+  let redo_button = assign_row (redraw.rows, button_input ("Redo (shift-Z)",
     { let state = state.clone(); move || redo (&state) }
   ));
   js!{@{left_column}.append (@{redo_button});}
       
-  let randomize_button = assign_row (rows, button_input ("Randomize",
+  let randomize_button = assign_row (redraw.rows, button_input ("Randomize",
     input_callback_nullary (state, move | state | {
       state.sound = random_sound (&mut rand::thread_rng());
     })
@@ -180,7 +183,7 @@ fn redraw(state: & Rc<RefCell<State>>) {
   
   macro_rules! add_envelope_input {
   ($variable: ident, $name: expr, $range: expr) => {
-    let input = assign_row(rows, numerical_input (
+    let input = assign_row(redraw.rows, numerical_input (
       state,
       stringify! ($variable),
       $name, 
@@ -188,79 +191,96 @@ fn redraw(state: & Rc<RefCell<State>>) {
       $range
     ));
     
-    let label = assign_row(rows, js!{ return @{&input}.children("label");});
+    let label = assign_row(redraw.rows, js!{ return @{&input}.children("label");});
     js!{@{&label}.append(":").addClass("toplevel_input_label")}
     js!{@{grid_element}.append (@{label},@{input});}
-    rows += 1;
+    redraw.rows += 1;
     }
+  }
+  
+  let envelope_canvas = Canvas::default();
+  js!{
+    var canvas =@{&envelope_canvas.canvas}[0];
+    var context =@{&envelope_canvas.context};
+    canvas.height = 90;
+    context.beginPath();
+    var horizontal = 0;
+    context.moveTo (0, canvas.height);
+    horizontal += @{sound.envelope.attack.rendered*DISPLAY_SAMPLE_RATE};
+    context.lineTo (horizontal, 0);
+    horizontal += @{sound.envelope.sustain.rendered*DISPLAY_SAMPLE_RATE};
+    context.lineTo (horizontal, 0);
+    horizontal += @{sound.envelope.decay.rendered*DISPLAY_SAMPLE_RATE};
+    context.lineTo (horizontal, canvas.height);
+    context.strokeStyle = "rgb(0,0,0)";
+    context.stroke();
   }
 
   js!{@{grid_element}.append (
-    @{canvas_of_samples (&envelope_samples, sample_rate, 90.0, [0.0, 1.0], sound.duration())}.parent()
-    .css("grid-row", @{rows}+" / span 3")
+    @{& envelope_canvas.canvas}.parent()
+    .css("grid-row", @{redraw.rows}+" / span 3")
   );}
-  js!{ @{grid_element}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{rows}+" / span 3")); }
+  js!{ @{grid_element}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{redraw.rows}+" / span 3")); }
   add_envelope_input!(attack, "Attack", [0.0, 1.0]);
   add_envelope_input!(sustain, "Sustain", [0.0, 3.0]);
   add_envelope_input!(decay, "Decay", [0.0, 3.0]);
   
   
   
-  let waveform_start = rows;
-  let waveform_input = assign_row (rows, waveform_input (state, "waveform", "Waveform", getter! (state => state.sound.waveform)));
-  let label = assign_row(rows, js!{ return @{&waveform_input}.children("label").first();});
+  let waveform_start = redraw.rows;
+  let waveform_input = assign_row (redraw.rows, waveform_input (state, "waveform", "Waveform", getter! (state => state.sound.waveform)));
+  let label = assign_row(redraw.rows, js!{ return @{&waveform_input}.children("label").first();});
   js!{@{&label}.addClass("toplevel_input_label")}
   
-  js!{@{grid_element}.append (@{assign_row(rows, js!{ return @{waveform_canvas}.parent()})});}
-  redraw_waveform_canvas (& guard, 0.0);
+  js!{@{grid_element}.append (@{assign_row(redraw.rows, js!{ return @{&guard.waveform_canvas.canvas}.parent()})});}
+  redraw_waveform_canvas (& guard);
   js!{@{grid_element}.append (@{label},@{waveform_input}.addClass("sound_radio_input"));}
-  rows += 1;
+  redraw.rows += 1;
   
-  js!{ @{grid_element}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{waveform_start}+" / "+@{rows})); }
+  js!{ @{grid_element}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{waveform_start}+" / "+@{redraw.rows})); }
   
   
   
-  struct Visitor <'a> (& 'a Rc<RefCell<State>>, & 'a mut u32, & 'a Value);
+  struct Visitor <'a> (& 'a Rc<RefCell<State>>, & 'a mut RedrawState);
   impl<'a> SignalVisitor for Visitor<'a> {
     fn visit <Identity: SignalIdentity> (&mut self) {
       let specification: SignalEditorSpecification<Identity> = SignalEditorSpecification {
         state: self.0,
-        rows: self.1,
-        main_grid: self.2,
+        redraw: self.1,
         _marker: PhantomData,
       };
       specification.render();
     }
   }
   
-  visit_signals (&mut Visitor (state, &mut rows, grid_element));
+  visit_signals (&mut Visitor (state, &mut redraw));
   
-  let clipping_input = assign_row (rows, RadioInputSpecification {
+  let clipping_input = assign_row (redraw.rows, RadioInputSpecification {
     state: state, id: "clipping", name: "Clipping behavior", getter: getter! (state => state.sound.soft_clipping),
     options: &[
       (false, "Hard clipping"),
       (true, "Soft clipping"),
     ],  
   }.render());
-  let label = assign_row(rows, js!{ return @{& clipping_input}.children("label").first();});
+  let label = assign_row(redraw.rows, js!{ return @{& clipping_input}.children("label").first();});
   js!{@{&label}.addClass("toplevel_input_label")}
-  js!{ @{grid_element}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{rows}+" / span 1")); }
+  js!{ @{grid_element}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{redraw.rows}+" / span 1")); }
   js!{@{grid_element}.append (@{label},@{clipping_input}.addClass("sound_radio_input"));}
-  rows += 1;
+  redraw.rows += 1;
   
   
-  let sample_rate_input = assign_row (rows, RadioInputSpecification {
+  let sample_rate_input = assign_row (redraw.rows, RadioInputSpecification {
     state: state, id: "sample_rate", name: "Output sample rate", getter: getter! (state => state.sound.output_sample_rate),
     options: &[
       (44100, "44100"),
       (48000, "48000"),
     ],  
   }.render());
-  let label = assign_row(rows, js!{ return @{& sample_rate_input}.children("label").first();});
+  let label = assign_row(redraw.rows, js!{ return @{& sample_rate_input}.children("label").first();});
   js!{@{&label}.addClass("toplevel_input_label")}
-  js!{ @{grid_element}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{rows}+" / span 1")); }
+  js!{ @{grid_element}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{redraw.rows}+" / span 1")); }
   js!{@{grid_element}.append (@{label},@{sample_rate_input}.addClass("sound_radio_input"));}
-  rows += 1;
+  redraw.rows += 1;
 
   
   //js! {window.before_render = Date.now();}
@@ -271,20 +291,89 @@ fn redraw(state: & Rc<RefCell<State>>) {
   js!{morphdom($("#app")[0], @{app_element}[0]);} 
   
   // hack – suppress warning from incrementing rows unnecessarily at the end
-  #[allow (unused_variables)] let whatever = rows;
+  //#[allow (unused_variables)] let whatever = redraw.rows;
   
+  
+  
+  }
+  {
+    let mut guard = state.borrow_mut();
+    let state = &mut*guard;
+    
+    state.render_progress_functions = redraw.render_progress_functions;
   }
 }
 
 
-fn redraw_waveform_canvas (state: & State, time: f64) {
-  let sample_rate = 500.0;
+fn redraw_waveform_canvas (state: & State) {
+  //let sample_rate = 500.0;
   //let waveform_samples = display_samples (sample_rate, 3.0, | phase | state.sound.sample_waveform (time, phase));
   
   //draw_samples (state.waveform_canvas.clone(), &waveform_samples, sample_rate, 40.0, [-1.0, 1.0], 3.0);
+  
+  js!{
+    var canvas =@{&state.waveform_canvas.canvas}[0];
+    var context =@{&state.waveform_canvas.context};
+    //canvas.width = 100;
+    //canvas.height = 200;
+    context.clearRect (0, 0, canvas.width, canvas.height);
+  }
+  
+  let rendering = & state.rendering_state;
+  let (start_time, samples) = match state.playback_state {
+    None => (state.sound.envelope.attack.rendered, & rendering.final_samples),
+    Some (ref playback) => (playback.time.current_offset(), playback.samples_getter.get (rendering)),
+  };
+  
+  let start_time = match rendering.cycle_starts.range ((Bound::Unbounded, Bound::Included (OrderedFloat (start_time)))).rev().next() {
+    None => return,
+    Some (time) => time.0,
+  };
+  
+  let frequency = resample (& rendering.signals.get::<LogFrequency>().samples, start_time*rendering.constants.sample_rate as f64).exp2();
+  let wavelength = 1.0/frequency;
+  let duration = wavelength*3.0;
+  let rendered_duration = samples.samples.len() as f64/rendering.constants.sample_rate as f64;
+  //eprintln!("{:?}", (rendered_duration, wavelength, start_time));
+  if rendered_duration >= start_time + duration {
+    
+    js!{
+      var canvas =@{&state.waveform_canvas.canvas}[0];
+      var context =@{&state.waveform_canvas.context};
+      
+      context.beginPath();
+    }
+    let num_samples = 500;
+    for index in 0..num_samples {
+      let fraction = index as f64/(num_samples-1) as f64;
+      let time = start_time + duration*fraction;
+      let value = samples.resample (time, & rendering.constants);
+      //eprintln!("{:?}", (time, value));
+      js!{
+        var canvas =@{&state.waveform_canvas.canvas}[0];
+        var context =@{&state.waveform_canvas.context};
+        var first =@{fraction}*canvas.width;
+        var second =(0.5 - @{value}*0.5)*canvas.height;
+        
+        if (@{index == 0}) {
+          context.moveTo (first, second);
+        } else {
+          context.lineTo (first, second);
+          //console.log(first, second);
+        }
+      }
+    }
+    js!{
+      var canvas =@{&state.waveform_canvas.canvas}[0];
+      var context =@{&state.waveform_canvas.context};
+      
+      context.strokeStyle = "rgb(0,0,0)";
+      context.stroke();
+    }
+  }
 }
 
-const SWITCH_PLAYBACK_DELAY: f64 = 0.05;
+const SWITCH_PLAYBACK_DELAY: f64 = 0.15;
 
 fn render_loop (state: Rc<RefCell<State>>) {
   {
@@ -302,9 +391,15 @@ fn render_loop (state: Rc<RefCell<State>>) {
       }
     }
     
+    if !already_finished {
+      let mut functions = mem::replace (&mut state.render_progress_functions, Default::default());
+      for function in &mut functions {(function)(state);}
+      state.render_progress_functions = functions;
+    }
+    
     let mut stopped_waiting = false;
     
-    let rendered_duration = state.rendering_state.final_samples.samples.len() as f64/state.sound.sample_rate() as f64;
+    let rendered_duration = state.rendering_state.final_samples.samples.len() as f64/state.rendering_state.constants.sample_rate as f64;
     if state.rendering_state.finished() || rendered_duration >= 0.02 {if let Some(ref mut playback) = state.playback_state {if let PlaybackTime::WaitingAtOffset (offset) = playback.time {
       let time_spent_rendering = now() - state.rendering_state.constants.started_rendering_at;
       let rendering_speed = rendered_duration/time_spent_rendering;
@@ -344,14 +439,14 @@ fn render_loop (state: Rc<RefCell<State>>) {
           play (state, playback.samples_getter);
         } else {
           let samples = playback.samples_getter.get (&state.rendering_state);
-          samples.redraw (None, & state.rendering_state.constants);
+          //samples.redraw (None, & state.rendering_state.constants);
           state.playback_state = None;
         }
       } else if let PlaybackTime::RunningSinceAudioTime (_) = playback.time {
         let samples = playback.samples_getter.get (&state.rendering_state);
-        samples.redraw (Some(offset), & state.rendering_state.constants);
-        redraw_waveform_canvas (state, offset);
+        //samples.redraw (Some(offset), & state.rendering_state.constants);
       }
+      redraw_waveform_canvas (state);
     }
   }
   
@@ -360,12 +455,12 @@ fn render_loop (state: Rc<RefCell<State>>) {
 
 fn play (state: &mut State, getter: Getter <RenderingState, RenderedSamples>) {
   let samples = getter.get (&state.rendering_state);
-  if let Some(ref playback) = state.playback_state {
+  /*if let Some(ref playback) = state.playback_state {
     let old_samples = playback.samples_getter.get (&state.rendering_state);
     if old_samples.serial_number != samples.serial_number {
       old_samples.redraw (None, & state.rendering_state.constants);
     }
-  }
+  }*/
 
   //let now: f64 = js!{return audio.currentTime;}.try_into().unwrap();
   state.playback_state = Some(Playback {
@@ -393,8 +488,9 @@ fn main() {
     rendering_state: Default::default(),
     playback_state: None,
     loop_playback: false,
-    waveform_canvas: Value::Undefined,
+    waveform_canvas: Canvas::default(),
     effects_shown: HashSet::new(),
+    render_progress_functions: Default::default(),
   }));
   
   js!{ $(document.body).on ("keydown", function(event) {
