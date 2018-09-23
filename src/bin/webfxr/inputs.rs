@@ -311,7 +311,7 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
   if enabled {
   {
     let info = info.clone();
-    let duration = sound.duration();
+    let duration = sound.envelope.duration();
     let getter = state_getter.clone();
     let buttons = self.assign_row(js!{
       var menu = $("<select>", {class: "add_effect_buttons"}).append (

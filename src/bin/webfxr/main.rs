@@ -166,13 +166,25 @@ fn redraw_app(state: & Rc<RefCell<State>>) {
   js!{@{left_column}.append (@{randomize_button});}
   let randomize2_button = assign_row (redraw.rows, button_input ("Randomize everything a little",
     input_callback_nullary (state, move | state | {
-      mutate_sound (&mut rand::thread_rng(), &mut state.sound, 1.0, 0.05);
+      SoundMutator {
+        generator: &mut rand::thread_rng(),
+        duration: Default::default(),
+        flop_chance: 0.0,
+        tweak_chance: 1.0,
+        tweak_size: 0.05,
+      }.mutate_sound (&mut state.sound);
     })
   ));
   js!{@{left_column}.append (@{randomize2_button});}
   let randomize3_button = assign_row (redraw.rows, button_input ("Randomize a few things a lot",
     input_callback_nullary (state, move | state | {
-      mutate_sound (&mut rand::thread_rng(), &mut state.sound, 0.05, 1.0);
+      SoundMutator {
+        generator: &mut rand::thread_rng(),
+        duration: Default::default(),
+        flop_chance: 0.05,
+        tweak_chance: 0.05,
+        tweak_size: 1.0,
+      }.mutate_sound (&mut state.sound);
     })
   ));
   js!{@{left_column}.append (@{randomize3_button});}
@@ -446,7 +458,7 @@ fn render_loop (state: Rc<RefCell<State>>) {
     
     if let Some(playback) = state.playback_state.clone() {
       let offset = playback.time.current_offset();
-      if offset > state.sound.duration() {
+      if offset > state.sound.rendering_duration() {
         if state.loop_playback {
           play (state, playback.samples_getter);
         } else {

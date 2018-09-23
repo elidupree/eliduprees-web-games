@@ -176,53 +176,80 @@ fn max_relative_poisson_exchange_chance (lambda: f64, lower_outcome: usize, from
   max_absolute_poisson_exchange_chance (lambda, lower_outcome) / poisson_chance (lambda, from_outcome)
 }
 
-pub struct SoundMutator <'a, G> {
-  generator: & 'a mut G,
-  duration: f64,
-  flop_chance: f64,
-  tweak_chance: f64,
-  tweak_size: f64,
+/// Tweaking value generated with a random distribution, maintaining that distribution
+///
+/// i.e. so that generate() and mutate_randomly_distributed(generate()) have the same distribution
+fn mutate_randomly_distributed <G: Rng>(generator: &mut G, range: [f64; 2], max_change_size: f64, value: f64)->f64 {
+  let offset: f64 = generator.gen_range(0.0, max_change_size);
+  let result_range = [
+    value + offset - max_change_size,
+    value + offset,
+  ];
+  // if we're already out of range, don't worry about it
+  if value < range [0] || value > range [1] {
+    generator.gen_range (result_range [0], result_range [1])
+  }
+  else {
+    generator.gen_range (max (range [0], result_range [0]), min (range [1], result_range [1]))
+  }
 }
 
-impl <'a, G: Rng> SoundMutator <'a, G> {
+pub struct SoundMutator <'a, G> {
+  pub generator: & 'a mut G,
+  pub duration: f64,
+  pub flop_chance: f64,
+  pub tweak_chance: f64,
+  pub tweak_size: f64,
+}
+
+impl <'a, G: 'a + Rng> SoundMutator <'a, G> {
   pub fn mutate_signal_effect <T: UserNumberType> (&mut self, signal: &mut SignalEffect <T>, info: & SignalInfo) {
     
   }
   pub fn mutate_signal <T: UserNumberType> (&mut self, signal: &mut Signal <T>, info: & SignalInfo) {
-    if (info.can_disable) {
+    if info.can_disable {
       let switch_chance = self.flop_chance*max_switch_chance (0.5, signal.enabled);
       if self.generator.gen::<f64>() < switch_chance {
         signal.enabled = !signal.enabled;
       }
     }
-    if (signal.enabled) {
+    if signal.enabled || !info.can_disable {
       let num_effects = signal.effects.len();
       let increase_chance = self.flop_chance*max_relative_poisson_exchange_chance (info.average_effects, num_effects, num_effects);
       let roll: f64 = self.generator.gen::<f64>() - increase_chance;
       if roll < 0.0 {
-        signal.effects.push (random_signal_effect (generator, self.duration, info);
+        signal.effects.push (random_signal_effect (self.generator, self.duration, info));
       }
       else if num_effects > 0 {
         let reduce_chance = self.flop_chance*max_relative_poisson_exchange_chance (info.average_effects, num_effects - 1, num_effects);
         if roll < reduce_chance {
-          signal.effects.remove (self.generator.gen_range::(0, num_effects));
+          signal.effects.remove (self.generator.gen_range(0, num_effects));
         }
       }
       
       for effect in &mut signal.effects {
         self.mutate_signal_effect (effect, info);
       }
+      
+      if self.generator.gen::<f64>() < self.tweak_chance {
+        signal.initial_value = UserNumber::from_rendered (mutate_randomly_distributed (self.generator, info.slider_range, (info.slider_range [1] - info.slider_range [0])*self.tweak_size, signal.initial_value.rendered));
+      }
     }
   }
   pub fn mutate_sound (&mut self, sound: &mut SoundDefinition) {
     
     self.duration = sound.envelope.duration();
-      if Identity::applicable (self.1) {
-        self.0.mutate_signal (self.1.signals.get_mut::<Identity>(), & Identity::info());
+    
+    struct Visitor <'b, 'a, G: 'a + Rng> (& 'b mut SoundMutator <'a, G>, & 'b mut SoundDefinition);
+    impl<'b, 'a, G: Rng> SignalVisitor for Visitor<'b, 'a, G> {
+      fn visit <Identity: SignalIdentity> (&mut self) {
+        if Identity::applicable (self.1) {
+          self.0.mutate_signal (self.1.signals.get_mut::<Identity>(), & Identity::info());
+        }
       }
+    }
+    
+    visit_signals (&mut Visitor (self, sound));
   }
 }
 
-pub fn mutate_sound <G: Rng>(generator: &mut G, sound: &mut SoundDefinition, change_chance: f64, change_size: f64) {
-
-}

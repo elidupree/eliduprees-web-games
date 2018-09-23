@@ -516,7 +516,7 @@ impl Envelope {
 }
 
 impl SoundDefinition {
-  pub fn rendered_duration(&self)->f64 {
+  pub fn rendering_duration(&self)->f64 {
     let mut result = self.envelope.duration();
     if self.enabled::<Chorus>() {
       result += CHORUS_OSCILLATOR_MAX_LINGER_DURATION;
