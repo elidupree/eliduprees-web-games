@@ -164,6 +164,18 @@ fn redraw_app(state: & Rc<RefCell<State>>) {
     })
   ));
   js!{@{left_column}.append (@{randomize_button});}
+  let randomize2_button = assign_row (redraw.rows, button_input ("Randomize everything a little",
+    input_callback_nullary (state, move | state | {
+      mutate_sound (&mut rand::thread_rng(), &mut state.sound, 1.0, 0.05);
+    })
+  ));
+  js!{@{left_column}.append (@{randomize2_button});}
+  let randomize3_button = assign_row (redraw.rows, button_input ("Randomize a few things a lot",
+    input_callback_nullary (state, move | state | {
+      mutate_sound (&mut rand::thread_rng(), &mut state.sound, 0.05, 1.0);
+    })
+  ));
+  js!{@{left_column}.append (@{randomize3_button});}
   let load_callback = input_callback (state, | state, value: String | {
     if let Ok (sound) = serde_json::from_str (& value) {
       state.sound = sound;
