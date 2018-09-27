@@ -2,12 +2,20 @@ use super::*;
 use rand::{Rng};
 use rand::distributions::{self, Distribution};
 
-pub fn random_time_linear <G: Rng>(generator: &mut G, min: f64, max: f64)->UserTime {
-  UserNumber::from_rendered (generator.gen_range (min, max))
+pub const ATTACK_RANGE: [f64; 2] = [0.01, 1.0];
+pub const SUSTAIN_RANGE: [f64; 2] = [0.01, 1.0];
+pub const DECAY_RANGE: [f64; 2] = [0.01, 1.0];
+pub fn oscillation_frequency_range()-> [f64; 2] {[1f64.log2(), 20f64.log2()]}
+
+
+pub fn random_number_linear <G: Rng, T: UserNumberType>(generator: &mut G, range: [f64; 2])->UserNumber <T> {
+  UserNumber::from_rendered (generator.gen_range (range [0], range [1]))
 }
-pub fn random_time_logarithmic <G: Rng>(generator: &mut G, min: f64, max: f64)->UserTime {
-  UserNumber::from_rendered (generator.gen_range (min.log2(), max.log2()).exp2())
+pub fn random_number_logarithmic <G: Rng, T: UserNumberType>(generator: &mut G, range: [f64; 2])->UserNumber <T> {
+  UserNumber::from_rendered (generator.gen_range (range [0].log2(), range [1].log2()).exp2())
 }
+
+
 
 pub fn random_waveform <G: Rng>(generator: &mut G)->Waveform {
   match generator.gen_range (0, 4) {
@@ -29,9 +37,9 @@ pub fn random_waveform <G: Rng>(generator: &mut G)->Waveform {
 }
 pub fn random_envelope <G: Rng>(generator: &mut G)->Envelope {
   Envelope {
-    attack: random_time_logarithmic (generator, 0.01, 1.0),
-    sustain: random_time_logarithmic (generator, 0.05, 1.0),
-    decay: random_time_logarithmic (generator, 0.05, 1.0),
+    attack: random_number_logarithmic (generator, ATTACK_RANGE),
+    sustain: random_number_logarithmic (generator, SUSTAIN_RANGE),
+    decay: random_number_logarithmic (generator, DECAY_RANGE),
   }
 }
 pub fn random_signal <G: Rng, T: UserNumberType>(generator: &mut G, duration: f64, info: & SignalInfo)->Signal <T> {
@@ -45,14 +53,14 @@ pub fn random_signal <G: Rng, T: UserNumberType>(generator: &mut G, duration: f6
   }
   Signal {
     enabled: enabled,
-    initial_value: UserNumber::from_rendered (generator.gen_range (info.slider_range [0], info.slider_range [1])),
+    initial_value: random_number_linear (generator, info.slider_range),
     effects: effects,
   }
 }
 
 pub fn random_difference <G: Rng, T: UserNumberType>(generator: &mut G, info: & SignalInfo)->UserNumber <T> {
   if !info.differences_are_intervals || (generator.gen_range (0, 3)==0) {
-    UserNumber::from_rendered (generator.gen_range (- info.difference_slider_range, info.difference_slider_range))
+    random_number_linear (generator, [-info.difference_slider_range, info.difference_slider_range])
   }
   else {
     let intervals = [
@@ -79,15 +87,15 @@ pub fn random_signal_effect <G: Rng, T: UserNumberType>(generator: &mut G, durat
 pub fn random_jump_effect <G: Rng, T: UserNumberType>(generator: &mut G, duration: f64, info: & SignalInfo)->SignalEffect <T> {
   let buffer_duration = min(1.0,duration)*0.02;
   SignalEffect::Jump {
-    time: random_time_linear(generator, buffer_duration, duration - buffer_duration),
+    time: random_number_linear(generator, [buffer_duration, duration - buffer_duration]),
     size: random_difference (generator, info),
   }
 }
 pub fn random_slide_effect <G: Rng, T: UserNumberType>(generator: &mut G, duration: f64, info: & SignalInfo)->SignalEffect <T> {
   let buffer_duration = min(1.0,duration)*0.2;
   SignalEffect::Slide {
-    start: random_time_linear(generator, 0.0, duration - buffer_duration),
-    duration: random_time_linear(generator, 0.01, 2.0),
+    start: random_number_linear(generator, [0.0, duration - buffer_duration]),
+    duration: random_number_linear(generator, [0.01, 2.0]),
     size: random_difference (generator, info),
     smooth_start: generator.gen(),
     smooth_stop: generator.gen(),
@@ -97,7 +105,7 @@ pub fn random_oscillation_effect <G: Rng, T: UserNumberType>(generator: &mut G, 
   SignalEffect::Oscillation {
     size: random_difference (generator, info),
     waveform: random_waveform (generator),
-    frequency: UserNumber::from_rendered (generator.gen_range (1f64.log2(), 20f64.log2())),
+    frequency: random_number_linear (generator, oscillation_frequency_range()),
   }
 }
 
@@ -179,7 +187,7 @@ fn max_relative_poisson_exchange_chance (lambda: f64, lower_outcome: usize, from
 /// Tweaking value generated with a random distribution, maintaining that distribution
 ///
 /// i.e. so that generate() and mutate_randomly_distributed(generate()) have the same distribution
-fn mutate_randomly_distributed <G: Rng>(generator: &mut G, range: [f64; 2], max_change_size: f64, value: f64)->f64 {
+fn mutate_uniformly_distributed <G: Rng>(generator: &mut G, range: [f64; 2], max_change_size: f64, value: f64)->f64 {
   let offset: f64 = generator.gen_range(0.0, max_change_size);
   let result_range = [
     value + offset - max_change_size,
@@ -194,6 +202,10 @@ fn mutate_randomly_distributed <G: Rng>(generator: &mut G, range: [f64; 2], max_
   }
 }
 
+fn mutate_number_uniformly_distributed <G: Rng, T: UserNumberType>(generator: &mut G, range: [f64; 2], max_change_size: f64, value: &UserNumber <T>)->UserNumber <T> {
+  UserNumber::from_rendered (mutate_uniformly_distributed (generator, range, max_change_size, value.rendered))
+}
+
 pub struct SoundMutator <'a, G> {
   pub generator: & 'a mut G,
   pub duration: f64,
@@ -203,8 +215,23 @@ pub struct SoundMutator <'a, G> {
 }
 
 impl <'a, G: 'a + Rng> SoundMutator <'a, G> {
-  pub fn mutate_signal_effect <T: UserNumberType> (&mut self, signal: &mut SignalEffect <T>, info: & SignalInfo) {
-    
+  pub fn mutate_difference <T: UserNumberType> (&mut self, difference: &mut UserNumber <T>, info: & SignalInfo) {
+    if self.generator.gen::<f64>() < self.tweak_chance { *difference = mutate_number_uniformly_distributed (self.generator, [- info.difference_slider_range, info.difference_slider_range], self.tweak_size, difference); }
+  }
+  
+  pub fn mutate_signal_effect <T: UserNumberType> (&mut self, effect: &mut SignalEffect <T>, info: & SignalInfo) {
+    match effect {
+      SignalEffect::Jump {time, size} => {
+        self.mutate_difference (size, info);
+      },
+      SignalEffect::Slide {start, duration, size, smooth_start, smooth_stop} => {
+        self.mutate_difference (size, info);
+      },
+      SignalEffect::Oscillation {size, frequency, waveform} => {
+        self.mutate_difference (size, info);
+        if self.generator.gen::<f64>() < self.tweak_chance { *frequency = mutate_number_uniformly_distributed (self.generator, oscillation_frequency_range(), self.tweak_size, frequency); }
+      },
+    }
   }
   pub fn mutate_signal <T: UserNumberType> (&mut self, signal: &mut Signal <T>, info: & SignalInfo) {
     if info.can_disable {
@@ -232,7 +259,7 @@ impl <'a, G: 'a + Rng> SoundMutator <'a, G> {
       }
       
       if self.generator.gen::<f64>() < self.tweak_chance {
-        signal.initial_value = UserNumber::from_rendered (mutate_randomly_distributed (self.generator, info.slider_range, (info.slider_range [1] - info.slider_range [0])*self.tweak_size, signal.initial_value.rendered));
+        signal.initial_value = mutate_number_uniformly_distributed(self.generator, info.slider_range, (info.slider_range [1] - info.slider_range [0])*self.tweak_size, &signal.initial_value);
       }
     }
   }
