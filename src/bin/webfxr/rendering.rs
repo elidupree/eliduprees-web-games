@@ -360,7 +360,7 @@ impl RenderingState {
   }
 
   pub fn new (sound: & SoundDefinition)->RenderingState {
-    let num_samples = (min(MAX_RENDER_LENGTH, sound.duration())*sound.sample_rate() as f64).ceil() as usize;
+    let num_samples = (min(MAX_RENDER_LENGTH, sound.rendering_duration())*sound.sample_rate() as f64).ceil() as usize;
     js! { window.webfxr_num_samples = @{num_samples as f64}; window.webfxr_sample_rate = @{sound.sample_rate() as f64}; }
     let mut cycle_starts = BTreeSet::new();
     cycle_starts.insert (OrderedFloat (0.0));

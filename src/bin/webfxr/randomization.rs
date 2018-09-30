@@ -113,7 +113,7 @@ pub fn random_sound <G: Rng>(generator: &mut G)->SoundDefinition {
   struct Visitor <'a, G: 'a + Rng> (& 'a mut SoundDefinition, & 'a mut G);
   impl<'a, G: Rng> SignalVisitor for Visitor<'a, G> {
     fn visit <Identity: SignalIdentity> (&mut self) {
-      let duration = self.0.duration();
+      let duration = self.0.envelope.duration();
       *Identity::definition_getter().get_mut (&mut self.0.signals) = random_signal (self.1, duration, & Identity::info());
     }
   }
@@ -124,7 +124,7 @@ pub fn random_sound <G: Rng>(generator: &mut G)->SoundDefinition {
     let log_frequency_range = sound.signals.log_frequency.range();
     let info = LogFrequency::info();
     if log_frequency_range[0] < info.slider_range [0] || log_frequency_range[1] > info.slider_range [1] {
-      sound.signals.log_frequency = random_signal (generator, sound.duration(), &info);
+      sound.signals.log_frequency = random_signal (generator, sound.envelope.duration(), &info);
     }
   }
   
@@ -133,26 +133,123 @@ pub fn random_sound <G: Rng>(generator: &mut G)->SoundDefinition {
     let last = attempt == max_attempts - 1;
     let volume_range = sound.signals.volume.range();
     if volume_range[1] > -1.0 || volume_range[1] <= -2.0 {
-      sound.signals.volume = random_signal (generator, sound.duration(), & Volume::info());
+      sound.signals.volume = random_signal (generator, sound.envelope.duration(), & Volume::info());
     }
     let waveform_skew_range = sound.signals.waveform_skew.range();
     if max (waveform_skew_range [1].abs(), waveform_skew_range [0].abs()) >5.0 {
-      sound.signals.waveform_skew = random_signal (generator, sound.duration(), & WaveformSkew::info());
+      sound.signals.waveform_skew = random_signal (generator, sound.envelope.duration(), & WaveformSkew::info());
     }
     if sound.signals.log_lowpass_filter_cutoff.range() [0] < sound.signals.log_frequency.range() [1] {
       let info = LogLowpassFilterCutoff::info();
       sound.signals.log_lowpass_filter_cutoff = if last {Signal::constant (UserNumber::from_rendered (info.slider_range [1]))}
-      else {random_signal (generator, sound.duration(), &info)};
+      else {random_signal (generator, sound.envelope.duration(), &info)};
     }
     if sound.signals.log_highpass_filter_cutoff.range() [1] > sound.signals.log_frequency.range() [0] {
       let info = LogHighpassFilterCutoff::info();
       sound.signals.log_highpass_filter_cutoff = if last {Signal::constant (UserNumber::from_rendered (info.slider_range [0]))}
-      else {random_signal (generator, sound.duration(), &info)};
+      else {random_signal (generator, sound.envelope.duration(), &info)};
     }
     if sound.signals.log_bitcrush_frequency.range() [0] < sound.signals.log_frequency.range() [1] {
-      sound.signals.log_bitcrush_frequency = random_signal (generator, sound.duration(), & LogBitcrushFrequency::info());
+      sound.signals.log_bitcrush_frequency = random_signal (generator, sound.envelope.duration(), & LogBitcrushFrequency::info());
     }
   }
   
   sound
 }
+
+
+
+
+fn max_switch_chance (equilibrium_true_chance: f64, current_state: bool)->f64 {
+  if current_state {1.0 - equilibrium_true_chance}
+  else {equilibrium_true_chance}
+}
+
+fn poisson_chance (lambda: f64, outcome: usize)->f64 {
+  (- lambda).exp()*lambda.powi (outcome as i32)/(1..outcome).map (|x| x as f64).product::<f64>()
+}
+
+fn max_absolute_poisson_exchange_chance (lambda: f64, lower_outcome: usize)->f64 {
+  min (poisson_chance (lambda, lower_outcome), poisson_chance (lambda, lower_outcome + 1))*0.5
+}
+fn max_relative_poisson_exchange_chance (lambda: f64, lower_outcome: usize, from_outcome: usize)->f64 {
+  max_absolute_poisson_exchange_chance (lambda, lower_outcome) / poisson_chance (lambda, from_outcome)
+}
+
+/// Tweaking value generated with a random distribution, maintaining that distribution
+///
+/// i.e. so that generate() and mutate_randomly_distributed(generate()) have the same distribution
+fn mutate_randomly_distributed <G: Rng>(generator: &mut G, range: [f64; 2], max_change_size: f64, value: f64)->f64 {
+  let offset: f64 = generator.gen_range(0.0, max_change_size);
+  let result_range = [
+    value + offset - max_change_size,
+    value + offset,
+  ];
+  // if we're already out of range, don't worry about it
+  if value < range [0] || value > range [1] {
+    generator.gen_range (result_range [0], result_range [1])
+  }
+  else {
+    generator.gen_range (max (range [0], result_range [0]), min (range [1], result_range [1]))
+  }
+}
+
+pub struct SoundMutator <'a, G> {
+  pub generator: & 'a mut G,
+  pub duration: f64,
+  pub flop_chance: f64,
+  pub tweak_chance: f64,
+  pub tweak_size: f64,
+}
+
+impl <'a, G: 'a + Rng> SoundMutator <'a, G> {
+  pub fn mutate_signal_effect <T: UserNumberType> (&mut self, signal: &mut SignalEffect <T>, info: & SignalInfo) {
+    
+  }
+  pub fn mutate_signal <T: UserNumberType> (&mut self, signal: &mut Signal <T>, info: & SignalInfo) {
+    if info.can_disable {
+      let switch_chance = self.flop_chance*max_switch_chance (0.5, signal.enabled);
+      if self.generator.gen::<f64>() < switch_chance {
+        signal.enabled = !signal.enabled;
+      }
+    }
+    if signal.enabled || !info.can_disable {
+      let num_effects = signal.effects.len();
+      let increase_chance = self.flop_chance*max_relative_poisson_exchange_chance (info.average_effects, num_effects, num_effects);
+      let roll: f64 = self.generator.gen::<f64>() - increase_chance;
+      if roll < 0.0 {
+        signal.effects.push (random_signal_effect (self.generator, self.duration, info));
+      }
+      else if num_effects > 0 {
+        let reduce_chance = self.flop_chance*max_relative_poisson_exchange_chance (info.average_effects, num_effects - 1, num_effects);
+        if roll < reduce_chance {
+          signal.effects.remove (self.generator.gen_range(0, num_effects));
+        }
+      }
+      
+      for effect in &mut signal.effects {
+        self.mutate_signal_effect (effect, info);
+      }
+      
+      if self.generator.gen::<f64>() < self.tweak_chance {
+        signal.initial_value = UserNumber::from_rendered (mutate_randomly_distributed (self.generator, info.slider_range, (info.slider_range [1] - info.slider_range [0])*self.tweak_size, signal.initial_value.rendered));
+      }
+    }
+  }
+  pub fn mutate_sound (&mut self, sound: &mut SoundDefinition) {
+    
+    self.duration = sound.envelope.duration();
+    
+    struct Visitor <'b, 'a, G: 'a + Rng> (& 'b mut SoundMutator <'a, G>, & 'b mut SoundDefinition);
+    impl<'b, 'a, G: Rng> SignalVisitor for Visitor<'b, 'a, G> {
+      fn visit <Identity: SignalIdentity> (&mut self) {
+        if Identity::applicable (self.1) {
+          self.0.mutate_signal (self.1.signals.get_mut::<Identity>(), & Identity::info());
+        }
+      }
+    }
+    
+    visit_signals (&mut Visitor (self, sound));
+  }
+}
+
