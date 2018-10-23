@@ -15,8 +15,8 @@ pub struct FlowPattern {
 }
 
 impl FlowPattern {
-  pub fn disburses_at_time (&self, time: Number)->bool {
-    self.num_disbursed_before (time + 1) > self.num_disbursed_before (time)
+  pub fn num_disbursed_at_time (&self, time: Number)->bool {
+    self.num_disbursed_before (time + 1) - self.num_disbursed_before (time)
   }
   pub fn num_disbursed_before (&self, time: Number)->Number {
     ((time - self.start_time)*self.rate + MAX_CYCLE_LENGTH)/MAX_CYCLE_LENGTH
@@ -29,23 +29,18 @@ impl FlowPattern {
   }
 }
 
-enum MachineOutputState {
-  Equilibrium (FlowPattern),
-  Unsettled {last_output_start_time: Option <Number>},
-}
-
-enum MachineInputStorageAmount {
+enum MachineInputStorage {
   Unsettled {current_amount: Number},
   Equilibrium {amount_at_cycle_start: Number},
 }
 
-struct MachineInputStorageState {
+struct MachineInputState {
+  input: FlowPattern,
   storage: MachineInputStorage,
-  inputs_contributing: ArrayVec <[Option <FlowPattern>; MAX_MACHINE_INPUTS]>,
 }
 
 struct MachineMaterialsState {
-  output: MachineOutputState,
+  output: FlowPattern,
   inputs: ArrayVec <[MachineInputState; MAX_MACHINE_INPUTS]>,
 }
 
@@ -57,60 +52,55 @@ struct MachineWithState {
 pub fn machine_step (now: Number, machine: MachineWithState, outputs: &mut [(MachineWithState, usize, usize)]) {
   inputs_are_equilibrium = machine.materials.inputs.all (| input | match input {Equilibrium {..} => true,_=> false});
   
-  let mut inputs_are_equilibrium = true;
-  let mut can_produce = match machine.materials.output {
-    Unsettled {last_output_start_time} => {
-      (now - last_output_start_time) >= machine.map_state.minimum_cycle_length()
-    },
-    
-  };
+  let mut can_start_ideal_rate = true;
+  let mut ideal_rate = MAX_CYCLE_LENGTH/map_state.min_output_cycle_length;
   for (material_input, map_input) in machine.materials.inputs.iter().zip (machine.map_state.inputs.iter()) {
-    if material_input.iter().any (Option::is_none) {inputs_are_equilibrium = false;}
+    ideal_rate = min (ideal_rate, material_input.input.rate/map_input.cost);
     match input.storage {
-      Unsettled {current_storage} => {
-        let requirement = map_input.requirement() + material_input.inputs_contributing.len();
-        if current_storage < requirement {
-          can_produce = false;
+      Unsettled {current_amount} => {
+        let capacity = map_input.capacity();
+        current_amount += material_input.input.rate.num_disbursed_at_time (now);
+        if current_amount < capacity {
+          can_start_ideal_rate = false;
         }
       }
       _=>()
     }
   }
   
-  match machine.materials.output {
-    MachineOutputState::Equilibrium (flow_pattern) {
-      if !inputs_are_equilibrium {
-        machine.materials.output = MachineOutputState::Unsettled {
-          last_output_start_time: flow_pattern.most_recent_item()
-        }
-      }
-    },
-    MachineOutputState::Unsettled {last_output_start_time} => {
-      if can_produce {
-        if inputs_are_equilibrium {
-          machine.materials.output = MachineOutputState::Equilibrium ();
-        }
-        else {
-          machine.materials.output = MachineOutputState::Unsettled {
-            last_output_start_time: now
-          }
-        }
-      }
+  if ideal_rate != machine.materials.output.rate && now >= machine.materials.output.last_disbursement_time() + map_state.min_output_cycle_length  {
+    let actual_rate = if can_start_ideal_rate {ideal_rate} else {0};
+    if actual_rate != machine.materials.output.rate {
+      machine.materials.output = FlowPattern (start_time: now, rate: actual_rate};
+      for (material_input, map_input) in machine.materials.inputs.iter().zip (machine.map_state.inputs.iter()) {
+        material_input.storage.either_rate_changed(now);
+      }  
     }
   }
   
-  let last_output_start_time = machine.materials.output.last_output_start_time();
+  for (receiver_input, new_flow_rate) in outputs.iter_mut().zip (machine.map_state.output_patterns (machine.materials.output)) {
+    if now >= new_flow_rate.start_time - 1 {
+      receiver_input.set_rate (new_flow_rate);
+    }
+  }
   
-  for ((output_machine, storage_index, my_index), output_material) in output.iter_mut().zip (machine.map_state.output_materials (now - last_output_start_time)) {
-    match output_machine.materials.inputs [storage_index].inputs_contributing [my_index] {
-      Some (pattern) => {
-        if output_material != pattern.disburses_at_time (now) {
-          output_machine.materials.inputs [storage_index].inputs_contributing [my_index] = None;
+  for (material_input, map_input) in machine.materials.inputs.iter().zip (machine.map_state.inputs.iter()) {
+    match input.storage {
+      Unsettled {current_amount} => {
+        let last_rate_change_time = min (material_input.input.start_time, machine.materials.output.start_time);
+        let capacity = map_input.capacity();
+        current_amount -= map_input.cost*machine.materials.output.num_disbursed_at_time (now) ;
+        if current_amount > capacity {
+          current_amount = capacity;
+        }
+        let combined_cycle_length = num::integer::lcm (material_input.input.cycle_length(), machine.materials.output.cycle_length());
+        if now == last_rate_change_time + combined_cycle_length {
+          input.storage = MachineInputStorage::Equilibrium {
+            amount_at_cycle_start: current_amount,
+          };
         }
       }
-      None => {
-        if
-      }
+      _=>()
     }
   }
 }
