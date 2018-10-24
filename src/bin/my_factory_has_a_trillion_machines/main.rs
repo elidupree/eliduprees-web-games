@@ -10,6 +10,9 @@ extern crate eliduprees_web_games;
 //extern crate derivative;
 extern crate nalgebra;
 extern crate arrayvec;
+#[cfg (test)]
+#[macro_use]
+extern crate proptest;
 
 mod simulation;
 pub use simulation::*;

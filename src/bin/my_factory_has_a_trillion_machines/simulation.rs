@@ -236,4 +236,16 @@ mod tests {
     assert_flow_pattern (RATE_DIVISOR/3, &[1, 0, 0, 1, 0, 0, 1, 0]);
     assert_flow_pattern (RATE_DIVISOR*2/3, &[1, 1, 0, 1, 1, 0, 1, 1]);
   }
+  
+  proptest! {
+    #[test]
+    fn randomly_test_flow_pattern_density_property(start in 0i64..1000000, rate in 0..=RATE_DIVISOR, initial_time in 0i64..1000000, duration in 0i64..1000000) {
+      let initial_time = initial_time + start;
+      let ideal_rounded_down = rate*duration/RATE_DIVISOR;
+      let ideal_rounded_up = (rate*duration + RATE_DIVISOR)/RATE_DIVISOR;
+      let observed = FlowPattern {start_time: start, rate: rate}.num_disbursed_between ([initial_time, initial_time + duration]);
+      prop_assert!(observed >= ideal_rounded_down);
+      prop_assert!(observed <= ideal_rounded_up);
+    }
+  }
 }

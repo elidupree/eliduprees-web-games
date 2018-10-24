@@ -16,3 +16,6 @@ boolinator = "2.4"
 lyon = "0.10"
 arrayvec = "0.4.7"
 array_ext = "0.2"
+
+[dev-dependencies]
+proptest = "0.8.7"
