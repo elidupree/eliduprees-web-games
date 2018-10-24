@@ -56,9 +56,8 @@ impl FlowPattern {
     self.num_disbursed_before (range [1]) - self.num_disbursed_before (range [0])
   }
   pub fn last_disbursement_before (&self, time: Number)->Option <Number> {
-    if time <= self.start_time {return None;}
-    let steps_completed = time + 1 - self.start_time;
-    Some(steps_completed - ((steps_completed*self.rate % RATE_DIVISOR))/self.rate)
+    if time <= self.start_time || self.rate <= 0 {return None;}
+    Some(time - ((((time - self.start_time)*self.rate + RATE_DIVISOR - 1) % RATE_DIVISOR)+self.rate-1)/self.rate)
   }
   pub fn when_disburses_at_least (&self, amount: Number)->Number {
     if amount <= 0 {return Number::min_value();}
@@ -246,6 +245,17 @@ mod tests {
       let observed = FlowPattern {start_time: start, rate: rate}.num_disbursed_between ([initial_time, initial_time + duration]);
       prop_assert!(observed >= ideal_rounded_down);
       prop_assert!(observed <= ideal_rounded_up);
+    }
+    
+    #[test]
+    fn randomly_test_last_disbursement_before (start in 0i64..1000000, rate in 1..=RATE_DIVISOR, initial_time in 1i64..1000000) {
+      let initial_time = initial_time + start;
+      let pattern = FlowPattern {start_time: start, rate: rate};
+      let observed = pattern.last_disbursement_before (initial_time).unwrap();
+      println!("{}", observed);
+      prop_assert! (observed <initial_time) ;
+      prop_assert_eq!(pattern.num_disbursed_between ([observed+1, initial_time]), 0);
+      prop_assert_eq!(pattern.num_disbursed_between ([observed, initial_time]), 1);
     }
   }
 }
