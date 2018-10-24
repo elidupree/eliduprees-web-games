@@ -50,7 +50,7 @@ impl FlowPattern {
   }
   pub fn num_disbursed_before (&self, time: Number)->Number {
     if time <= self.start_time {return 0;}
-    ((time + 1 - self.start_time)*self.rate + RATE_DIVISOR - 1)/RATE_DIVISOR
+    ((time - self.start_time)*self.rate + RATE_DIVISOR - 1)/RATE_DIVISOR
   }
   pub fn num_disbursed_between (&self, range: [Number; 2])->Number {
     self.num_disbursed_before (range [1]) - self.num_disbursed_before (range [0])
@@ -185,7 +185,7 @@ impl Machine for StandardMachine {
 
 
 
-
+/*
 
 enum SingularComponentType {
   Conveyor,
@@ -216,4 +216,24 @@ pub struct Map {
   components: ArrayVec <[Component; MAX_COMPONENTS]>,
 }
 
+*/
 
+#[cfg (test)]
+mod tests {
+  use super::*;
+  
+  fn assert_flow_pattern (rate: Number, prefix: & [Number]) {
+    assert_eq! (
+      prefix,
+      (0..prefix.len()).map (| index | FlowPattern {start_time: 0, rate: rate}.num_disbursed_at_time (index as Number)).collect::<Vec <_>>().as_slice()
+    );
+  }
+  
+  #[test]
+  fn flow_pattern_unit_tests() {
+    assert_flow_pattern (RATE_DIVISOR, &[1, 1, 1, 1]);
+    assert_flow_pattern (RATE_DIVISOR/2, &[1, 0, 1, 0, 1, 0, 1, 0]);
+    assert_flow_pattern (RATE_DIVISOR/3, &[1, 0, 0, 1, 0, 0, 1, 0]);
+    assert_flow_pattern (RATE_DIVISOR*2/3, &[1, 1, 0, 1, 1, 0, 1, 1]);
+  }
+}
