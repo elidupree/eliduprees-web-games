@@ -5,16 +5,17 @@ use arrayvec::ArrayVec;
 
 type Number = i64;
 const MAX_COMPONENTS: usize = 32;
-const MAX_CYCLE_LENGTH: Number = 600;
+const RATE_DIVISOR: Number = 2*2*2*2*2*2 * 3*3*3 * 5*5;
 const MAX_MACHINE_INPUTS: usize = 8;
 type Inputs<T> = ArrayVec <[Number, MAX_MACHINE_INPUTS]>
 type Position = Vector2 <Number>;
 
 
-pub trait Machine {
+pub trait Machine: Clone {
   // basic information
   fn num_inputs (&self)->usize;
   fn num_outputs (&self)->usize;
+  type MaterialsState: Clone;
   
   // used to infer group input flow rates
   // property: with valid inputs, the returned values have the same length given by num_inputs/num_outputs
@@ -24,15 +25,11 @@ pub trait Machine {
   fn min_input_rates (&self, output_rates: Inputs <Number>)->Inputs <Number>;
   
   // property: if inputs don't change, current_output_rates doesn't change before next_output_change_time
-  // property: an input changing to 0 causes at most one future change, ourselves changing to 0;
-  //   and an input changing to non-0 causes at most 2 future changes, ourselves changing to 0 and then something else.
-  //   This way, any manual change can only change each machine's output twice.
   // property: when there is no next output change time, current_output_rates is equivalent to max_output_rates
-  // (Note, this property ALSO implies that mergers must have fixed ratios, or at least not tolerate an empty input)
-  fn inputs_changed (&mut self, now: Number, input_patterns: Inputs <FlowPattern>);
-  fn current_output_rates (&self, input_patterns: Inputs <FlowPattern>)->Inputs <FlowPattern>;
-  fn next_output_change_time (&mut self, input_patterns: Inputs <FlowPattern>)->Option <Number>;
-  fn next_output_change_time_reached (&mut self, input_patterns: Inputs <FlowPattern>);
+  // maybe some property that limits the total amount of rate changes resulting from a single change by the player?
+  fn with_inputs_changed (&self, old_state: Self::MaterialsState, when: Number, input_patterns: Inputs <FlowPattern>)->Self::MaterialsState;
+  fn current_outputs_and_next_change (&self, state: Self::MaterialsState, input_patterns: Inputs <FlowPattern>)->(Inputs <FlowPattern>, Option <(Number, Self::MaterialsState)>;
+
 }
 
 
@@ -51,13 +48,10 @@ impl FlowPattern {
     self.num_disbursed_before (time + 1) - self.num_disbursed_before (time)
   }
   pub fn num_disbursed_before (&self, time: Number)->Number {
-    ((time - self.start_time)*self.rate + MAX_CYCLE_LENGTH)/MAX_CYCLE_LENGTH
+    ((time - self.start_time)*self.rate + RATE_DIVISOR - 1)/RATE_DIVISOR
   }
   pub fn num_disbursed_between (&self, range: [Number; 2])->Number {
     self.num_disbursed_before (range [1]) - self.num_disbursed_before (range [0])
-  }
-  pub fn cycle_length (&self)->Number {
-    num::integer::gcd (self.rate, MAX_CYCLE_LENGTH)
   }
   pub fn time_to_disburse_at_least (&self, collection_start_time: Number, amount: Number)->Number {
     
@@ -87,6 +81,40 @@ pub fn entire_future (machines:, max_time: time) {
   }
   changes map
 }
+
+
+start ConveyorMaterialsState {
+  current_output: FlowPattern
+}
+
+impl Machine for Conveyor {
+  fn num_inputs (&self)->usize {1}
+  fn num_outputs (&self)->usize {1}
+  type MaterialsState = ConveyorMaterialsState;
+  
+  fn max_output_rates (&self, input_rates: Inputs <Number>)->Inputs <Number> {input_rates}
+  fn min_input_rates (&self, output_rates: Inputs <Number>)->Inputs <Number> {output_rates}
+  
+  fn with_inputs_changed (&self, old_state: Self::MaterialsState, when: Number, input_patterns: Inputs <FlowPattern>)->Self::MaterialsState {
+    old_state
+  }
+  fn current_outputs_and_next_change (&self, state: Self::MaterialsState, input_patterns: Inputs <FlowPattern>)->(Inputs <FlowPattern>, Option <(Number, Self::MaterialsState)>
+ {
+    let input = input_patterns [1];
+    let output = FlowPattern {start_time: input.start_time + 1, rate: input.rate};
+    
+    let next_change = if output == state.current_output {
+      None
+    } else {
+      Some ((input.start_time + 1, ConveyorMaterialsState {
+        current_output: output
+      }))
+    };
+     
+    (array_vec! [state.current_output], next_change)
+  }
+}
+
 
 
 
