@@ -6,7 +6,39 @@ use arrayvec::ArrayVec;
 type Number = i64;
 const MAX_COMPONENTS: usize = 32;
 const MAX_CYCLE_LENGTH: Number = 600;
-cost MAX_MACHINE_INPUTS: usize = MAX_COMPONENTS;
+const MAX_MACHINE_INPUTS: usize = 8;
+type Inputs<T> = ArrayVec <[Number, MAX_MACHINE_INPUTS]>
+type Position = Vector2 <Number>;
+
+
+pub trait Machine {
+  // basic information
+  fn num_inputs (&self)->usize;
+  fn num_outputs (&self)->usize;
+  
+  // used to infer group input flow rates
+  // property: with valid inputs, the returned values have the same length given by num_inputs/num_outputs
+  // property: these are consistent with each other
+  fn max_output_rates (&self, input_rates: Inputs <Number>)->Inputs <Number>;
+  // note: this API implies that mergers must have fixed ratios
+  fn min_input_rates (&self, output_rates: Inputs <Number>)->Inputs <Number>;
+  
+  // property: if inputs don't change, current_output_rates doesn't change before next_output_change_time
+  // property: an input changing to 0 causes at most one future change, ourselves changing to 0;
+  //   and an input changing to non-0 causes at most 2 future changes, ourselves changing to 0 and then something else.
+  //   This way, any manual change can only change each machine's output twice.
+  // property: when there is no next output change time, current_output_rates is equivalent to max_output_rates
+  // (Note, this property ALSO implies that mergers must have fixed ratios, or at least not tolerate an empty input)
+  fn inputs_changed (&mut self, now: Number, input_patterns: Inputs <FlowPattern>);
+  fn current_output_rates (&self, input_patterns: Inputs <FlowPattern>)->Inputs <FlowPattern>;
+  fn next_output_change_time (&mut self, input_patterns: Inputs <FlowPattern>)->Option <Number>;
+  fn next_output_change_time_reached (&mut self, input_patterns: Inputs <FlowPattern>);
+}
+
+
+
+
+
 
 
 pub struct FlowPattern {
@@ -27,11 +59,42 @@ impl FlowPattern {
   pub fn cycle_length (&self)->Number {
     num::integer::gcd (self.rate, MAX_CYCLE_LENGTH)
   }
+  pub fn time_to_disburse_at_least (&self, collection_start_time: Number, amount: Number)->Number {
+    
+  }
 }
+
+
+pub fn entire_future (machines:, max_time: time) {
+  for machine_info in machine_dag.forwards_iter_mut() {
+    let mut simulation_time = now;
+    loop {
+      let change = first of machine_info.inputs.changes, machine_info.machine.next_output_change_time()
+      match change {
+        None => break,
+        Some (time, change) => {
+          if time > max_time {break;} 
+          match change {
+            OutputChange => {
+              machine_info.machine.next_output_change_time_reached();
+              machine_info.changes.push (machine_info.machine.current_output_rates());
+            }
+            InputChange => machine_info.machine.inputs_changed(),
+          }
+        }
+      }
+    }
+  }
+  changes map
+}
+
+
+
+
 
 enum MachineInputStorage {
   Unsettled {current_amount: Number},
-  Equilibrium {amount_at_cycle_start: Number},
+  Equilibrium,
 }
 
 struct MachineInputState {
@@ -95,9 +158,7 @@ pub fn machine_step (now: Number, machine: MachineWithState, outputs: &mut [(Mac
         }
         let combined_cycle_length = num::integer::lcm (material_input.input.cycle_length(), machine.materials.output.cycle_length());
         if now == last_rate_change_time + combined_cycle_length {
-          input.storage = MachineInputStorage::Equilibrium {
-            amount_at_cycle_start: current_amount,
-          };
+          input.storage = MachineInputStorage::Equilibrium;
         }
       }
       _=>()
