@@ -45,19 +45,24 @@ pub struct FlowPattern {
 }
 
 impl FlowPattern {
+  fn fractional_progress_before (&self, time: Number)->Number {
+    if time <= self.start_time {return 0;}
+    ((time - self.start_time)*self.rate + RATE_DIVISOR - 1)
+  }
   pub fn num_disbursed_at_time (&self, time: Number)->Number {
     self.num_disbursed_before (time + 1) - self.num_disbursed_before (time)
   }
   pub fn num_disbursed_before (&self, time: Number)->Number {
-    if time <= self.start_time {return 0;}
-    ((time - self.start_time)*self.rate + RATE_DIVISOR - 1)/RATE_DIVISOR
+    self.fractional_progress_before (time)/RATE_DIVISOR
   }
   pub fn num_disbursed_between (&self, range: [Number; 2])->Number {
     self.num_disbursed_before (range [1]) - self.num_disbursed_before (range [0])
   }
   pub fn last_disbursement_before (&self, time: Number)->Option <Number> {
     if time <= self.start_time || self.rate <= 0 {return None;}
-    Some(time - ((((time - self.start_time)*self.rate + RATE_DIVISOR - 1) % RATE_DIVISOR)+self.rate-1)/self.rate)
+    let fractional_part = self.fractional_progress_before (time) % RATE_DIVISOR;
+    let time_not_disbursing = fractional_part/self.rate;
+    Some(time-1 - time_not_disbursing)
   }
   pub fn when_disburses_at_least (&self, amount: Number)->Number {
     if amount <= 0 {return Number::min_value();}
