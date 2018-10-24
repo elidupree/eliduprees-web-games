@@ -64,9 +64,10 @@ impl FlowPattern {
     let time_not_disbursing = fractional_part/self.rate;
     Some(time-1 - time_not_disbursing)
   }
-  pub fn when_disburses_at_least (&self, amount: Number)->Number {
-    if amount <= 0 {return Number::min_value();}
-    ((amount-1)*RATE_DIVISOR)/self.rate
+  pub fn when_disburses_at_least (&self, amount: Number)->Option <Number> {
+    if amount <= 0 {return Some (Number::min_value());}
+    if self.rate <= 0 {return None;}
+    Some (self.start_time + ((amount-1)*RATE_DIVISOR)/self.rate)
   }
 }
 
@@ -158,6 +159,9 @@ impl Machine for StandardMachine {
  {
     let ideal_rate = self.max_output_rate_with_inputs (input_patterns.iter().map (| pattern | pattern.rate));
     let last_change_time = unimplemented!();
+    let most_recent_output = state.current_output_pattern.last_disbursement_before (last_change_time).unwrap_or (last_change_time - self.min_output_cycle_length);
+    let mut time_to_begin_output = most_recent_output + self.min_output_cycle_length;
+    if ideal_rate > 0 {
     let mut when_enough_inputs_to_begin_output = last_change_time;
     for ((pattern, input), input_state) in input_patterns.iter().zip (self.inputs.iter()).zip (state.inputs.iter()) {
       let enough_to_start_amount = input.cost + 1;
@@ -165,11 +169,12 @@ impl Machine for StandardMachine {
         input_state.storage_at_pattern_start
         + pattern.num_disbursed_before (last_change_time)
         - input.cost*state.current_output_pattern.num_disbursed_between ([pattern.start_time, last_change_time]);
-      let min_start_time = last_change_time + pattern.when_disburses_at_least (enough_to_start_amount - storage_at_last_change);
+      let min_start_time = last_change_time + pattern.when_disburses_at_least (enough_to_start_amount - storage_at_last_change).unwrap();
       when_enough_inputs_to_begin_output = max (when_enough_inputs_to_begin_output, min_start_time);
     }
-    let most_recent_output = state.current_output_pattern.last_disbursement_before (last_change_time).unwrap_or (last_change_time - self.min_output_cycle_length);
-    let time_to_begin_output = max (when_enough_inputs_to_begin_output, most_recent_output + self.min_output_cycle_length);
+      time_to_begin_output = max (time_to_begin_output, when_enough_inputs_to_begin_output);
+    }
+    
     let output = FlowPattern {start_time: time_to_begin_output, rate: ideal_rate};
     
     let next_change = if output == state.current_output_pattern {
@@ -261,6 +266,15 @@ mod tests {
       prop_assert! (observed <initial_time) ;
       prop_assert_eq!(pattern.num_disbursed_between ([observed+1, initial_time]), 0);
       prop_assert_eq!(pattern.num_disbursed_between ([observed, initial_time]), 1);
+    }
+    
+    #[test]
+    fn randomly_test_when_disburses_at_least (start in 0i64..1000000, rate in 1..=RATE_DIVISOR, amount in 1i64..1000000) {
+      let pattern = FlowPattern {start_time: start, rate: rate};
+      let observed = pattern.when_disburses_at_least(amount).unwrap();
+      println!("{}, {}, {}", observed, pattern.num_disbursed_before (observed), pattern.num_disbursed_before (observed + 1));
+      prop_assert_eq!(pattern.num_disbursed_before (observed), amount - 1);
+      prop_assert_eq!(pattern.num_disbursed_before (observed + 1), amount);
     }
   }
 }
