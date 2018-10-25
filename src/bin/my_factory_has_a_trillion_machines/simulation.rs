@@ -1,6 +1,7 @@
 use super::*;
 
 use std::cmp::{min, max};
+use std::iter::{self, FromIterator};
 
 use nalgebra::Vector2;
 use arrayvec::ArrayVec;
@@ -84,11 +85,53 @@ struct StandardMachineOutput {
 }
 
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
-struct StandardMachine {
+pub struct StandardMachine {
   inputs: Inputs <StandardMachineInput>,
   outputs: Inputs <StandardMachineOutput>,
   min_output_cycle_length: Number,
 }
+
+
+pub fn conveyor()->StandardMachine {
+  StandardMachine {
+    inputs: ArrayVec::from_iter ([StandardMachineInput {cost: 1}].into_iter().cloned()),
+    outputs: ArrayVec::from_iter ([StandardMachineOutput {}].into_iter().cloned()),
+    min_output_cycle_length: 1,
+  }
+}
+
+pub fn splitter()->StandardMachine {
+  StandardMachine {
+    inputs: ArrayVec::from_iter ([StandardMachineInput {cost: 2}].into_iter().cloned()),
+    outputs: ArrayVec::from_iter (iter::repeat (StandardMachineOutput {}).take (2)),
+    min_output_cycle_length: 1,
+  }
+}
+
+pub fn slow_machine()->StandardMachine {
+  StandardMachine {
+    inputs: ArrayVec::from_iter ([StandardMachineInput {cost: 1}].into_iter().cloned()),
+    outputs: ArrayVec::from_iter ([StandardMachineOutput {}].into_iter().cloned()),
+    min_output_cycle_length: 10,
+  }
+}
+
+pub fn material_generator()->StandardMachine {
+  StandardMachine {
+    inputs: ArrayVec::new (),
+    outputs: ArrayVec::from_iter ([StandardMachineOutput {}].into_iter().cloned()),
+    min_output_cycle_length: 1,
+  }
+}
+
+pub fn consumer()->StandardMachine {
+  StandardMachine {
+    inputs: ArrayVec::from_iter ([StandardMachineInput {cost: 1}].into_iter().cloned()),
+    outputs: ArrayVec::new(),
+    min_output_cycle_length: 1,
+  }
+}
+
 
 #[derive (Clone, PartialEq, Eq, Hash, Debug, Default)]
 struct MachineMaterialsStateInput {
