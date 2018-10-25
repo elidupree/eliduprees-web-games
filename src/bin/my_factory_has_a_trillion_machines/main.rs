@@ -32,5 +32,7 @@ fn main() {
 
 #[cfg (not(target_os = "emscripten"))]
 fn main() {
-  println!("There's not currently a way to compile this game natively");
+  print_future (MachinesGraph::new (vec![
+    (material_generator(), Default::default(), & [])
+  ]));
 }

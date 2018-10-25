@@ -144,6 +144,15 @@ pub struct MachineMaterialsState {
   inputs: Inputs <MachineMaterialsStateInput>,
 }
 
+impl MachineMaterialsState {
+  pub fn empty <M: Machine> (machine: & M)->MachineMaterialsState {
+    MachineMaterialsState {
+      current_output_pattern: Default::default(),
+      inputs: ArrayVec::from_iter (iter::repeat (Default::default()).take (machine.num_inputs())),
+    }
+  }
+}
+
 impl StandardMachine {
   fn max_output_rate (&self)->Number {
     RATE_DIVISOR/self.min_output_cycle_length
@@ -240,12 +249,13 @@ pub struct MachinesGraph {
 }
 
 impl MachinesGraph {
-  pub fn new (data: Vec<(StandardMachine, MachineMaterialsState, &[(i64, i64)])>)->MachinesGraph {
+  pub fn new (data: Vec<(StandardMachine, Option <MachineMaterialsState>, &[(i64, i64)])>)->MachinesGraph {
     MachinesGraph {nodes: data.into_iter().map (| (machine, initial_state, outputs) | {
       let inputs: Inputs <MachinesGraphInput> = machine.inputs.iter().map (|_input | Default::default()).collect();
       let output_locations: Inputs <Option <(usize, usize)>> = (0..machine.outputs.len()).map (| index | {
         outputs.get (index).and_then (| & (machine, input) | if machine == -1 {None} else {Some((machine as usize, input as usize))})
       }).collect();
+      let initial_state = initial_state.unwrap_or (MachineMaterialsState::empty (& machine));
       MachinesGraphNode {
         machine, initial_state, inputs, output_locations,
       }
