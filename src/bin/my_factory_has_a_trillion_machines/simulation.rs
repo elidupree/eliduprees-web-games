@@ -220,7 +220,7 @@ impl Machine for StandardMachine {
 
 
 
-#[derive (Clone, PartialEq, Eq, Hash, Debug)]
+#[derive (Clone, PartialEq, Eq, Hash, Debug, Default)]
 struct MachinesGraphInput {
   initial_value: FlowPattern,
   changes: Vec<(Number, FlowPattern)>,
@@ -237,6 +237,20 @@ struct MachinesGraphNode {
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
 pub struct MachinesGraph {
   nodes: Vec<MachinesGraphNode>,
+}
+
+impl MachinesGraph {
+  pub fn new (data: Vec<(StandardMachine, MachineMaterialsState, &[(i64, i64)])>)->MachinesGraph {
+    MachinesGraph {nodes: data.into_iter().map (| (machine, initial_state, outputs) | {
+      let inputs: Inputs <MachinesGraphInput> = machine.inputs.iter().map (|_input | Default::default()).collect();
+      let output_locations: Inputs <Option <(usize, usize)>> = (0..machine.outputs.len()).map (| index | {
+        outputs.get (index).and_then (| & (machine, input) | if machine == -1 {None} else {Some((machine as usize, input as usize))})
+      }).collect();
+      MachinesGraphNode {
+        machine, initial_state, inputs, output_locations,
+      }
+    }).collect()}
+  }
 }
 
 
