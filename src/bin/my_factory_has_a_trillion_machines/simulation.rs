@@ -40,7 +40,7 @@ pub trait Machine: Clone {
 
 
 
-#[derive (Copy, Clone, PartialEq, Eq, Hash, Debug, Default)]
+#[derive (Copy, Clone, Eq, Hash, Debug, Default)]
 pub struct FlowPattern {
   pub start_time: Number, //when the first item was disbursed as part of this flow
   pub rate: Number, //items per max cycle length
@@ -70,6 +70,12 @@ impl FlowPattern {
     if amount <= 0 {return Some (Number::min_value());}
     if self.rate <= 0 {return None;}
     Some (self.start_time + ((amount-1)*RATE_DIVISOR)/self.rate)
+  }
+}
+
+impl PartialEq for FlowPattern {
+  fn eq (&self, other: & Self)->bool {
+    self.rate == other.rate && (self.rate == 0 || self.start_time == other.start_time)
   }
 }
 
