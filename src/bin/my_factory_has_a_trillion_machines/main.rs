@@ -40,6 +40,9 @@ fn main() {
  print_future (MachinesGraph::new (vec![
    (material_generator(), None, & [(1, 0)]),
    (conveyor(), None, & [(2, 0)]),
-   (conveyor(), None, & []),
+   (conveyor(), None, & [(3, 0)]),
+   (conveyor(), None, & [(4, 0)]),
+   (conveyor(), None, & [(5, 0)]),
+   (splitter(), None, & []),
  ]));
 }
