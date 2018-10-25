@@ -21,15 +21,16 @@ pub trait Machine: Clone {
   // used to infer group input flow rates
   // property: with valid inputs, the returned values have the same length given by num_inputs/num_outputs
   // property: these are consistent with each other
-  fn max_output_rates (&self, input_rates: Inputs <Number>)->Inputs <Number>;
+  fn max_output_rates (&self, input_rates: & [Number])->Inputs <Number>;
   // note: this API implies that mergers must have fixed ratios
-  fn min_input_rates_to_produce (&self, output_rates: Inputs <Number>)->Inputs <Number>;
+  fn min_input_rates_to_produce (&self, output_rates: & [Number])->Inputs <Number>;
   
   // property: if inputs don't change, current_output_rates doesn't change before next_output_change_time
   // property: when there is no next output change time, current_output_rates is equivalent to max_output_rates
   // maybe some property that limits the total amount of rate changes resulting from a single change by the player?
-  fn with_input_changed (&self, old_state: MachineMaterialsState, change_time: Number, old_input_patterns: Inputs <FlowPattern>, changed_index: usize, new_pattern: FlowPattern)->MachineMaterialsState;
-  fn current_outputs_and_next_change (&self, state: MachineMaterialsState, input_patterns: Inputs <FlowPattern>)->(Inputs <FlowPattern>, Option <(Number, MachineMaterialsState)>);
+  fn with_input_changed (&self, old_state: MachineMaterialsState, change_time: Number, old_input_patterns: & [FlowPattern], changed_index: usize, new_pattern: FlowPattern)->MachineMaterialsState;
+  // property: next_change is not the same time twice in a row
+  fn current_outputs_and_next_change (&self, state: MachineMaterialsState, input_patterns: & [FlowPattern])->(Inputs <FlowPattern>, Option <(Number, MachineMaterialsState)>);
 
 }
 
@@ -38,7 +39,7 @@ pub trait Machine: Clone {
 
 
 
-#[derive (Clone, PartialEq, Eq, Hash, Debug)]
+#[derive (Copy, Clone, PartialEq, Eq, Hash, Debug, Default)]
 pub struct FlowPattern {
   pub start_time: Number, //when the first item was disbursed as part of this flow
   pub rate: Number, //items per max cycle length
@@ -71,29 +72,6 @@ impl FlowPattern {
   }
 }
 
-/*
-pub fn entire_future (machines:, max_time: time) {
-  for machine_info in machine_dag.forwards_iter_mut() {
-    let mut simulation_time = now;
-    loop {
-      let change = first of machine_info.inputs.changes, machine_info.machine.next_output_change_time()
-      match change {
-        None => break,
-        Some (time, change) => {
-          if time > max_time {break;} 
-          match change {
-            OutputChange => {
-              machine_info.machine.next_output_change_time_reached();
-              machine_info.changes.push (machine_info.machine.current_output_rates());
-            }
-            InputChange => machine_info.machine.inputs_changed(),
-          }
-        }
-      }
-    }
-  }
-  changes map
-}*/
 
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
 struct StandardMachineInput {
@@ -112,7 +90,7 @@ struct StandardMachine {
   min_output_cycle_length: Number,
 }
 
-#[derive (Clone, PartialEq, Eq, Hash, Debug)]
+#[derive (Clone, PartialEq, Eq, Hash, Debug, Default)]
 struct MachineMaterialsStateInput {
   storage_at_pattern_start: Number,
 }
@@ -143,21 +121,21 @@ impl Machine for StandardMachine {
   fn num_inputs (&self)->usize {self.inputs.len()}
   fn num_outputs (&self)->usize {self.outputs.len()}
   
-  fn max_output_rates (&self, input_rates: Inputs <Number>)->Inputs <Number> {
-    let ideal_rate = self.max_output_rate_with_inputs (input_rates);
+  fn max_output_rates (&self, input_rates: & [Number])->Inputs <Number> {
+    let ideal_rate = self.max_output_rate_with_inputs (input_rates.iter().cloned());
     self.outputs.iter().map (| _output | ideal_rate).collect()
   }
-  fn min_input_rates_to_produce (&self, output_rates: Inputs <Number>)->Inputs <Number> {
-    let ideal_rate = self.min_output_rate_to_produce (output_rates);
+  fn min_input_rates_to_produce (&self, output_rates: & [Number])->Inputs <Number> {
+    let ideal_rate = self.min_output_rate_to_produce (output_rates.iter().cloned());
     self.inputs.iter().map (| input | ideal_rate*input.cost).collect()
   }
   
-  fn with_input_changed (&self, old_state: MachineMaterialsState, change_time: Number, old_input_patterns: Inputs <FlowPattern>, changed_index: usize, _new_pattern: FlowPattern)->MachineMaterialsState {
+  fn with_input_changed (&self, old_state: MachineMaterialsState, change_time: Number, old_input_patterns: & [FlowPattern], changed_index: usize, _new_pattern: FlowPattern)->MachineMaterialsState {
     let mut new_state = old_state;
     new_state.inputs [changed_index].storage_at_pattern_start += old_input_patterns [changed_index].num_disbursed_before (change_time);
     new_state
   }
-  fn current_outputs_and_next_change (&self, state: MachineMaterialsState, input_patterns: Inputs <FlowPattern>)->(Inputs <FlowPattern>, Option <(Number, MachineMaterialsState)>)
+  fn current_outputs_and_next_change (&self, state: MachineMaterialsState, input_patterns: & [FlowPattern])->(Inputs <FlowPattern>, Option <(Number, MachineMaterialsState)>)
  {
     let ideal_rate = self.max_output_rate_with_inputs (input_patterns.iter().map (| pattern | pattern.rate));
     let last_change_time = input_patterns.iter().map (| pattern | pattern.start_time).max().unwrap_or (0);
@@ -197,6 +175,84 @@ impl Machine for StandardMachine {
   }
 }
 
+
+
+#[derive (Clone, PartialEq, Eq, Hash, Debug)]
+struct MachinesGraphInput {
+  initial_value: FlowPattern,
+  changes: Vec<(Number, FlowPattern)>,
+}
+
+#[derive (Clone, PartialEq, Eq, Hash, Debug)]
+struct MachinesGraphNode {
+  machine: StandardMachine,
+  initial_state: MachineMaterialsState,
+  inputs: Inputs <MachinesGraphInput>,
+  output_locations: Inputs <Option <(usize, usize)>>
+}
+
+#[derive (Clone, PartialEq, Eq, Hash, Debug)]
+pub struct MachinesGraph {
+  nodes: Vec<MachinesGraphNode>,
+}
+
+
+pub fn print_future (mut graph: MachinesGraph) {
+  for index in 0..graph.nodes.len() {
+    let mut outputs: Inputs <_>;
+    let destinations;
+    {
+      let node = & graph.nodes [index];
+      let mut state = node.initial_state.clone();
+      let mut input_patterns: Inputs <_> = node.inputs.iter().map (| input | input.initial_value).collect();
+      outputs = node.machine.current_outputs_and_next_change (state.clone(), & input_patterns).0.into_iter().map (| output | MachinesGraphInput {initial_value: output, changes: Vec::new()}).collect();
+      destinations = node.output_locations.clone();
+      let mut last_change_time = -1;
+      let mut total_changes = 0;
+      loop {
+        total_changes = total_changes + 1;
+        assert!(total_changes < 100, "a machine probably entered an infinite loop");
+        let (_current_outputs, personal_change) = node.machine.current_outputs_and_next_change (state.clone(), & input_patterns);
+        let next_change_time =
+          personal_change.iter().map (| (time,_state) | *time).chain (
+            node.inputs.iter().filter_map (| input | input.changes.iter().map (| (time,_pattern) | *time).find (| &time | time >= last_change_time))
+          ).min();
+        let next_change_time = match next_change_time {
+          None => break,
+          Some (next_change_time) => next_change_time
+        };
+        assert!(next_change_time > last_change_time);
+        while let Some ((index, (_time, pattern))) = node.inputs.iter().enumerate().filter_map (
+              | (index, input) | input.changes.iter().find (| (time,_pattern) | *time == next_change_time).map (| whatever | (index, whatever))
+            ).next() {
+          state = node.machine.with_input_changed (state, next_change_time, & input_patterns, index, *pattern);
+          input_patterns [index] = *pattern;
+        }
+        if let Some ((time, new_state)) = personal_change {
+          if time == next_change_time {
+            state = new_state;
+          }
+        }
+        let new_outputs = node.machine.current_outputs_and_next_change (state.clone(), & input_patterns).0;
+        for (output, new_pattern) in outputs.iter_mut().zip (new_outputs.into_iter()) {
+          if new_pattern != output.changes.last().map_or (output.initial_value, | &(_time, pattern) | pattern) {
+            output.changes.push ((next_change_time, new_pattern));
+          }
+        }
+        last_change_time = next_change_time;
+      }
+    }
+    for (output, destination) in outputs.into_iter().zip (destinations.into_iter()) {
+      if let Some ((destination_machine, destination_input)) = destination {
+        graph.nodes [destination_machine].inputs [destination_input] = output;
+      }
+      else {
+        println!("Machine {} outputted {:?}", index, output);
+      }
+    }
+  }
+  println!("{:?}", graph);
+}
 
 
 /*
