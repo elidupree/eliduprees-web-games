@@ -33,6 +33,13 @@ fn main() {
 #[cfg (not(target_os = "emscripten"))]
 fn main() {
   print_future (MachinesGraph::new (vec![
-    (material_generator(), Default::default(), & [])
+    (material_generator(), None, & []),
   ]));
+  println!( "\n\n");
+  
+ print_future (MachinesGraph::new (vec![
+   (material_generator(), None, & [(1, 0)]),
+   (conveyor(), None, & [(2, 0)]),
+   (conveyor(), None, & []),
+ ]));
 }

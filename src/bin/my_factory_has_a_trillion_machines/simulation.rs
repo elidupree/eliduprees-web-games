@@ -282,16 +282,16 @@ pub fn print_future (mut graph: MachinesGraph) {
         let (_current_outputs, personal_change) = node.machine.current_outputs_and_next_change (state.clone(), & input_patterns);
         let next_change_time =
           personal_change.iter().map (| (time,_state) | *time).chain (
-            node.inputs.iter().filter_map (| input | input.changes.iter().map (| (time,_pattern) | *time).find (| &time | time >= last_change_time))
+            node.inputs.iter().filter_map (| input | input.changes.iter().map (| (time,_pattern) | *time).find (| &time | time > last_change_time))
           ).min();
         let next_change_time = match next_change_time {
           None => break,
           Some (next_change_time) => next_change_time
         };
         assert!(next_change_time > last_change_time);
-        while let Some ((index, (_time, pattern))) = node.inputs.iter().enumerate().filter_map (
+        for (index, (_time, pattern)) in node.inputs.iter().enumerate().filter_map (
               | (index, input) | input.changes.iter().find (| (time,_pattern) | *time == next_change_time).map (| whatever | (index, whatever))
-            ).next() {
+            ) {
           state = node.machine.with_input_changed (state, next_change_time, & input_patterns, index, *pattern);
           input_patterns [index] = *pattern;
         }
@@ -318,7 +318,10 @@ pub fn print_future (mut graph: MachinesGraph) {
       }
     }
   }
-  println!("{:?}", graph);
+  println!("Ending data:");
+  for node in graph.nodes {
+    println!("{:?}", node);
+  }
 }
 
 
