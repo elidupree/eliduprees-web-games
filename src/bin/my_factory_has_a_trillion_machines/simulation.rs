@@ -28,7 +28,7 @@ pub trait Machine: Clone {
   // property: if inputs don't change, current_output_rates doesn't change before next_output_change_time
   // property: when there is no next output change time, current_output_rates is equivalent to max_output_rates
   // maybe some property that limits the total amount of rate changes resulting from a single change by the player?
-  fn with_inputs_changed (&self, old_state: MachineMaterialsState, when: Number, input_patterns: Inputs <FlowPattern>)->MachineMaterialsState;
+  fn with_input_changed (&self, old_state: MachineMaterialsState, change_time: Number, old_input_patterns: Inputs <FlowPattern>, changed_index: usize, new_pattern: FlowPattern)->MachineMaterialsState;
   fn current_outputs_and_next_change (&self, state: MachineMaterialsState, input_patterns: Inputs <FlowPattern>)->(Inputs <FlowPattern>, Option <(Number, MachineMaterialsState)>);
 
 }
@@ -118,7 +118,7 @@ struct MachineMaterialsStateInput {
 }
 
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
-struct MachineMaterialsState {
+pub struct MachineMaterialsState {
   current_output_pattern: FlowPattern,
   inputs: Inputs <MachineMaterialsStateInput>,
 }
@@ -152,15 +152,20 @@ impl Machine for StandardMachine {
     self.inputs.iter().map (| input | ideal_rate*input.cost).collect()
   }
   
-  fn with_inputs_changed (&self, old_state: MachineMaterialsState, when: Number, input_patterns: Inputs <FlowPattern>)->MachineMaterialsState {
-    old_state
+  fn with_input_changed (&self, old_state: MachineMaterialsState, change_time: Number, old_input_patterns: Inputs <FlowPattern>, changed_index: usize, _new_pattern: FlowPattern)->MachineMaterialsState {
+    let mut new_state = old_state;
+    new_state.inputs [changed_index].storage_at_pattern_start += old_input_patterns [changed_index].num_disbursed_before (change_time);
+    new_state
   }
   fn current_outputs_and_next_change (&self, state: MachineMaterialsState, input_patterns: Inputs <FlowPattern>)->(Inputs <FlowPattern>, Option <(Number, MachineMaterialsState)>)
  {
     let ideal_rate = self.max_output_rate_with_inputs (input_patterns.iter().map (| pattern | pattern.rate));
-    let last_change_time = unimplemented!();
-    let most_recent_output = state.current_output_pattern.last_disbursement_before (last_change_time).unwrap_or (last_change_time - self.min_output_cycle_length);
-    let mut time_to_begin_output = most_recent_output + self.min_output_cycle_length;
+    let last_change_time = input_patterns.iter().map (| pattern | pattern.start_time).max().unwrap_or (0);
+    let time_to_switch_output = match state.current_output_pattern.last_disbursement_before (last_change_time) {
+      Some (time) => max (last_change_time, time + self.min_output_cycle_length),
+      None => last_change_time,
+    };
+    let mut time_to_begin_output = time_to_switch_output;
     if ideal_rate > 0 {
     let mut when_enough_inputs_to_begin_output = last_change_time;
     for ((pattern, input), input_state) in input_patterns.iter().zip (self.inputs.iter()).zip (state.inputs.iter()) {
@@ -182,7 +187,7 @@ impl Machine for StandardMachine {
     } else {
       let mut new_state = state.clone();
       new_state.current_output_pattern = output;
-      Some ((last_change_time, new_state))
+      Some ((time_to_switch_output, new_state))
     };
     
     let current_outputs = self.outputs.iter().map (| _output | {
