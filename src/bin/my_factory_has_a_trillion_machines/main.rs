@@ -43,6 +43,12 @@ fn main() {
    (conveyor(), None, & [(3, 0)]),
    (conveyor(), None, & [(4, 0)]),
    (conveyor(), None, & [(5, 0)]),
-   (splitter(), None, & []),
+   (splitter(), None, & [(6, 0), (10, 0)]),
+   (splitter(), None, & [(7, 0), (8, 0)]),
+   (slow_machine(), None, & [(9, 0)]),
+   (slow_machine(), None, & [(9, 1)]),
+   (merger(), None, & [(10, 1)]),
+   (merger(), None, & [(11, 0)]),
+   (consumer(), None, & []),
  ]));
 }

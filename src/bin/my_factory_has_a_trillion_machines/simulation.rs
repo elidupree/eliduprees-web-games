@@ -93,7 +93,7 @@ struct StandardMachineInput {
 
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
 struct StandardMachineOutput {
-  
+  amount: Number,
 }
 
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
@@ -107,7 +107,7 @@ pub struct StandardMachine {
 pub fn conveyor()->StandardMachine {
   StandardMachine {
     inputs: ArrayVec::from_iter ([StandardMachineInput {cost: 1}].into_iter().cloned()),
-    outputs: ArrayVec::from_iter ([StandardMachineOutput {}].into_iter().cloned()),
+    outputs: ArrayVec::from_iter ([StandardMachineOutput {amount: 1}].into_iter().cloned()),
     min_output_cycle_length: 1,
   }
 }
@@ -115,7 +115,14 @@ pub fn conveyor()->StandardMachine {
 pub fn splitter()->StandardMachine {
   StandardMachine {
     inputs: ArrayVec::from_iter ([StandardMachineInput {cost: 2}].into_iter().cloned()),
-    outputs: ArrayVec::from_iter (iter::repeat (StandardMachineOutput {}).take (2)),
+    outputs: ArrayVec::from_iter (iter::repeat (StandardMachineOutput {amount: 1}).take (2)),
+    min_output_cycle_length: 1,
+  }
+}
+pub fn merger()->StandardMachine {
+  StandardMachine {
+    inputs: ArrayVec::from_iter (iter::repeat (StandardMachineInput {cost: 1}).take (2)),
+    outputs: ArrayVec::from_iter (iter::repeat (StandardMachineOutput {amount: 2}).take (1)),
     min_output_cycle_length: 1,
   }
 }
@@ -123,7 +130,7 @@ pub fn splitter()->StandardMachine {
 pub fn slow_machine()->StandardMachine {
   StandardMachine {
     inputs: ArrayVec::from_iter ([StandardMachineInput {cost: 1}].into_iter().cloned()),
-    outputs: ArrayVec::from_iter ([StandardMachineOutput {}].into_iter().cloned()),
+    outputs: ArrayVec::from_iter ([StandardMachineOutput {amount: 1}].into_iter().cloned()),
     min_output_cycle_length: 10,
   }
 }
@@ -131,7 +138,7 @@ pub fn slow_machine()->StandardMachine {
 pub fn material_generator()->StandardMachine {
   StandardMachine {
     inputs: ArrayVec::new (),
-    outputs: ArrayVec::from_iter ([StandardMachineOutput {}].into_iter().cloned()),
+    outputs: ArrayVec::from_iter ([StandardMachineOutput {amount: 1}].into_iter().cloned()),
     min_output_cycle_length: 1,
   }
 }
@@ -177,7 +184,7 @@ impl StandardMachine {
     ideal_rate
   }
   fn min_output_rate_to_produce <I: IntoIterator <Item = Number>> (&self, output_rates: I)->Number {
-    output_rates.into_iter().max().unwrap_or(self.max_output_rate())
+    output_rates.into_iter().zip (self.outputs.iter()).map (| (rate, output) | (rate + output.amount - 1)/output.amount).max().unwrap_or(self.max_output_rate())
   }
 }
 
@@ -187,7 +194,7 @@ impl Machine for StandardMachine {
   
   fn max_output_rates (&self, input_rates: & [Number])->Inputs <Number> {
     let ideal_rate = self.max_output_rate_with_inputs (input_rates.iter().cloned());
-    self.outputs.iter().map (| _output | ideal_rate).collect()
+    self.outputs.iter().map (| output | ideal_rate*output.amount).collect()
   }
   fn min_input_rates_to_produce (&self, output_rates: & [Number])->Inputs <Number> {
     let ideal_rate = self.min_output_rate_to_produce (output_rates.iter().cloned());
@@ -234,8 +241,8 @@ impl Machine for StandardMachine {
       Some ((time_to_switch_output, new_state))
     };
     
-    let current_outputs = self.outputs.iter().map (| _output | {
-      FlowPattern {start_time: state.current_output_pattern.start_time + 1, rate: state.current_output_pattern.rate}
+    let current_outputs = self.outputs.iter().map (| output | {
+      FlowPattern {start_time: state.current_output_pattern.start_time + 1, rate: state.current_output_pattern.rate*output.amount}
     }).collect();
     (current_outputs, next_change)
   }
@@ -333,7 +340,7 @@ pub fn print_future (mut graph: MachinesGraph) {
     }
   }
   println!("Ending data:");
-  for node in graph.nodes {
+  for node in graph.nodes.iter().enumerate() {
     println!("{:?}", node);
   }
 }
