@@ -206,11 +206,13 @@ impl Machine for StandardMachine {
     let mut when_enough_inputs_to_begin_output = last_change_time;
     for ((pattern, input), input_state) in input_patterns.iter().zip (self.inputs.iter()).zip (state.inputs.iter()) {
       let enough_to_start_amount = input.cost + 1;
+      let total_disbursed_so_far = pattern.num_disbursed_before (last_change_time);
       let storage_at_last_change =
         input_state.storage_at_pattern_start
-        + pattern.num_disbursed_before (last_change_time)
+        + total_disbursed_so_far
         - input.cost*state.current_output_pattern.num_disbursed_between ([pattern.start_time, last_change_time]);
-      let min_start_time = last_change_time + pattern.when_disburses_at_least (enough_to_start_amount - storage_at_last_change).unwrap();
+      let remaining_need = enough_to_start_amount - storage_at_last_change;
+      let min_start_time = pattern.when_disburses_at_least (total_disbursed_so_far + remaining_need).unwrap();
       when_enough_inputs_to_begin_output = max (when_enough_inputs_to_begin_output, min_start_time);
     }
       time_to_begin_output = max (time_to_begin_output, when_enough_inputs_to_begin_output);
