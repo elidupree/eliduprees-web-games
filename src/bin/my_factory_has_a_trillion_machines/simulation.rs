@@ -22,6 +22,9 @@ pub trait Machine: Clone {
   fn num_inputs (&self)->usize;
   fn num_outputs (&self)->usize;
   
+  fn input_locations (&self, state: MachineMapState)->Inputs <Vector>;
+  fn output_locations (&self, state: MachineMapState)->Inputs <Vector>;
+  
   // used to infer group input flow rates
   // property: with valid inputs, the returned values have the same length given by num_inputs/num_outputs
   // property: these are consistent with each other
@@ -38,7 +41,15 @@ pub trait Machine: Clone {
 
 }
 
-
+pub fn rotate_90 (vector: Vector, angle: u8)->Vector {
+  match angle % 4 {
+    0 => vector,
+    1 => Vector::new (-vector [1],  vector [0]),
+    2 => - vector,
+    3 => Vector::new ( vector [1], -vector [0]),
+    _=> unreachable!()
+  }
+}
 
 
 
@@ -183,6 +194,12 @@ impl MachineMaterialsState {
   }
 }
 
+#[derive (Clone, PartialEq, Eq, Hash, Debug)]
+pub struct MachineMapState {
+  position: Vector,
+  facing: u8,
+}
+
 impl StandardMachine {
   fn max_output_rate (&self)->Number {
     RATE_DIVISOR/self.min_output_cycle_length
@@ -202,6 +219,13 @@ impl StandardMachine {
 impl Machine for StandardMachine {
   fn num_inputs (&self)->usize {self.inputs.len()}
   fn num_outputs (&self)->usize {self.outputs.len()}
+  
+  fn input_locations (&self, state: MachineMapState)->Inputs <Vector> {
+    self.inputs.iter().map (| input | rotate_90 (input.relative_location, state.facing) + state.position).collect()
+  }
+  fn output_locations (&self, state: MachineMapState)->Inputs <Vector> {
+    self.inputs.iter().map (| input | rotate_90 (input.relative_location, state.facing) + state.position).collect()
+  }
   
   fn max_output_rates (&self, input_rates: & [Number])->Inputs <Number> {
     let ideal_rate = self.max_output_rate_with_inputs (input_rates.iter().cloned());
@@ -293,6 +317,76 @@ impl MachinesGraph {
       }
     }).collect()}
   }
+  
+  pub fn from_map (data: & [(StandardMachine, MachineMapState, MachineMaterialsState)]) {
+    let connections: ArrayVec<[Inputs<Option<(usize, usize)>>; MAX_COMPONENTS]> = data.iter().map (| (machine, map,_) | {
+      machine.output_locations(map.clone()).into_iter().map (| output_location | {
+        data.iter().enumerate().find_map(| (machine2_index, (machine2, map2, _)) | {
+          machine2.input_locations(map2.clone()).into_iter().enumerate().find_map(| (input_index, input_location) | {
+            if input_location == output_location {
+              Some((machine2_index, input_index))
+            }
+            else {
+              None
+            }
+          })
+        })
+      }).collect()
+    }).collect();
+    
+    let mut levels: ArrayVec<[usize; MAX_COMPONENTS]> = data.iter().map (|_| usize::max_value()).collect();
+    let mut num_inputs: ArrayVec<[usize; MAX_COMPONENTS]> = data.iter().map (|_| 0).collect();
+    let mut nodes: Vec<MachinesGraphNode> = Vec::with_capacity(MAX_COMPONENTS);
+    let mut data_to_node = (0..data.len()).map (| _index | None).collect();
+    let mut node_to_data = (0..data.len()).map (| _index | None).collect();
+    for machine in &connections {
+      for output in machine {
+        if let Some(output) = output {
+          num_inputs[output.0] += 1
+        }
+      }
+    }
+    
+    fn push_node (nodes: &mut Vec<MachinesGraphNode>, data_to_node: &mut Vec<Option <usize>>, node_to_data: &mut Vec<Option <usize>>, levels: &mut ArrayVec<[usize; MAX_COMPONENTS]>, data_index: usize, (machine, _, materials): &(StandardMachine, MachineMapState, MachineMaterialsState), level: usize) {
+      let current_level = levels [data_index];
+      if current_level < level {
+          //TODO: cycle handling
+          return;
+      } else if current_level == level {
+          // already recorded
+          return;
+      } else if level != usize::max_value() {
+        unreachable!()
+      }
+      data_to_node [data_index] = Some (nodes.len());
+      node_to_data [nodes.len()] = Some (data_index);
+      levels [data_index] = level;
+      let inputs: Inputs <MachinesGraphInput> = machine.inputs.iter().map (|_input | Default::default()).collect();
+      nodes.push(MachinesGraphNode {
+        machine: machine.clone(), initial_state: materials.clone(), inputs, output_locations: Default::default(),
+      });
+    }
+    for (index, inputs) in num_inputs.iter().enumerate() {
+      if *inputs == 0 {
+        push_node (&mut nodes, &mut data_to_node, &mut node_to_data, &mut levels, index, & data [index], 0);
+      }
+    }
+    
+    for node_index in 0.. {
+      if node_index >= nodes.len() {break}
+      
+      let data_index = node_to_data [node_index].unwrap();
+      let level = levels [data_index];
+      for destination in &connections[data_index] {
+        if let Some((target_data_index, _input_index)) = destination {
+          push_node (&mut nodes, &mut data_to_node, &mut node_to_data, &mut levels, *target_data_index, & data [*target_data_index], level + 1);
+        }
+      }
+    }
+  }
+  
+  
+  
 }
 
 
