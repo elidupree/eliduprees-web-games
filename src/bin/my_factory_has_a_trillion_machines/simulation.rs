@@ -17,13 +17,13 @@ macro_rules! inputs {
 type Vector = Vector2 <Number>;
 
 
-pub trait Machine: Clone {
+pub trait MachineType: Clone {
   // basic information
   fn num_inputs (&self)->usize;
   fn num_outputs (&self)->usize;
   
-  fn input_locations (&self, state: MachineMapState)->Inputs <Vector>;
-  fn output_locations (&self, state: MachineMapState)->Inputs <Vector>;
+  fn input_locations (&self, state: &MachineMapState)->Inputs <Vector>;
+  fn output_locations (&self, state: &MachineMapState)->Inputs <Vector>;
   
   // used to infer group input flow rates
   // property: with valid inputs, the returned values have the same length given by num_inputs/num_outputs
@@ -35,9 +35,9 @@ pub trait Machine: Clone {
   // property: if inputs don't change, current_output_rates doesn't change before next_output_change_time
   // property: when there is no next output change time, current_output_rates is equivalent to max_output_rates
   // maybe some property that limits the total amount of rate changes resulting from a single change by the player?
-  fn with_input_changed (&self, old_state: MachineMaterialsState, change_time: Number, old_input_patterns: & [FlowPattern], changed_index: usize, new_pattern: FlowPattern)->MachineMaterialsState;
+  fn with_input_changed (&self, old_state: &MachineMaterialsState, change_time: Number, old_input_patterns: & [FlowPattern], changed_index: usize, new_pattern: FlowPattern)->MachineMaterialsState;
   // property: next_change is not the same time twice in a row
-  fn current_outputs_and_next_change (&self, state: MachineMaterialsState, input_patterns: & [FlowPattern])->(Inputs <FlowPattern>, Option <(Number, MachineMaterialsState)>);
+  fn current_outputs_and_next_change (&self, state: &MachineMaterialsState, input_patterns: & [FlowPattern])->(Inputs <FlowPattern>, Option <(Number, MachineMaterialsState)>);
 
 }
 
@@ -186,7 +186,7 @@ pub struct MachineMaterialsState {
 }
 
 impl MachineMaterialsState {
-  pub fn empty <M: Machine> (machine: & M)->MachineMaterialsState {
+  pub fn empty <M: MachineType> (machine: & M)->MachineMaterialsState {
     MachineMaterialsState {
       current_output_pattern: Default::default(),
       inputs: ArrayVec::from_iter (iter::repeat (Default::default()).take (machine.num_inputs())),
@@ -216,14 +216,14 @@ impl StandardMachine {
   }
 }
 
-impl Machine for StandardMachine {
+impl MachineType for StandardMachine {
   fn num_inputs (&self)->usize {self.inputs.len()}
   fn num_outputs (&self)->usize {self.outputs.len()}
   
-  fn input_locations (&self, state: MachineMapState)->Inputs <Vector> {
+  fn input_locations (&self, state: &MachineMapState)->Inputs <Vector> {
     self.inputs.iter().map (| input | rotate_90 (input.relative_location, state.facing) + state.position).collect()
   }
-  fn output_locations (&self, state: MachineMapState)->Inputs <Vector> {
+  fn output_locations (&self, state: &MachineMapState)->Inputs <Vector> {
     self.inputs.iter().map (| input | rotate_90 (input.relative_location, state.facing) + state.position).collect()
   }
   
@@ -236,12 +236,12 @@ impl Machine for StandardMachine {
     self.inputs.iter().map (| input | ideal_rate*input.cost).collect()
   }
   
-  fn with_input_changed (&self, old_state: MachineMaterialsState, change_time: Number, old_input_patterns: & [FlowPattern], changed_index: usize, _new_pattern: FlowPattern)->MachineMaterialsState {
-    let mut new_state = old_state;
+  fn with_input_changed (&self, old_state: &MachineMaterialsState, change_time: Number, old_input_patterns: & [FlowPattern], changed_index: usize, _new_pattern: FlowPattern)->MachineMaterialsState {
+    let mut new_state = old_state.clone();
     new_state.inputs [changed_index].storage_at_pattern_start += old_input_patterns [changed_index].num_disbursed_before (change_time);
     new_state
   }
-  fn current_outputs_and_next_change (&self, state: MachineMaterialsState, input_patterns: & [FlowPattern])->(Inputs <FlowPattern>, Option <(Number, MachineMaterialsState)>)
+  fn current_outputs_and_next_change (&self, state: &MachineMaterialsState, input_patterns: & [FlowPattern])->(Inputs <FlowPattern>, Option <(Number, MachineMaterialsState)>)
  {
     let ideal_rate = self.max_output_rate_with_inputs (input_patterns.iter().map (| pattern | pattern.rate));
     let last_change_time = input_patterns.iter().map (| pattern | pattern.start_time).max().unwrap_or (0);
@@ -285,6 +285,13 @@ impl Machine for StandardMachine {
 
 
 
+pub struct StatefulMachine {
+  machine_type: StandardMachine,
+  map_state: MachineMapState,
+  materials_state: MachineMaterialsState,
+}
+
+
 #[derive (Clone, PartialEq, Eq, Hash, Debug, Default)]
 struct MachinesGraphInput {
   initial_value: FlowPattern,
@@ -318,11 +325,11 @@ impl MachinesGraph {
     }).collect()}
   }
   
-  pub fn from_map (data: & [(StandardMachine, MachineMapState, MachineMaterialsState)]) {
-    let connections: ArrayVec<[Inputs<Option<(usize, usize)>>; MAX_COMPONENTS]> = data.iter().map (| (machine, map,_) | {
-      machine.output_locations(map.clone()).into_iter().map (| output_location | {
-        data.iter().enumerate().find_map(| (machine2_index, (machine2, map2, _)) | {
-          machine2.input_locations(map2.clone()).into_iter().enumerate().find_map(| (input_index, input_location) | {
+  pub fn from_map (data: & [StatefulMachine]) {
+    let connections: ArrayVec<[Inputs<Option<(usize, usize)>>; MAX_COMPONENTS]> = data.iter().map (| machine | {
+      machine.machine_type.output_locations(&machine.map_state).into_iter().map (| output_location | {
+        data.iter().enumerate().find_map(| (machine2_index, machine2) | {
+          machine2.machine_type.input_locations(& machine2.map_state).into_iter().enumerate().find_map(| (input_index, input_location) | {
             if input_location == output_location {
               Some((machine2_index, input_index))
             }
@@ -347,7 +354,7 @@ impl MachinesGraph {
       }
     }
     
-    fn push_node (nodes: &mut Vec<MachinesGraphNode>, data_to_node: &mut Vec<Option <usize>>, node_to_data: &mut Vec<Option <usize>>, levels: &mut ArrayVec<[usize; MAX_COMPONENTS]>, data_index: usize, (machine, _, materials): &(StandardMachine, MachineMapState, MachineMaterialsState), level: usize) {
+    fn push_node (nodes: &mut Vec<MachinesGraphNode>, data_to_node: &mut Vec<Option <usize>>, node_to_data: &mut Vec<Option <usize>>, levels: &mut ArrayVec<[usize; MAX_COMPONENTS]>, data_index: usize, machine: & StatefulMachine, level: usize) {
       let current_level = levels [data_index];
       if current_level < level {
           //TODO: cycle handling
@@ -361,9 +368,9 @@ impl MachinesGraph {
       data_to_node [data_index] = Some (nodes.len());
       node_to_data [nodes.len()] = Some (data_index);
       levels [data_index] = level;
-      let inputs: Inputs <MachinesGraphInput> = machine.inputs.iter().map (|_input | Default::default()).collect();
+      let inputs: Inputs <MachinesGraphInput> = machine.machine_type.inputs.iter().map (|_input | Default::default()).collect();
       nodes.push(MachinesGraphNode {
-        machine: machine.clone(), initial_state: materials.clone(), inputs, output_locations: Default::default(),
+        machine: machine.machine_type.clone(), initial_state: machine.materials_state.clone(), inputs, output_locations: Default::default(),
       });
     }
     for (index, inputs) in num_inputs.iter().enumerate() {
@@ -398,14 +405,14 @@ pub fn print_future (mut graph: MachinesGraph) {
       let node = & graph.nodes [index];
       let mut state = node.initial_state.clone();
       let mut input_patterns: Inputs <_> = node.inputs.iter().map (| input | input.initial_value).collect();
-      outputs = node.machine.current_outputs_and_next_change (state.clone(), & input_patterns).0.into_iter().map (| output | MachinesGraphInput {initial_value: output, changes: Vec::new()}).collect();
+      outputs = node.machine.current_outputs_and_next_change (&state, & input_patterns).0.into_iter().map (| output | MachinesGraphInput {initial_value: output, changes: Vec::new()}).collect();
       destinations = node.output_locations.clone();
       let mut last_change_time = -1;
       let mut total_changes = 0;
       loop {
         total_changes = total_changes + 1;
         assert!(total_changes < 100, "a machine probably entered an infinite loop");
-        let (_current_outputs, personal_change) = node.machine.current_outputs_and_next_change (state.clone(), & input_patterns);
+        let (_current_outputs, personal_change) = node.machine.current_outputs_and_next_change (&state, & input_patterns);
         let next_change_time =
           personal_change.iter().map (| (time,_state) | *time).chain (
             node.inputs.iter().filter_map (| input | input.changes.iter().map (| (time,_pattern) | *time).find (| &time | time > last_change_time))
@@ -418,7 +425,7 @@ pub fn print_future (mut graph: MachinesGraph) {
         for (index, (_time, pattern)) in node.inputs.iter().enumerate().filter_map (
               | (index, input) | input.changes.iter().find (| (time,_pattern) | *time == next_change_time).map (| whatever | (index, whatever))
             ) {
-          state = node.machine.with_input_changed (state, next_change_time, & input_patterns, index, *pattern);
+          state = node.machine.with_input_changed (&state, next_change_time, & input_patterns, index, *pattern);
           input_patterns [index] = *pattern;
         }
         if let Some ((time, new_state)) = personal_change {
@@ -426,7 +433,7 @@ pub fn print_future (mut graph: MachinesGraph) {
             state = new_state;
           }
         }
-        let new_outputs = node.machine.current_outputs_and_next_change (state.clone(), & input_patterns).0;
+        let new_outputs = node.machine.current_outputs_and_next_change (&state, & input_patterns).0;
         for (output, new_pattern) in outputs.iter_mut().zip (new_outputs.into_iter()) {
           if new_pattern != output.changes.last().map_or (output.initial_value, | &(_time, pattern) | pattern) {
             output.changes.push ((next_change_time, new_pattern));
@@ -477,12 +484,12 @@ pub struct Group {
   average_color: [f64; 3],
 }
 
+*/
 
 pub struct Map {
-  components: ArrayVec <[Component; MAX_COMPONENTS]>,
+  components: ArrayVec <[StatefulMachine; MAX_COMPONENTS]>,
 }
 
-*/
 
 #[cfg (test)]
 mod tests {
