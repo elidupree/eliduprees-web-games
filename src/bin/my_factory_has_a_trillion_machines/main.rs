@@ -2,10 +2,10 @@
 
 extern crate eliduprees_web_games;
 
-//#[macro_use]
-//extern crate stdweb;
-//#[macro_use]
-//extern crate serde_derive;
+#[macro_use]
+extern crate stdweb;
+#[macro_use]
+extern crate serde_derive;
 //#[macro_use]
 //extern crate derivative;
 extern crate nalgebra;
@@ -13,20 +13,22 @@ extern crate arrayvec;
 #[cfg (test)]
 #[macro_use]
 extern crate proptest;
+#[macro_use]
+extern crate glium;
 
 mod simulation;
 pub use simulation::*;
 pub use eliduprees_web_games::*;
 
 
+#[cfg (target_os = "emscripten")]
+mod web_ui;
 
 #[cfg (target_os = "emscripten")]
 fn main() {
   stdweb::initialize();
 
-  run(move |inputs| {
-  
-  })
+  web_ui::run_game();
 }
 
 
