@@ -8,15 +8,15 @@ use num::Integer;
 use nalgebra::Vector2;
 use arrayvec::ArrayVec;
 
-type Number = i64;
-const MAX_COMPONENTS: usize = 32;
-const RATE_DIVISOR: Number = 2*2*2*2*2*2 * 3*3*3 * 5*5;
-const MAX_MACHINE_INPUTS: usize = 8;
-type Inputs<T> = ArrayVec <[T; MAX_MACHINE_INPUTS]>;
+pub type Number = i64;
+pub const MAX_COMPONENTS: usize = 32;
+pub const RATE_DIVISOR: Number = 2*2*2*2*2*2 * 3*3*3 * 5*5;
+pub const MAX_MACHINE_INPUTS: usize = 8;
+pub type Inputs<T> = ArrayVec <[T; MAX_MACHINE_INPUTS]>;
 macro_rules! inputs {
   ($($whatever:tt)*) => {Inputs::from_iter ([$($whatever)*].iter().cloned())};
 }
-type Vector = Vector2 <Number>;
+pub type Vector = Vector2 <Number>;
 
 
 pub trait MachineType: Clone {
@@ -207,8 +207,8 @@ impl MachineMaterialsState {
 
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
 pub struct MachineMapState {
-  position: Vector,
-  facing: u8,
+  pub position: Vector,
+  pub facing: u8,
 }
 
 impl StandardMachine {
@@ -306,9 +306,9 @@ impl MachineType for StandardMachine {
 
 
 pub struct StatefulMachine {
-  machine_type: StandardMachine,
-  map_state: MachineMapState,
-  materials_state: MachineMaterialsState,
+  pub machine_type: StandardMachine,
+  pub map_state: MachineMapState,
+  pub materials_state: MachineMaterialsState,
 }
 
 
@@ -511,7 +511,7 @@ pub struct Group {
 */
 
 pub struct Map {
-  pub components: ArrayVec <[StatefulMachine; MAX_COMPONENTS]>,
+  pub machines: ArrayVec <[StatefulMachine; MAX_COMPONENTS]>,
 }
 
 

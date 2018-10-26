@@ -4,12 +4,15 @@ use stdweb;
 use std::rc::Rc;
 use std::cell::RefCell;
 use glium::{Surface};
+use arrayvec::ArrayVec;
+
 
 
 
 struct State {
   glium_display: glium::Display,
   glium_program: glium::Program,
+  map: Map,
 }
 
 #[derive(Copy, Clone)]
@@ -55,7 +58,29 @@ gl_FragColor = vec4(color_transfer, 1.0);
       
   let state = Rc::new (RefCell::new (State {
     glium_display: display, glium_program: program,
+    map: Map {machines: ArrayVec::new(),},
   }));
+  
+  let click_callback = {let state = state.clone(); move |x: f64,y: f64 | {
+    let position = Vector::new ((x*30.0) as Number, (y*30.0) as Number);
+    let machine_type = conveyor();
+    let materials_state =MachineMaterialsState::empty (& machine_type);
+    state.borrow_mut().map.machines.push (StatefulMachine {
+      machine_type,
+      map_state: MachineMapState {position, facing: 0},
+      materials_state,
+    });
+  }};
+  
+  js!{
+    $("#canvas").click (function(event) {
+      var offset = canvas.getBoundingClientRect();
+      var x = (event.clientX - offset.left)/offset.width;
+      var y = (event.clientY - offset.top)/offset.height;
+      @{click_callback}(x,y);
+    })
+  }
+  
   run(move |inputs| {
     do_frame (& state);
   });
