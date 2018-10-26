@@ -101,22 +101,22 @@ impl PartialEq for FlowPattern {
 
 
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
-struct StandardMachineInput {
-  cost: Number,
-  relative_location: Vector,
+pub struct StandardMachineInput {
+  pub cost: Number,
+  pub relative_location: Vector,
 }
 
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
-struct StandardMachineOutput {
-  amount: Number,
-  relative_location: Vector,
+pub struct StandardMachineOutput {
+  pub amount: Number,
+  pub relative_location: Vector,
 }
 
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
 pub struct StandardMachine {
-  inputs: Inputs <StandardMachineInput>,
-  outputs: Inputs <StandardMachineOutput>,
-  min_output_cycle_length: Number,
+  pub inputs: Inputs <StandardMachineInput>,
+  pub outputs: Inputs <StandardMachineOutput>,
+  pub min_output_cycle_length: Number,
 }
 
 
@@ -175,15 +175,15 @@ pub fn consumer()->StandardMachine {
 
 
 #[derive (Clone, PartialEq, Eq, Hash, Debug, Default)]
-struct MachineMaterialsStateInput {
-  storage_before_last_flow_change: Number,
+pub struct MachineMaterialsStateInput {
+  pub storage_before_last_flow_change: Number,
 }
 
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
 pub struct MachineMaterialsState {
-  current_output_pattern: FlowPattern,
-  inputs: Inputs <MachineMaterialsStateInput>,
-  last_flow_change: Number,
+  pub current_output_pattern: FlowPattern,
+  pub inputs: Inputs <MachineMaterialsStateInput>,
+  pub last_flow_change: Number,
 }
 
 impl MachineMaterialsState {
@@ -304,22 +304,22 @@ pub struct StatefulMachine {
 
 
 #[derive (Clone, PartialEq, Eq, Hash, Debug, Default)]
-struct MachinesGraphInput {
-  initial_value: FlowPattern,
-  changes: Vec<(Number, FlowPattern)>,
+pub struct MachinesGraphInput {
+  pub initial_value: FlowPattern,
+  pub changes: Vec<(Number, FlowPattern)>,
 }
 
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
-struct MachinesGraphNode {
-  machine: StandardMachine,
-  initial_state: MachineMaterialsState,
-  inputs: Inputs <MachinesGraphInput>,
-  output_locations: Inputs <Option <(usize, usize)>>
+pub struct MachinesGraphNode {
+  pub machine: StandardMachine,
+  pub initial_state: MachineMaterialsState,
+  pub inputs: Inputs <MachinesGraphInput>,
+  pub output_locations: Inputs <Option <(usize, usize)>>
 }
 
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
 pub struct MachinesGraph {
-  nodes: Vec<MachinesGraphNode>,
+  pub nodes: Vec<MachinesGraphNode>,
 }
 
 impl MachinesGraph {
@@ -500,7 +500,7 @@ pub struct Group {
 */
 
 pub struct Map {
-  components: ArrayVec <[StatefulMachine; MAX_COMPONENTS]>,
+  pub components: ArrayVec <[StatefulMachine; MAX_COMPONENTS]>,
 }
 
 
