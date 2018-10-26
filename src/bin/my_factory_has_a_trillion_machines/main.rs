@@ -8,6 +8,7 @@ extern crate stdweb;
 extern crate serde_derive;
 //#[macro_use]
 //extern crate derivative;
+extern crate num;
 extern crate nalgebra;
 extern crate arrayvec;
 #[cfg (test)]
