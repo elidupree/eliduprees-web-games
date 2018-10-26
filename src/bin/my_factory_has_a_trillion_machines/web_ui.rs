@@ -17,22 +17,20 @@ struct State {
 
 #[derive(Copy, Clone)]
 struct Vertex {
-  center: [f32; 2],
-  direction: [f32; 2],
+  position: [f32; 2],
   color: [f32; 3],
 }
-implement_vertex!(Vertex, center, direction, color);
+implement_vertex!(Vertex, position, color);
 
 pub fn run_game() {
   let vertex_shader_source = r#"
 #version 100
-attribute lowp vec2 center;
-attribute lowp vec2 direction;
+attribute lowp vec2 position;
 attribute lowp vec3 color;
 varying lowp vec3 color_transfer;
 
 void main() {
-gl_Position = vec4 (center+direction, 0.0, 1.0);
+gl_Position = vec4 (position*2.0 - 1.0, 0.0, 1.0);
 
 color_transfer = color;
 }
@@ -73,15 +71,15 @@ gl_FragColor = vec4(color_transfer, 1.0);
   }};
   
   js!{
-    $("#canvas").click (function(event) {
+    $("#canvas").attr ("width", 600).attr ("height", 600).click (function(event) {
       var offset = canvas.getBoundingClientRect();
       var x = (event.clientX - offset.left)/offset.width;
-      var y = (event.clientY - offset.top)/offset.height;
+      var y = 1.0 - (event.clientY - offset.top)/offset.height;
       @{click_callback}(x,y);
     })
   }
   
-  run(move |inputs| {
+  run(move |_inputs| {
     do_frame (& state);
   });
   
@@ -102,18 +100,20 @@ fn do_frame(state: & Rc<RefCell<State>>) {
     target.clear_color(1.0, 1.0, 1.0, 1.0);
     let mut vertices = Vec::<Vertex>::new();
     
-
+    for machine in & state.map.machines {
+      let position = [machine.map_state.position [0] as f32/30.0, machine.map_state.position [1] as f32/30.0];
+      let width = 1.0/30.0;
+      let height = 1.0/30.0;
           let vertex = |x,y| Vertex {
-            direction: [0.4*x as f32, 0.3*y as f32],
-            center: [0.5, 0.5],
+            position: [position [0] + width*x as f32, position [1] + height*y as f32],
             color: [0.0, 0.5, 1.0],
           };
           vertices.extend(&[
-            vertex(-1,-1),vertex( 1,-1),vertex( 1, 1),
-            vertex(-1,-1),vertex( 1, 1),vertex(-1, 1)
+            vertex(0,0),vertex(1,0),vertex(1,1),
+            vertex(0,0),vertex(1,1),vertex(0,1)
           ]);
 
-    
+    }
     target.draw(&glium::VertexBuffer::new(& state.glium_display, &vertices)
                 .expect("failed to generate glium Vertex buffer"),
               &indices,
