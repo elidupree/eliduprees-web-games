@@ -123,6 +123,7 @@ pub struct StandardMachineOutput {
 
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
 pub struct StandardMachine {
+  pub name: & 'static str,
   pub inputs: Inputs <StandardMachineInput>,
   pub outputs: Inputs <StandardMachineOutput>,
   pub min_output_cycle_length: Number,
@@ -131,6 +132,7 @@ pub struct StandardMachine {
 
 pub fn conveyor()->StandardMachine {
   StandardMachine {
+    name: "Conveyor",
     inputs: inputs! [StandardMachineInput {cost: 1, relative_location: Vector::new (0, 0)}],
     outputs: inputs! [StandardMachineOutput {amount: 1, relative_location: Vector::new (1, 0)}],
     min_output_cycle_length: 1,
@@ -139,6 +141,7 @@ pub fn conveyor()->StandardMachine {
 
 pub fn splitter()->StandardMachine {
   StandardMachine {
+    name: "Splitter",
     inputs: inputs! [StandardMachineInput {cost: 2, relative_location: Vector::new (0, 0)}],
     outputs: inputs! [
       StandardMachineOutput {amount: 1, relative_location: Vector::new ( 1, 0)},
@@ -149,6 +152,7 @@ pub fn splitter()->StandardMachine {
 }
 pub fn merger()->StandardMachine {
   StandardMachine {
+    name: "Merger",
     inputs: inputs! [
       StandardMachineInput {cost: 1, relative_location: Vector::new ( 1, 0)},
       StandardMachineInput {cost: 1, relative_location: Vector::new (-1, 0)},
@@ -160,6 +164,7 @@ pub fn merger()->StandardMachine {
 
 pub fn slow_machine()->StandardMachine {
   StandardMachine {
+    name: "Slow machine",
     inputs: inputs! [StandardMachineInput {cost: 1, relative_location: Vector::new (0, 0)}],
     outputs: inputs! [StandardMachineOutput {amount: 1, relative_location: Vector::new (1, 0)}],
     min_output_cycle_length: 10,
@@ -168,6 +173,7 @@ pub fn slow_machine()->StandardMachine {
 
 pub fn material_generator()->StandardMachine {
   StandardMachine {
+    name: "Material generator",
     inputs: inputs! [],
     outputs: inputs![StandardMachineOutput {amount: 1, relative_location: Vector::new (1, 0)}],
     min_output_cycle_length: 1,
@@ -176,6 +182,7 @@ pub fn material_generator()->StandardMachine {
 
 pub fn consumer()->StandardMachine {
   StandardMachine {
+    name: "Consumer",
     inputs: inputs! [StandardMachineInput {cost: 1, relative_location: Vector::new (0, 0)}],
     outputs: inputs! [],
     min_output_cycle_length: 1,

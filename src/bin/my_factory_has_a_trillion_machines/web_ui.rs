@@ -5,6 +5,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use glium::{Surface};
 use arrayvec::ArrayVec;
+use stdweb::unstable::TryInto;
 
 
 
@@ -21,6 +22,8 @@ struct Vertex {
   color: [f32; 3],
 }
 implement_vertex!(Vertex, position, color);
+
+pub fn machine_choices()->Vec<StandardMachine> { vec![conveyor(), splitter(), merger(), slow_machine(), material_generator(), consumer()]}
 
 pub fn run_game() {
   let vertex_shader_source = r#"
@@ -61,7 +64,8 @@ gl_FragColor = vec4(color_transfer, 1.0);
   
   let click_callback = {let state = state.clone(); move |x: f64,y: f64 | {
     let position = Vector::new ((x*30.0) as Number, (y*30.0) as Number);
-    let machine_type = conveyor();
+    let choice: usize = js!{ return +$("input:radio[name=machine_choice]:checked").val()}.try_into().unwrap();
+    let machine_type = machine_choices() [choice].clone();
     let materials_state =MachineMaterialsState::empty (& machine_type);
     state.borrow_mut().map.machines.push (StatefulMachine {
       machine_type,
@@ -77,6 +81,14 @@ gl_FragColor = vec4(color_transfer, 1.0);
       var y = 1.0 - (event.clientY - offset.top)/offset.height;
       @{click_callback}(x,y);
     })
+  }
+  
+  for (index, choice) in machine_choices().into_iter().enumerate() {
+    let id = format! ("Machine_choice_{}", index);
+    js!{
+      $("<input>", {type: "radio", id:@{& id}, name: "machine_choice", value: @{index as i32}, checked:@{index == 0}}).appendTo ($("#app"));
+      $("<label>", {for:@{& id}, text: @{choice.name}}).appendTo ($("#app"));
+    }
   }
   
   run(move |_inputs| {
