@@ -2,6 +2,7 @@ use super::*;
 
 use std::cmp::{min, max};
 use std::iter::{self, FromIterator};
+use std::hash::{Hash, Hasher};
 
 use num::Integer;
 use nalgebra::Vector2;
@@ -55,7 +56,7 @@ pub fn rotate_90 (vector: Vector, angle: u8)->Vector {
 
 
 
-#[derive (Copy, Clone, Eq, Hash, Debug, Default)]
+#[derive (Copy, Clone, Eq, Debug, Default)]
 pub struct FlowPattern {
   pub start_time: Number, //when the first item was disbursed as part of this flow
   pub rate: Number, //items per max cycle length
@@ -86,7 +87,7 @@ impl FlowPattern {
     if self.rate <= 0 {return None;}
     Some (self.start_time + ((amount-1)*RATE_DIVISOR)/self.rate)
   }
-  pub fn from_when_will_always_disburse_at_least_amount_plus_ideal_rate (&self, amount: Number)->Option <Number> {
+  pub fn time_from_which_this_will_always_disburse_at_least_amount_plus_ideal_rate (&self, amount: Number)->Option <Number> {
     if self.rate <= 0 && amount > 0 {return None;}
     Some (self.start_time + (amount*RATE_DIVISOR + self.rate - 1).div_floor(&self.rate))
   }
@@ -96,6 +97,14 @@ impl FlowPattern {
 impl PartialEq for FlowPattern {
   fn eq (&self, other: & Self)->bool {
     self.rate == other.rate && (self.rate == 0 || self.start_time == other.start_time)
+  }
+}
+impl Hash for FlowPattern {
+  fn hash<H: Hasher> (&self, hasher: &mut H) {
+    self.rate.hash (hasher);
+    if self.rate != 0 {
+      self.start_time.hash (hasher);
+    }
   }
 }
 
@@ -214,7 +223,7 @@ impl StandardMachine {
     ideal_rate
   }
   fn min_output_rate_to_produce <I: IntoIterator <Item = Number>> (&self, output_rates: I)->Number {
-    output_rates.into_iter().zip (self.outputs.iter()).map (| (rate, output) | (rate + output.amount - 1)/output.amount).max().unwrap_or(self.max_output_rate())
+    output_rates.into_iter().zip (self.outputs.iter()).map (| (rate, output) | (rate + output.amount - 1)/output.amount).max().unwrap_or_else(|| self.max_output_rate())
   }
   
   fn update_last_flow_change (&self, state: &mut MachineMaterialsState, change_time: Number, old_input_patterns: & [FlowPattern]) {
@@ -251,7 +260,7 @@ impl MachineType for StandardMachine {
     self.inputs.iter().map (| input | ideal_rate*input.cost).collect()
   }
   
-  fn with_input_changed (&self, old_state: &MachineMaterialsState, change_time: Number, old_input_patterns: & [FlowPattern], changed_index: usize, _new_pattern: FlowPattern)->MachineMaterialsState {
+  fn with_input_changed (&self, old_state: &MachineMaterialsState, change_time: Number, old_input_patterns: & [FlowPattern], _changed_index: usize, _new_pattern: FlowPattern)->MachineMaterialsState {
     let mut new_state = old_state.clone();
     self.update_last_flow_change (&mut new_state, change_time, old_input_patterns);
     new_state
@@ -268,7 +277,7 @@ impl MachineType for StandardMachine {
       let mut when_enough_inputs_to_begin_output = state.last_flow_change;
       for ((pattern, input), input_state) in input_patterns.iter().zip (self.inputs.iter()).zip (state.inputs.iter()) {
         let already_disbursed = pattern.num_disbursed_before (state.last_flow_change);
-        let min_start_time = pattern.from_when_will_always_disburse_at_least_amount_plus_ideal_rate (already_disbursed + ((input.cost - 1) - input_state.storage_before_last_flow_change)).unwrap();
+        let min_start_time = pattern.time_from_which_this_will_always_disburse_at_least_amount_plus_ideal_rate (already_disbursed + ((input.cost - 1) - input_state.storage_before_last_flow_change)).unwrap();
         //eprintln!(" {:?} ", (already_disbursed, min_start_time));
         when_enough_inputs_to_begin_output = max (when_enough_inputs_to_begin_output, min_start_time);
       }
@@ -323,13 +332,14 @@ pub struct MachinesGraph {
 }
 
 impl MachinesGraph {
+  #[allow (clippy::type_complexity)]
   pub fn new (data: Vec<(StandardMachine, Option <MachineMaterialsState>, &[(i64, i64)])>)->MachinesGraph {
     MachinesGraph {nodes: data.into_iter().map (| (machine, initial_state, outputs) | {
       let inputs: Inputs <MachinesGraphInput> = machine.inputs.iter().map (|_input | Default::default()).collect();
       let output_locations: Inputs <Option <(usize, usize)>> = (0..machine.outputs.len()).map (| index | {
         outputs.get (index).and_then (| & (machine, input) | if machine == -1 {None} else {Some((machine as usize, input as usize))})
       }).collect();
-      let initial_state = initial_state.unwrap_or (MachineMaterialsState::empty (& machine));
+      let initial_state = initial_state.unwrap_or_else (|| MachineMaterialsState::empty (& machine));
       MachinesGraphNode {
         machine, initial_state, inputs, output_locations,
       }
@@ -369,6 +379,7 @@ impl MachinesGraph {
       let current_level = levels [data_index];
       if current_level < level {
           //TODO: cycle handling
+          eprintln!(" I don't know how to handle cycles yet!");
           return;
       } else if current_level == level {
           // already recorded
@@ -421,7 +432,7 @@ pub fn print_future (mut graph: MachinesGraph) {
       let mut last_change_time = -1;
       let mut total_changes = 0;
       loop {
-        total_changes = total_changes + 1;
+        total_changes += total_changes;
         assert!(total_changes < 100, "a machine probably entered an infinite loop");
         let (_current_outputs, personal_change) = node.machine.current_outputs_and_next_change (&state, & input_patterns);
         let next_change_time =
@@ -562,9 +573,9 @@ mod tests {
     }
     
     #[test]
-    fn randomly_test_from_when_will_always_disburse_at_least_amount_plus_ideal_rate (start in 0i64..1000000, rate in 1..=RATE_DIVISOR, amount in -100000i64..1000000, duration in 0i64..1000000) {
+    fn randomly_test_time_from_which_this_will_always_disburse_at_least_amount_plus_ideal_rate (start in 0i64..1000000, rate in 1..=RATE_DIVISOR, amount in -100000i64..1000000, duration in 0i64..1000000) {
       let pattern = FlowPattern {start_time: start, rate: rate};
-      let observed = pattern.from_when_will_always_disburse_at_least_amount_plus_ideal_rate (amount).unwrap();
+      let observed = pattern.time_from_which_this_will_always_disburse_at_least_amount_plus_ideal_rate (amount).unwrap();
       let ideal_count_rounded_up = amount + (rate*(duration+1) + RATE_DIVISOR - 1)/RATE_DIVISOR;
       let observed_count = pattern.num_disbursed_before (observed + duration + 1);
       println!("{}, {}, {}", observed, ideal_count_rounded_up, observed_count);
