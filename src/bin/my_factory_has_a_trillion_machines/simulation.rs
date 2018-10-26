@@ -11,7 +11,10 @@ const MAX_COMPONENTS: usize = 32;
 const RATE_DIVISOR: Number = 2*2*2*2*2*2 * 3*3*3 * 5*5;
 const MAX_MACHINE_INPUTS: usize = 8;
 type Inputs<T> = ArrayVec <[T; MAX_MACHINE_INPUTS]>;
-type Position = Vector2 <Number>;
+macro_rules! inputs {
+  ($($whatever:tt)*) => {Inputs::from_iter ([$($whatever)*].iter().cloned())};
+}
+type Vector = Vector2 <Number>;
 
 
 pub trait Machine: Clone {
@@ -89,11 +92,13 @@ impl PartialEq for FlowPattern {
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
 struct StandardMachineInput {
   cost: Number,
+  relative_location: Vector,
 }
 
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
 struct StandardMachineOutput {
   amount: Number,
+  relative_location: Vector,
 }
 
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
@@ -106,47 +111,53 @@ pub struct StandardMachine {
 
 pub fn conveyor()->StandardMachine {
   StandardMachine {
-    inputs: ArrayVec::from_iter ([StandardMachineInput {cost: 1}].into_iter().cloned()),
-    outputs: ArrayVec::from_iter ([StandardMachineOutput {amount: 1}].into_iter().cloned()),
+    inputs: inputs! [StandardMachineInput {cost: 1, relative_location: Vector::new (0, 0)}],
+    outputs: inputs! [StandardMachineOutput {amount: 1, relative_location: Vector::new (1, 0)}],
     min_output_cycle_length: 1,
   }
 }
 
 pub fn splitter()->StandardMachine {
   StandardMachine {
-    inputs: ArrayVec::from_iter ([StandardMachineInput {cost: 2}].into_iter().cloned()),
-    outputs: ArrayVec::from_iter (iter::repeat (StandardMachineOutput {amount: 1}).take (2)),
+    inputs: inputs! [StandardMachineInput {cost: 2, relative_location: Vector::new (0, 0)}],
+    outputs: inputs! [
+      StandardMachineOutput {amount: 1, relative_location: Vector::new ( 1, 0)},
+      StandardMachineOutput {amount: 1, relative_location: Vector::new (-1, 0)},
+    ],
     min_output_cycle_length: 1,
   }
 }
 pub fn merger()->StandardMachine {
   StandardMachine {
-    inputs: ArrayVec::from_iter (iter::repeat (StandardMachineInput {cost: 1}).take (2)),
-    outputs: ArrayVec::from_iter (iter::repeat (StandardMachineOutput {amount: 2}).take (1)),
+    inputs: inputs! [
+      StandardMachineInput {cost: 1, relative_location: Vector::new ( 1, 0)},
+      StandardMachineInput {cost: 1, relative_location: Vector::new (-1, 0)},
+     ],
+    outputs: inputs! [StandardMachineOutput {amount: 2, relative_location: Vector::new (1, 0)}],
     min_output_cycle_length: 1,
   }
 }
 
 pub fn slow_machine()->StandardMachine {
   StandardMachine {
-    inputs: ArrayVec::from_iter ([StandardMachineInput {cost: 1}].into_iter().cloned()),
-    outputs: ArrayVec::from_iter ([StandardMachineOutput {amount: 1}].into_iter().cloned()),
+    inputs: inputs! [StandardMachineInput {cost: 1, relative_location: Vector::new (0, 0)}],
+    outputs: inputs! [StandardMachineOutput {amount: 1, relative_location: Vector::new (1, 0)}],
     min_output_cycle_length: 10,
   }
 }
 
 pub fn material_generator()->StandardMachine {
   StandardMachine {
-    inputs: ArrayVec::new (),
-    outputs: ArrayVec::from_iter ([StandardMachineOutput {amount: 1}].into_iter().cloned()),
+    inputs: inputs! [],
+    outputs: inputs![StandardMachineOutput {amount: 1, relative_location: Vector::new (1, 0)}],
     min_output_cycle_length: 1,
   }
 }
 
 pub fn consumer()->StandardMachine {
   StandardMachine {
-    inputs: ArrayVec::from_iter ([StandardMachineInput {cost: 1}].into_iter().cloned()),
-    outputs: ArrayVec::new(),
+    inputs: inputs! [StandardMachineInput {cost: 1, relative_location: Vector::new (0, 0)}],
+    outputs: inputs! [],
     min_output_cycle_length: 1,
   }
 }
