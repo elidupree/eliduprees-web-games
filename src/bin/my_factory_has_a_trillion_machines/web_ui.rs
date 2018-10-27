@@ -62,7 +62,7 @@ fn draw_rectangle (vertices: &mut Vec<Vertex>, center: Vector2<f32>, size: Vecto
 pub fn run_game() {
   let vertex_shader_source = r#"
 #version 100
-attribute lowp vec2 position;
+attribute highp vec2 position;
 attribute lowp vec3 color;
 varying lowp vec3 color_transfer;
 
