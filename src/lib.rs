@@ -19,6 +19,11 @@ use nalgebra::Vector2;
 
 pub const TURN: f64 = ::std::f64::consts::PI*2.0;
 
+pub fn now ()->f64 {
+  let milliseconds: f64 = js!{ return Date.now()}.try_into().unwrap();
+  milliseconds*0.001
+}
+
 pub fn random_vector_exact_length <G: Rng> (generator: &mut G, length: f64)->Vector2<f64> {
   loop {
     let vector = Vector2::new (

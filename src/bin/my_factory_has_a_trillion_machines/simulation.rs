@@ -353,7 +353,7 @@ impl MachinesGraph {
     }).collect()}
   }
   
-  pub fn from_map (data: & [StatefulMachine]) {
+  pub fn from_map (data: & [StatefulMachine])->MachinesGraph {
     let connections: ArrayVec<[Inputs<Option<(usize, usize)>>; MAX_COMPONENTS]> = data.iter().map (| machine | {
       machine.machine_type.output_locations(&machine.map_state).into_iter().map (| output_location | {
         data.iter().enumerate().find_map(| (machine2_index, machine2) | {
@@ -419,19 +419,17 @@ impl MachinesGraph {
         }
       }
     }
+    
+    MachinesGraph {nodes}
   }
   
+  pub fn simulate_future (&mut self) {
   
-  
-}
-
-
-pub fn print_future (mut graph: MachinesGraph) {
-  for index in 0..graph.nodes.len() {
+  for index in 0..self.nodes.len() {
     let mut outputs: Inputs <_>;
     let destinations;
     {
-      let node = & graph.nodes [index];
+      let node = & self.nodes [index];
       let mut state = node.initial_state.clone();
       let mut input_patterns: Inputs <_> = node.inputs.iter().map (| input | input.initial_value).collect();
       outputs = node.machine.current_outputs_and_next_change (&state, & input_patterns).0.into_iter().map (| output | MachinesGraphInput {initial_value: output, changes: Vec::new()}).collect();
@@ -475,7 +473,7 @@ pub fn print_future (mut graph: MachinesGraph) {
     }
     for (output, destination) in outputs.into_iter().zip (destinations.into_iter()) {
       if let Some ((destination_machine, destination_input)) = destination {
-        graph.nodes [destination_machine].inputs [destination_input] = output;
+        self.nodes [destination_machine].inputs [destination_input] = output;
       }
       else {
         println!("Machine {} outputted {:?}", index, output);
@@ -483,8 +481,10 @@ pub fn print_future (mut graph: MachinesGraph) {
     }
   }
   println!("Ending data:");
-  for node in graph.nodes.iter().enumerate() {
+  for node in self.nodes.iter().enumerate() {
     println!("{:?}", node);
+  }
+  
   }
 }
 

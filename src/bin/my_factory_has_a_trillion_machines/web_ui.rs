@@ -16,6 +16,7 @@ struct State {
   glium_display: glium::Display,
   glium_program: glium::Program,
   map: Map,
+  graph: MachinesGraph,
 }
 
 #[derive(Copy, Clone)]
@@ -90,9 +91,12 @@ gl_FragColor = vec4(color_transfer, 1.0);
     glium::Program::from_source(&display, vertex_shader_source, fragment_shader_source, None)
       .expect("glium program generation failed");
       
+  let map =Map {machines: ArrayVec::new(),};
+  let graph = MachinesGraph::from_map (& map.machines) ;
+      
   let state = Rc::new (RefCell::new (State {
     glium_display: display, glium_program: program,
-    map: Map {machines: ArrayVec::new(),},
+    map, graph,
   }));
   
   let click_callback = {let state = state.clone(); move |x: f64,y: f64 | {
@@ -100,11 +104,14 @@ gl_FragColor = vec4(color_transfer, 1.0);
     let choice: usize = js!{ return +$("input:radio[name=machine_choice]:checked").val()}.try_into().unwrap();
     let machine_type = machine_choices() [choice].clone();
     let materials_state =MachineMaterialsState::empty (& machine_type);
-    state.borrow_mut().map.machines.push (StatefulMachine {
+    let mut state = state.borrow_mut();
+    state.map.machines.push (StatefulMachine {
       machine_type,
       map_state: MachineMapState {position, facing: 0},
       materials_state,
     });
+    state.graph = MachinesGraph::from_map (& state.map.machines) ;
+    state.graph.simulate_future();
   }};
   
   js!{
