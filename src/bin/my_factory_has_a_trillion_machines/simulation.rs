@@ -144,8 +144,8 @@ pub fn splitter()->StandardMachine {
     name: "Splitter",
     inputs: inputs! [StandardMachineInput {cost: 2, relative_location: Vector::new (0, 0)}],
     outputs: inputs! [
-      StandardMachineOutput {amount: 1, relative_location: Vector::new ( 1, 0)},
-      StandardMachineOutput {amount: 1, relative_location: Vector::new (-1, 0)},
+      StandardMachineOutput {amount: 1, relative_location: Vector::new (0,  1)},
+      StandardMachineOutput {amount: 1, relative_location: Vector::new (0, -1)},
     ],
     min_output_cycle_length: 1,
   }
@@ -154,8 +154,8 @@ pub fn merger()->StandardMachine {
   StandardMachine {
     name: "Merger",
     inputs: inputs! [
-      StandardMachineInput {cost: 1, relative_location: Vector::new ( 1, 0)},
-      StandardMachineInput {cost: 1, relative_location: Vector::new (-1, 0)},
+      StandardMachineInput {cost: 1, relative_location: Vector::new (0,  1)},
+      StandardMachineInput {cost: 1, relative_location: Vector::new (0, -1)},
      ],
     outputs: inputs! [StandardMachineOutput {amount: 2, relative_location: Vector::new (1, 0)}],
     min_output_cycle_length: 1,
@@ -255,7 +255,7 @@ impl MachineType for StandardMachine {
     self.inputs.iter().map (| input | rotate_90 (input.relative_location, state.facing) + state.position).collect()
   }
   fn output_locations (&self, state: &MachineMapState)->Inputs <Vector> {
-    self.inputs.iter().map (| input | rotate_90 (input.relative_location, state.facing) + state.position).collect()
+    self.outputs.iter().map (| input | rotate_90 (input.relative_location, state.facing) + state.position).collect()
   }
   
   fn max_output_rates (&self, input_rates: & [Number])->Inputs <Number> {
@@ -311,7 +311,7 @@ impl MachineType for StandardMachine {
 }
 
 
-
+#[derive (Clone, PartialEq, Eq, Hash, Debug)]
 pub struct StatefulMachine {
   pub machine_type: StandardMachine,
   pub map_state: MachineMapState,

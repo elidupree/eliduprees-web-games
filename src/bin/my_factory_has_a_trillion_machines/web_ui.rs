@@ -3,10 +3,12 @@ use super::*;
 use stdweb;
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::hash::{Hash, Hasher};
 use glium::{Surface};
 use arrayvec::ArrayVec;
 use stdweb::unstable::TryInto;
-
+use siphasher::sip::SipHasher;
+use nalgebra::Vector2;
 
 
 
@@ -23,7 +25,38 @@ struct Vertex {
 }
 implement_vertex!(Vertex, position, color);
 
-pub fn machine_choices()->Vec<StandardMachine> { vec![conveyor(), splitter(), merger(), slow_machine(), material_generator(), consumer()]}
+fn machine_choices()->Vec<StandardMachine> { vec![conveyor(), splitter(), merger(), slow_machine(), material_generator(), consumer()]}
+
+fn machine_color(machine: & StatefulMachine)->[f32; 3] {
+  let mut hasher = SipHasher::new() ;
+      machine.hash (&mut hasher);
+      let hash = hasher.finish();
+      let mask = (1u64 << 20)-1;
+      let divisor = mask as f32 * 0.8;
+      [
+        ((hash      ) & mask) as f32/divisor + 0.1,
+        ((hash >> 20) & mask) as f32/divisor + 0.1,
+        ((hash >> 40) & mask) as f32/divisor + 0.1,
+      ]
+}
+
+fn tile_center (position: Vector)->Vector2 <f32> {
+  Vector2::new (position [0] as f32/30.0, position [1] as f32/30.0)
+}
+fn tile_size()->Vector2 <f32> {
+  Vector2::new (1.0/30.0, 1.0/30.0)
+}
+
+fn draw_rectangle (vertices: &mut Vec<Vertex>, center: Vector2<f32>, size: Vector2<f32>, color: [f32; 3]) {
+  let vertex = |x,y| Vertex {
+            position: [center [0] + size [0]*x as f32, center [1] + size [1]*y as f32],
+            color,
+          };
+          vertices.extend(&[
+            vertex(-0.5,-0.5),vertex( 0.5,-0.5),vertex( 0.5, 0.5),
+            vertex(-0.5,-0.5),vertex( 0.5, 0.5),vertex(-0.5, 0.5)
+          ]);
+}
 
 pub fn run_game() {
   let vertex_shader_source = r#"
@@ -63,7 +96,7 @@ gl_FragColor = vec4(color_transfer, 1.0);
   }));
   
   let click_callback = {let state = state.clone(); move |x: f64,y: f64 | {
-    let position = Vector::new ((x*30.0) as Number, (y*30.0) as Number);
+    let position = Vector::new ((x*30.0).round() as Number, (y*30.0).round() as Number);
     let choice: usize = js!{ return +$("input:radio[name=machine_choice]:checked").val()}.try_into().unwrap();
     let machine_type = machine_choices() [choice].clone();
     let materials_state =MachineMaterialsState::empty (& machine_type);
@@ -113,19 +146,32 @@ fn do_frame(state: & Rc<RefCell<State>>) {
     let mut vertices = Vec::<Vertex>::new();
     
     for machine in & state.map.machines {
-      let position = [machine.map_state.position [0] as f32/30.0, machine.map_state.position [1] as f32/30.0];
-      let width = 1.0/30.0;
-      let height = 1.0/30.0;
-          let vertex = |x,y| Vertex {
-            position: [position [0] + width*x as f32, position [1] + height*y as f32],
-            color: [0.0, 0.5, 1.0],
-          };
-          vertices.extend(&[
-            vertex(0,0),vertex(1,0),vertex(1,1),
-            vertex(0,0),vertex(1,1),vertex(0,1)
-          ]);
-
+      draw_rectangle (&mut vertices,
+        tile_center (machine.map_state.position),
+        tile_size(),
+        machine_color (machine)
+      );
     }
+    for machine in & state.map.machines {
+      for input_location in machine.machine_type.input_locations (& machine.map_state) {
+        draw_rectangle (&mut vertices,
+          tile_center (input_location),
+          tile_size()* 0.8,
+          machine_color (machine)
+        );
+      }
+    }
+    for machine in & state.map.machines {
+      for output_location in machine.machine_type.output_locations (& machine.map_state) {
+        draw_rectangle (&mut vertices,
+          tile_center (output_location),
+          tile_size()* 0.6,
+          machine_color (machine)
+        );
+      }
+    }
+
+
     target.draw(&glium::VertexBuffer::new(& state.glium_display, &vertices)
                 .expect("failed to generate glium Vertex buffer"),
               &indices,

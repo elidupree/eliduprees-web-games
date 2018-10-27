@@ -16,6 +16,7 @@ extern crate arrayvec;
 extern crate proptest;
 #[macro_use]
 extern crate glium;
+extern crate siphasher;
 
 mod simulation;
 pub use simulation::*;
