@@ -328,6 +328,7 @@ pub struct MachinesGraphInput {
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
 pub struct MachinesGraphNode {
   pub machine: StandardMachine,
+  pub original_index: usize,
   pub initial_state: MachineMaterialsState,
   pub inputs: Inputs <MachinesGraphInput>,
   pub output_locations: Inputs <Option <(usize, usize)>>
@@ -348,7 +349,7 @@ impl MachinesGraph {
       }).collect();
       let initial_state = initial_state.unwrap_or_else (|| MachineMaterialsState::empty (& machine));
       MachinesGraphNode {
-        machine, initial_state, inputs, output_locations,
+        machine, initial_state, inputs, output_locations, original_index: usize::max_value(),
       }
     }).collect()}
   }
@@ -384,6 +385,7 @@ impl MachinesGraph {
     
     fn push_node (nodes: &mut Vec<MachinesGraphNode>, data_to_node: &mut Vec<Option <usize>>, node_to_data: &mut Vec<Option <usize>>, levels: &mut ArrayVec<[usize; MAX_COMPONENTS]>, data_index: usize, machine: & StatefulMachine, level: usize) {
       let current_level = levels [data_index];
+      //eprintln!(" {:?} ", (current_level, level));
       if current_level < level {
           //TODO: cycle handling
           eprintln!(" I don't know how to handle cycles yet!");
@@ -391,7 +393,7 @@ impl MachinesGraph {
       } else if current_level == level {
           // already recorded
           return;
-      } else if level != usize::max_value() {
+      } else if current_level != usize::max_value() {
         unreachable!()
       }
       data_to_node [data_index] = Some (nodes.len());
@@ -399,7 +401,7 @@ impl MachinesGraph {
       levels [data_index] = level;
       let inputs: Inputs <MachinesGraphInput> = machine.machine_type.inputs.iter().map (|_input | Default::default()).collect();
       nodes.push(MachinesGraphNode {
-        machine: machine.machine_type.clone(), initial_state: machine.materials_state.clone(), inputs, output_locations: Default::default(),
+        machine: machine.machine_type.clone(), original_index: data_index, initial_state: machine.materials_state.clone(), inputs, output_locations: Default::default(),
       });
     }
     for (index, inputs) in num_inputs.iter().enumerate() {
@@ -418,6 +420,16 @@ impl MachinesGraph {
           push_node (&mut nodes, &mut data_to_node, &mut node_to_data, &mut levels, *target_data_index, & data [*target_data_index], level + 1);
         }
       }
+    }
+    
+    for (node_index, node) in nodes.iter_mut().enumerate() {
+      node.output_locations =
+        connections [node_to_data [node_index].unwrap()]
+        .iter().map (| destination |
+          destination.and_then (| (machine, input) |
+            data_to_node [machine].map (| index | (index , input))
+          )
+        ).collect();
     }
     
     MachinesGraph {nodes}
