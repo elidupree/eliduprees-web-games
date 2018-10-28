@@ -147,7 +147,7 @@ gl_FragColor = vec4(color_transfer, 1.0);
 fn do_frame(state: & Rc<RefCell<State>>) {
   let mut state = state.borrow_mut();
   let state = &mut *state;
-  let current_time =(now().floor() - state.start_time.floor()) as Number;
+  let current_time =((now() - state.start_time)*2.0) as Number;
   state.map.update_to (& state.future, current_time);
   
   
