@@ -16,7 +16,7 @@ struct State {
   glium_display: glium::Display,
   glium_program: glium::Program,
   map: Map,
-  graph: MachinesGraph,
+  future: MachinesFuture,
 }
 
 #[derive(Copy, Clone)]
@@ -92,11 +92,13 @@ gl_FragColor = vec4(color_transfer, 1.0);
       .expect("glium program generation failed");
       
   let map =Map {machines: ArrayVec::new(),};
-  let graph = MachinesGraph::from_map (& map.machines) ;
+  let output_edges = map.output_edges();
+  let ordering = map.topological_ordering_of_noncyclic_machines(& output_edges);
+  let future = map.future (& output_edges, & ordering);
       
   let state = Rc::new (RefCell::new (State {
     glium_display: display, glium_program: program,
-    map, graph,
+    map, future,
   }));
   
   let click_callback = {let state = state.clone(); move |x: f64,y: f64 | {
@@ -110,8 +112,9 @@ gl_FragColor = vec4(color_transfer, 1.0);
       map_state: MachineMapState {position, facing: 0},
       materials_state,
     });
-    state.graph = MachinesGraph::from_map (& state.map.machines) ;
-    state.graph.simulate_future();
+    let output_edges = state.map.output_edges();
+    let ordering = state.map.topological_ordering_of_noncyclic_machines(& output_edges);
+    state.future = state.map.future (& output_edges, & ordering);
   }};
   
   js!{
