@@ -72,6 +72,7 @@ Promise.all(images.map((path) =>
     window.loaded_sprites = textureinfo;
     console.log(textureinfo);
     var canvas = document.createElement('canvas');
+    canvas.style = "background-color: blue";
     canvas.width = textureinfo.width;
     canvas.height = textureinfo.height;
     canvas.getContext('2d').putImageData(new ImageData(textureinfo.rgba, textureinfo.width, textureinfo.height), 0, 0);

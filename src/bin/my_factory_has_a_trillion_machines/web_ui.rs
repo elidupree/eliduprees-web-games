@@ -22,6 +22,7 @@ js_deserializable! (SpriteBounds) ;
 
 struct SpriteSheet {
   texture: glium::texture::CompressedSrgbTexture2d,
+  size: [u32; 2],
   bounds_map: HashMap <String, SpriteBounds>
 }
 
@@ -68,7 +69,7 @@ fn tile_size()->Vector2 <f32> {
 fn draw_rectangle (vertices: &mut Vec<Vertex>, sprite_sheet: & SpriteSheet, center: Vector2<f32>, size: Vector2<f32>, color: [f32; 3]) {
   let vertex = |x,y| Vertex {
             position: [center [0] + size [0]*x, center [1] + size [1]*y],
-            texture_coordinates: [(x+0.5) * 480.0, (y+0.5) * 480.0], 
+            texture_coordinates: [(x+0.5)*64.0/sprite_sheet.size [0] as f32, (y+0.5)*64.0/sprite_sheet.size [1] as f32], 
             color,
           };
           vertices.extend(&[
@@ -88,7 +89,7 @@ varying highp vec2 texture_coordinates_transfer;
 
 void main() {
 gl_Position = vec4 (position*2.0 - 1.0, 0.0, 1.0);
-
+texture_coordinates_transfer = texture_coordinates;
 color_transfer = color;
 }
 
@@ -178,10 +179,11 @@ fn do_frame(state: & Rc<RefCell<State>>) {
       let state = &mut*state;
       
       let data: Vec<u8> = data.into();
-      let image = glium::texture::RawImage2d::from_raw_rgb (data, (width, height));
+      let image = glium::texture::RawImage2d::from_raw_rgba (data, (width, height));
       
       state.sprite_sheet = Some (SpriteSheet {
         texture: glium::texture::CompressedSrgbTexture2d::new (& state.glium_display, image).unwrap(),
+        size: [width, height],
         bounds_map
       });
     };
