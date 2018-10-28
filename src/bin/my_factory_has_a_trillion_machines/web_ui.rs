@@ -17,6 +17,7 @@ struct State {
   glium_program: glium::Program,
   map: Map,
   future: MachinesFuture,
+  last_map_change: f64,
 }
 
 #[derive(Copy, Clone)]
@@ -98,7 +99,7 @@ gl_FragColor = vec4(color_transfer, 1.0);
       
   let state = Rc::new (RefCell::new (State {
     glium_display: display, glium_program: program,
-    map, future,
+    map, future, last_map_change: now(),
   }));
   
   let click_callback = {let state = state.clone(); move |x: f64,y: f64 | {
@@ -115,6 +116,7 @@ gl_FragColor = vec4(color_transfer, 1.0);
     let output_edges = state.map.output_edges();
     let ordering = state.map.topological_ordering_of_noncyclic_machines(& output_edges);
     state.future = state.map.future (& output_edges, & ordering);
+    state.last_map_change = now();
   }};
   
   js!{
@@ -144,7 +146,11 @@ gl_FragColor = vec4(color_transfer, 1.0);
 
 
 fn do_frame(state: & Rc<RefCell<State>>) {
-  let state = state.borrow_mut();
+  let mut state = state.borrow_mut();
+  let state = &mut *state;
+  state.map.update_to (& state.future, (now().floor() - state.last_map_change.floor()) as Number);
+  
+  
   let parameters = glium::DrawParameters {
     blend: glium::draw_parameters::Blend::alpha_blending(),
     ..Default::default()

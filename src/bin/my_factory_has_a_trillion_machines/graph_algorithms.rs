@@ -107,6 +107,7 @@ impl Map {
         if let Some ((time, new_state)) = personal_change {
           if time == next_change_time {
             state = new_state;
+            result [machine_index].changes.push ((time, state.clone()));
           }
         }
         let new_outputs = machine.machine_type.current_outputs_and_next_change (&state, & input_patterns).0;
@@ -128,6 +129,14 @@ impl Map {
     }
 
     result
+  }
+  
+  pub fn update_to (&mut self, future: & MachinesFuture, time: Number) {
+    for (machine, future) in self.machines.iter_mut().zip (future.iter()) {
+      if let Some ((_, state)) = future.changes.iter().rev().find (| (change_time,_) | *change_time <= time) {
+        machine.materials_state = state.clone();
+      }
+    }
   }
 }
 
