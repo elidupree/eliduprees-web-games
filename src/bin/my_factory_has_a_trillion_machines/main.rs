@@ -20,6 +20,8 @@ extern crate glium;
 extern crate siphasher;
 
 pub use eliduprees_web_games::*;
+mod flow_pattern;
+pub use flow_pattern::*;
 mod machine_data;
 pub use machine_data::*;
 mod graph_algorithms;
