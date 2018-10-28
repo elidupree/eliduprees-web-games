@@ -67,6 +67,7 @@ Promise.all(images.map((path) =>
   (img) => {
     console.log("image loading failed: ", img.src);
   }).then((textureinfo) => {
+    window.loaded_sprites = textureinfo;
     console.log(textureinfo);
     var canvas = document.createElement('canvas');
     canvas.width = textureinfo.width;

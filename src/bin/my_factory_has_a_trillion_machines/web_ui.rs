@@ -4,17 +4,31 @@ use stdweb;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::hash::{Hash, Hasher};
+use std::collections::HashMap;
 use glium::{Surface};
 use arrayvec::ArrayVec;
 use stdweb::unstable::TryInto;
+use stdweb::web::ArrayBuffer;
 use siphasher::sip::SipHasher;
 use nalgebra::Vector2;
 
 
 
+#[derive (Deserialize)]
+struct SpriteBounds {
+  x: u32,y: u32, width: u32, height: u32,
+}
+js_deserializable! (SpriteBounds) ;
+
+struct SpriteSheet {
+  texture: glium::texture::CompressedSrgbTexture2d,
+  bounds_map: HashMap <String, SpriteBounds>
+}
+
 struct State {
   glium_display: glium::Display,
   glium_program: glium::Program,
+  sprite_sheet: Option <SpriteSheet>,
   map: Map,
   future: MachinesFuture,
   start_ui_time: f64,
@@ -24,9 +38,10 @@ struct State {
 #[derive(Copy, Clone)]
 struct Vertex {
   position: [f32; 2],
+  texture_coordinates: [f32; 2],
   color: [f32; 3],
 }
-implement_vertex!(Vertex, position, color);
+implement_vertex!(Vertex, position, texture_coordinates, color);
 
 fn machine_choices()->Vec<StandardMachine> { vec![conveyor(), splitter(), merger(), slow_machine(), material_generator(), consumer()]}
 
@@ -50,9 +65,10 @@ fn tile_size()->Vector2 <f32> {
   Vector2::new (1.0/30.0, 1.0/30.0)
 }
 
-fn draw_rectangle (vertices: &mut Vec<Vertex>, center: Vector2<f32>, size: Vector2<f32>, color: [f32; 3]) {
+fn draw_rectangle (vertices: &mut Vec<Vertex>, sprite_sheet: & SpriteSheet, center: Vector2<f32>, size: Vector2<f32>, color: [f32; 3]) {
   let vertex = |x,y| Vertex {
-            position: [center [0] + size [0]*x as f32, center [1] + size [1]*y as f32],
+            position: [center [0] + size [0]*x, center [1] + size [1]*y],
+            texture_coordinates: [(x+0.5) * 480.0, (y+0.5) * 480.0], 
             color,
           };
           vertices.extend(&[
@@ -66,7 +82,9 @@ pub fn run_game() {
 #version 100
 attribute highp vec2 position;
 attribute lowp vec3 color;
+attribute highp vec2 texture_coordinates;
 varying lowp vec3 color_transfer;
+varying highp vec2 texture_coordinates_transfer;
 
 void main() {
 gl_Position = vec4 (position*2.0 - 1.0, 0.0, 1.0);
@@ -79,9 +97,12 @@ color_transfer = color;
   let fragment_shader_source = r#"
 #version 100
 varying lowp vec3 color_transfer;
+varying highp vec2 texture_coordinates_transfer;
+uniform sampler2D sprite_sheet;
 
 void main() {
-gl_FragColor = vec4(color_transfer, 1.0);
+lowp vec4 t = texture2D (sprite_sheet, texture_coordinates_transfer);
+gl_FragColor = vec4(color_transfer, t.a);
 }
 
 "#;
@@ -99,7 +120,7 @@ gl_FragColor = vec4(color_transfer, 1.0);
   let future = map.future (& output_edges, & ordering);
       
   let state = Rc::new (RefCell::new (State {
-    glium_display: display, glium_program: program,
+    glium_display: display, glium_program: program, sprite_sheet: None,
     map, future, start_ui_time: now(), current_game_time: 0,
   }));
   
@@ -146,11 +167,37 @@ gl_FragColor = vec4(color_transfer, 1.0);
 
 
 fn do_frame(state: & Rc<RefCell<State>>) {
+  
+  
+  if state.borrow().sprite_sheet.is_none() {
+    let state = state.clone();
+    let load = move | data: ArrayBuffer, width: u32, height: u32, bounds_map: HashMap <String, SpriteBounds> | {
+      
+    
+      let mut state = state.borrow_mut();
+      let state = &mut*state;
+      
+      let data: Vec<u8> = data.into();
+      let image = glium::texture::RawImage2d::from_raw_rgb (data, (width, height));
+      
+      state.sprite_sheet = Some (SpriteSheet {
+        texture: glium::texture::CompressedSrgbTexture2d::new (& state.glium_display, image).unwrap(),
+        bounds_map
+      });
+    };
+    js!{
+      if (window.loaded_sprites) {
+        @{load} (loaded_sprites.rgba.buffer, loaded_sprites.width, loaded_sprites.height, loaded_sprites.coords);
+      }
+    }
+  }
+  
   let mut state = state.borrow_mut();
   let state = &mut *state;
   state.current_game_time =((now() - state.start_ui_time)*2.0) as Number;
   state.map.update_to (& state.future, state.current_game_time);
   
+  let sprite_sheet = match state.sprite_sheet {Some (ref value) => value, None => return};
   
   let parameters = glium::DrawParameters {
     blend: glium::draw_parameters::Blend::alpha_blending(),
@@ -163,7 +210,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
     let mut vertices = Vec::<Vertex>::new();
     
     for machine in & state.map.machines {
-      draw_rectangle (&mut vertices,
+      draw_rectangle (&mut vertices, sprite_sheet,
         tile_center (machine.map_state.position),
         tile_size(),
         machine_color (machine)
@@ -171,7 +218,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
     }
     for machine in & state.map.machines {
       for input_location in machine.machine_type.input_locations (& machine.map_state) {
-        draw_rectangle (&mut vertices,
+        draw_rectangle (&mut vertices, sprite_sheet,
           tile_center (input_location),
           tile_size()* 0.8,
           machine_color (machine)
@@ -180,7 +227,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
     }
     for machine in & state.map.machines {
       for output_location in machine.machine_type.output_locations (& machine.map_state) {
-        draw_rectangle (&mut vertices,
+        draw_rectangle (&mut vertices, sprite_sheet,
           tile_center (output_location),
           tile_size()* 0.6,
           machine_color (machine)
@@ -193,7 +240,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
       if fraction <= 1.0 {
         let mut size = tile_size();
         size [0] *= fraction;
-        draw_rectangle (&mut vertices,
+        draw_rectangle (&mut vertices, sprite_sheet,
           tile_center (machine.map_state.position),
           size,
           [0.0,0.0,0.0]
@@ -205,7 +252,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
         let storage_fraction = storage as f32*0.1;
         let mut size = tile_size();
         if storage_fraction < 1.0 {size [1] *= storage_fraction;}
-        draw_rectangle (&mut vertices,
+        draw_rectangle (&mut vertices, sprite_sheet,
           tile_center (input_location),
           size,
           [0.0,0.0,0.0]
@@ -218,7 +265,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
                 .expect("failed to generate glium Vertex buffer"),
               &indices,
               & state.glium_program,
-              &glium::uniforms::EmptyUniforms,
+              & uniform! {sprite_sheet: & sprite_sheet.texture},
               &parameters)
         .expect("failed target.draw");
 
