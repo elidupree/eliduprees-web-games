@@ -17,7 +17,7 @@ struct State {
   glium_program: glium::Program,
   map: Map,
   future: MachinesFuture,
-  last_map_change: f64,
+  start_time: f64,
 }
 
 #[derive(Copy, Clone)]
@@ -99,7 +99,7 @@ gl_FragColor = vec4(color_transfer, 1.0);
       
   let state = Rc::new (RefCell::new (State {
     glium_display: display, glium_program: program,
-    map, future, last_map_change: now(),
+    map, future, start_time: now(),
   }));
   
   let click_callback = {let state = state.clone(); move |x: f64,y: f64 | {
@@ -116,7 +116,6 @@ gl_FragColor = vec4(color_transfer, 1.0);
     let output_edges = state.map.output_edges();
     let ordering = state.map.topological_ordering_of_noncyclic_machines(& output_edges);
     state.future = state.map.future (& output_edges, & ordering);
-    state.last_map_change = now();
   }};
   
   js!{
@@ -148,7 +147,8 @@ gl_FragColor = vec4(color_transfer, 1.0);
 fn do_frame(state: & Rc<RefCell<State>>) {
   let mut state = state.borrow_mut();
   let state = &mut *state;
-  state.map.update_to (& state.future, (now().floor() - state.last_map_change.floor()) as Number);
+  let current_time =(now().floor() - state.start_time.floor()) as Number;
+  state.map.update_to (& state.future, current_time);
   
   
   let parameters = glium::DrawParameters {
@@ -183,6 +183,18 @@ fn do_frame(state: & Rc<RefCell<State>>) {
           tile_center (output_location),
           tile_size()* 0.6,
           machine_color (machine)
+        );
+      }
+    }
+    for (machine_index, machine) in state.map.machines.iter().enumerate() {
+      for (input_location, storage) in machine.machine_type.input_locations (& machine.map_state).into_iter().zip (machine.machine_type.input_storage_at (& machine.materials_state, & state.future [machine_index].inputs_at (current_time), current_time)) {
+        let storage_fraction = storage as f32*0.1;
+        let mut size = tile_size();
+        if storage_fraction < 1.0 {size [1] *= storage_fraction;}
+        draw_rectangle (&mut vertices,
+          tile_center (input_location),
+          size,
+          [0.0,0.0,0.0]
         );
       }
     }

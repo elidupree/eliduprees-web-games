@@ -140,6 +140,12 @@ impl Map {
   }
 }
 
+impl MachineFuture {
+  pub fn inputs_at (&self, time: Number)->Inputs <FlowPattern> {
+    self.inputs.iter().map (| future | future.changes.iter().rev().find (| (change_time,_) | *change_time <= time).map_or (future.initial_pattern, | (_, pattern) | *pattern)).collect()
+  }
+}
+
 #[derive (Clone, PartialEq, Eq, Hash, Debug, Default)]
 pub struct MachinesGraphInput {
   pub initial_value: FlowPattern,

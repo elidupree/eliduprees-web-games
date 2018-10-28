@@ -233,14 +233,21 @@ impl StandardMachine {
     output_rates.into_iter().zip (self.outputs.iter()).map (| (rate, output) | (rate + output.amount - 1)/output.amount).max().unwrap_or_else(|| self.max_output_rate())
   }
   
-  fn update_last_flow_change (&self, state: &mut MachineMaterialsState, change_time: Number, old_input_patterns: & [FlowPattern]) {
-    let interval = [state.last_flow_change, change_time];
+  pub fn input_storage_at (&self, state: &MachineMaterialsState, input_patterns: & [FlowPattern], time: Number)->Inputs <Number> {
+    let interval = [state.last_flow_change, time];
     let output_disbursements = state.current_output_pattern.num_disbursed_between (interval);
     
-    for ((input, materials), pattern) in self.inputs.iter().zip (state.inputs.iter_mut()).zip (old_input_patterns) {
+    self.inputs.iter().zip (state.inputs.iter()).zip (input_patterns).map (| ((input, materials), pattern) | {
       let accumulated = pattern.num_disbursed_between (interval);
       let spent = output_disbursements*input.cost;
-      materials.storage_before_last_flow_change += accumulated - spent;
+      materials.storage_before_last_flow_change + accumulated - spent
+    }).collect()
+  }
+  
+  fn update_last_flow_change (&self, state: &mut MachineMaterialsState, change_time: Number, old_input_patterns: & [FlowPattern]) {
+    let storages =self.input_storage_at (state, old_input_patterns, change_time);
+    for (input, storage) in state.inputs.iter_mut().zip (storages) {
+      input.storage_before_last_flow_change = storage;
     }
     
     state.last_flow_change = change_time;
