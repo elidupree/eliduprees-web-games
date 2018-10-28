@@ -2,6 +2,135 @@ use super::*;
 
 use arrayvec::ArrayVec;
 
+pub type OutputEdges = ArrayVec<[Inputs<Option<(usize, usize)>>; MAX_COMPONENTS]>;
+pub type MachinesFuture = Vec<MachineFuture>;
+
+
+#[derive (Clone, PartialEq, Eq, Hash, Debug, Default)]
+pub struct MachineFuture {
+  pub changes: Vec<(Number, MachineMaterialsState)>,
+  pub inputs: Inputs <MachineInputFuture>,
+}
+
+#[derive (Clone, PartialEq, Eq, Hash, Debug, Default)]
+pub struct MachineInputFuture {
+  pub initial_pattern: FlowPattern,
+  pub changes: Vec<(Number, FlowPattern)>,
+}
+
+impl Map {
+  pub fn output_edges (&self)->OutputEdges {
+    self.machines.iter().map (| machine | {
+      machine.machine_type.output_locations(&machine.map_state).into_iter().map (| output_location | {
+        self.machines.iter().enumerate().find_map(| (machine2_index, machine2) | {
+          machine2.machine_type.input_locations(& machine2.map_state).into_iter().enumerate().find_map(| (input_index, input_location) | {
+            if input_location == output_location {
+              Some((machine2_index, input_index))
+            }
+            else {
+              None
+            }
+          })
+        })
+      }).collect()
+    }).collect()
+  }
+  
+  pub fn topological_ordering_of_noncyclic_machines (&self, output_edges: & OutputEdges)->Vec<usize> {
+    let mut num_inputs: ArrayVec<[usize; MAX_COMPONENTS]> = self.machines.iter().map (|_| 0).collect();
+    let mut result = Vec::with_capacity(MAX_COMPONENTS);
+    let mut starting_points = Vec::with_capacity(MAX_COMPONENTS);
+    for machine in output_edges {
+      for output in machine {
+        if let Some(output) = output {
+          num_inputs[output.0] += 1
+        }
+      }
+    }
+    
+    for (index, inputs) in num_inputs.iter().enumerate() {
+      if *inputs == 0 {
+        starting_points.push (index);
+      }
+    }
+    
+    while let Some (starting_point) = starting_points.pop() {
+      result.push (starting_point);
+      for destination in & output_edges [starting_point] {
+        if let Some((machine, _input)) = *destination {
+          num_inputs [machine] -= 1;
+          if num_inputs [machine] == 0 {
+            starting_points.push (machine);
+          }
+        }
+      }
+    }
+    result
+  }
+  
+  pub fn future (&self, output_edges: & OutputEdges, topological_ordering: & [usize])->MachinesFuture {
+    let mut result: MachinesFuture = self.machines.iter().map (| machine | {
+      MachineFuture {
+        changes: Default::default(),
+        inputs: machine.machine_type.inputs.iter().map (| _input | Default::default()).collect()
+      }
+    }).collect();
+    
+    for &machine_index in topological_ordering {
+      let machine = & self.machines [machine_index];
+      let mut state = machine.materials_state.clone();
+      let mut input_patterns: Inputs <_> = result [machine_index].inputs.iter().map (| input | input.initial_pattern).collect();
+      let mut outputs: Inputs <_> = machine.machine_type.current_outputs_and_next_change (&state, & input_patterns).0.into_iter().map (| output | MachineInputFuture {initial_pattern: output, changes: Vec::new()}).collect();
+      let mut last_change_time = -1;
+      let mut total_changes = 0;
+      loop {
+        total_changes += total_changes;
+        assert!(total_changes < 100, "a machine probably entered an infinite loop");
+        let (_current_outputs, personal_change) = machine.machine_type.current_outputs_and_next_change (&state, & input_patterns);
+        let next_change_time =
+          personal_change.iter().map (| (time,_state) | *time).chain (
+            result [machine_index].inputs.iter().filter_map (| input | input.changes.iter().map (| (time,_pattern) | *time).find (| &time | time > last_change_time))
+          ).min();
+        let next_change_time = match next_change_time {
+          None => break,
+          Some (next_change_time) => next_change_time
+        };
+        //eprintln!(" {:?} ", (next_change_time, last_change_time, &personal_change)) ;
+        assert!(next_change_time > last_change_time);
+        for (index, (_time, pattern)) in result [machine_index].inputs.iter().enumerate().filter_map (
+              | (index, input) | input.changes.iter().find (| (time,_pattern) | *time == next_change_time).map (| whatever | (index, whatever))
+            ) {
+          state = machine.machine_type.with_input_changed (&state, next_change_time, & input_patterns, index, *pattern);
+          input_patterns [index] = *pattern;
+        }
+        let (_current_outputs, personal_change) = machine.machine_type.current_outputs_and_next_change (&state, & input_patterns);
+        if let Some ((time, new_state)) = personal_change {
+          if time == next_change_time {
+            state = new_state;
+          }
+        }
+        let new_outputs = machine.machine_type.current_outputs_and_next_change (&state, & input_patterns).0;
+        for (output, new_pattern) in outputs.iter_mut().zip (new_outputs.into_iter()) {
+          if new_pattern != output.changes.last().map_or (output.initial_pattern, | &(_time, pattern) | pattern) {
+            output.changes.push ((next_change_time, new_pattern));
+          }
+        }
+        last_change_time = next_change_time;
+      }
+      for (output, destination) in outputs.into_iter().zip (output_edges [machine_index].iter()) {
+        if let Some ((destination_machine, destination_input)) = *destination {
+          result [destination_machine].inputs [destination_input] = output;
+        }
+        else {
+          println!("Machine {} outputted {:?}", machine_index, output);
+        }
+      }
+    }
+
+    result
+  }
+}
+
 #[derive (Clone, PartialEq, Eq, Hash, Debug, Default)]
 pub struct MachinesGraphInput {
   pub initial_value: FlowPattern,
@@ -35,87 +164,6 @@ impl MachinesGraph {
         machine, initial_state, inputs, output_locations, original_index: usize::max_value(),
       }
     }).collect()}
-  }
-  
-  pub fn from_map (data: & [StatefulMachine])->MachinesGraph {
-    let connections: ArrayVec<[Inputs<Option<(usize, usize)>>; MAX_COMPONENTS]> = data.iter().map (| machine | {
-      machine.machine_type.output_locations(&machine.map_state).into_iter().map (| output_location | {
-        data.iter().enumerate().find_map(| (machine2_index, machine2) | {
-          machine2.machine_type.input_locations(& machine2.map_state).into_iter().enumerate().find_map(| (input_index, input_location) | {
-            if input_location == output_location {
-              Some((machine2_index, input_index))
-            }
-            else {
-              None
-            }
-          })
-        })
-      }).collect()
-    }).collect();
-    
-    let mut levels: ArrayVec<[usize; MAX_COMPONENTS]> = data.iter().map (|_| usize::max_value()).collect();
-    let mut num_inputs: ArrayVec<[usize; MAX_COMPONENTS]> = data.iter().map (|_| 0).collect();
-    let mut nodes: Vec<MachinesGraphNode> = Vec::with_capacity(MAX_COMPONENTS);
-    let mut data_to_node = (0..data.len()).map (| _index | None).collect();
-    let mut node_to_data = (0..data.len()).map (| _index | None).collect();
-    for machine in &connections {
-      for output in machine {
-        if let Some(output) = output {
-          num_inputs[output.0] += 1
-        }
-      }
-    }
-    
-    fn push_node (nodes: &mut Vec<MachinesGraphNode>, data_to_node: &mut Vec<Option <usize>>, node_to_data: &mut Vec<Option <usize>>, levels: &mut ArrayVec<[usize; MAX_COMPONENTS]>, data_index: usize, machine: & StatefulMachine, level: usize) {
-      let current_level = levels [data_index];
-      //eprintln!(" {:?} ", (current_level, level));
-      if current_level < level {
-          //TODO: cycle handling
-          eprintln!(" I don't know how to handle cycles yet!");
-          return;
-      } else if current_level == level {
-          // already recorded
-          return;
-      } else if current_level != usize::max_value() {
-        unreachable!()
-      }
-      data_to_node [data_index] = Some (nodes.len());
-      node_to_data [nodes.len()] = Some (data_index);
-      levels [data_index] = level;
-      let inputs: Inputs <MachinesGraphInput> = machine.machine_type.inputs.iter().map (|_input | Default::default()).collect();
-      nodes.push(MachinesGraphNode {
-        machine: machine.machine_type.clone(), original_index: data_index, initial_state: machine.materials_state.clone(), inputs, output_locations: Default::default(),
-      });
-    }
-    for (index, inputs) in num_inputs.iter().enumerate() {
-      if *inputs == 0 {
-        push_node (&mut nodes, &mut data_to_node, &mut node_to_data, &mut levels, index, & data [index], 0);
-      }
-    }
-    
-    for node_index in 0.. {
-      if node_index >= nodes.len() {break}
-      
-      let data_index = node_to_data [node_index].unwrap();
-      let level = levels [data_index];
-      for destination in &connections[data_index] {
-        if let Some((target_data_index, _input_index)) = destination {
-          push_node (&mut nodes, &mut data_to_node, &mut node_to_data, &mut levels, *target_data_index, & data [*target_data_index], level + 1);
-        }
-      }
-    }
-    
-    for (node_index, node) in nodes.iter_mut().enumerate() {
-      node.output_locations =
-        connections [node_to_data [node_index].unwrap()]
-        .iter().map (| destination |
-          destination.and_then (| (machine, input) |
-            data_to_node [machine].map (| index | (index , input))
-          )
-        ).collect();
-    }
-    
-    MachinesGraph {nodes}
   }
   
   pub fn simulate_future (&mut self) {
