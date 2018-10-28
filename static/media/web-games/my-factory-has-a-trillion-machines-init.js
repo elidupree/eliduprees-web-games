@@ -26,14 +26,16 @@ Promise.all(images.map((path) =>
     var totalheight = 1;
     var maxwidth = 1;
     for(var img of images) {
+      var width = Math.min (64, img.width);
+      var height = Math.min (64, img.height);
       coords[img.src] = {
         x: 2,
         y: totalheight,
-        width: img.width,
-        height: img.height
+        width,
+        height 
       };
-      totalheight += img.height + 2;
-      if(maxwidth < img.width) { maxwidth = img.width; }
+      totalheight += height + 2;
+      if(maxwidth < width) { maxwidth = width; }
     }
     var textureheight = roundUpToPowerOfTwo(totalheight);
     var texturewidth = roundUpToPowerOfTwo(maxwidth + 4);
