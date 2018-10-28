@@ -17,7 +17,8 @@ struct State {
   glium_program: glium::Program,
   map: Map,
   future: MachinesFuture,
-  start_time: f64,
+  start_ui_time: f64,
+  current_game_time: Number,
 }
 
 #[derive(Copy, Clone)]
@@ -99,15 +100,15 @@ gl_FragColor = vec4(color_transfer, 1.0);
       
   let state = Rc::new (RefCell::new (State {
     glium_display: display, glium_program: program,
-    map, future, start_time: now(),
+    map, future, start_ui_time: now(), current_game_time: 0,
   }));
   
   let click_callback = {let state = state.clone(); move |x: f64,y: f64 | {
     let position = Vector::new ((x*30.0).round() as Number, (y*30.0).round() as Number);
     let choice: usize = js!{ return +$("input:radio[name=machine_choice]:checked").val()}.try_into().unwrap();
     let machine_type = machine_choices() [choice].clone();
-    let materials_state =MachineMaterialsState::empty (& machine_type);
     let mut state = state.borrow_mut();
+    let materials_state =MachineMaterialsState::empty (& machine_type, state.current_game_time);
     state.map.machines.push (StatefulMachine {
       machine_type,
       map_state: MachineMapState {position, facing: 0},
@@ -147,8 +148,8 @@ gl_FragColor = vec4(color_transfer, 1.0);
 fn do_frame(state: & Rc<RefCell<State>>) {
   let mut state = state.borrow_mut();
   let state = &mut *state;
-  let current_time =((now() - state.start_time)*2.0) as Number;
-  state.map.update_to (& state.future, current_time);
+  state.current_game_time =((now() - state.start_ui_time)*2.0) as Number;
+  state.map.update_to (& state.future, state.current_game_time);
   
   
   let parameters = glium::DrawParameters {
@@ -187,8 +188,8 @@ fn do_frame(state: & Rc<RefCell<State>>) {
       }
     }
     for machine in & state.map.machines {
-      let last_disbursement = machine.materials_state.current_output_pattern.last_disbursement_before (current_time).unwrap_or (-1000000);
-      let fraction = (current_time - last_disbursement) as f32/machine.machine_type.min_output_cycle_length as f32;
+      let last_disbursement = machine.materials_state.current_output_pattern.last_disbursement_before (state.current_game_time).unwrap_or (-1000000);
+      let fraction = (state.current_game_time - last_disbursement) as f32/machine.machine_type.min_output_cycle_length as f32;
       if fraction <= 1.0 {
         let mut size = tile_size();
         size [0] *= fraction;
@@ -200,7 +201,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
       }
     }
     for (machine_index, machine) in state.map.machines.iter().enumerate() {
-      for (input_location, storage) in machine.machine_type.input_locations (& machine.map_state).into_iter().zip (machine.machine_type.input_storage_at (& machine.materials_state, & state.future [machine_index].inputs_at (current_time), current_time)) {
+      for (input_location, storage) in machine.machine_type.input_locations (& machine.map_state).into_iter().zip (machine.machine_type.input_storage_at (& machine.materials_state, & state.future [machine_index].inputs_at (state.current_game_time), state.current_game_time)) {
         let storage_fraction = storage as f32*0.1;
         let mut size = tile_size();
         if storage_fraction < 1.0 {size [1] *= storage_fraction;}

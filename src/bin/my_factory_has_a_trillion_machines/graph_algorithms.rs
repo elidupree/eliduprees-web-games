@@ -174,7 +174,7 @@ impl MachinesGraph {
       let output_locations: Inputs <Option <(usize, usize)>> = (0..machine.outputs.len()).map (| index | {
         outputs.get (index).and_then (| & (machine, input) | if machine == -1 {None} else {Some((machine as usize, input as usize))})
       }).collect();
-      let initial_state = initial_state.unwrap_or_else (|| MachineMaterialsState::empty (& machine));
+      let initial_state = initial_state.unwrap_or_else (|| MachineMaterialsState::empty (& machine, 0));
       MachinesGraphNode {
         machine, initial_state, inputs, output_locations, original_index: usize::max_value(),
       }

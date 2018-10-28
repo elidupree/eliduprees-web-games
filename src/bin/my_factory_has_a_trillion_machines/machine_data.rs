@@ -146,10 +146,10 @@ pub struct MachineMaterialsState {
 }
 
 impl MachineMaterialsState {
-  pub fn empty <M: MachineType> (machine: & M)->MachineMaterialsState {
+  pub fn empty <M: MachineType> (machine: & M, time: Number)->MachineMaterialsState {
     MachineMaterialsState {
       current_output_pattern: Default::default(),
-      last_flow_change: 0,
+      last_flow_change: time,
       inputs: ArrayVec::from_iter (iter::repeat (Default::default()).take (machine.num_inputs())),
     }
   }
