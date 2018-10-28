@@ -186,6 +186,19 @@ fn do_frame(state: & Rc<RefCell<State>>) {
         );
       }
     }
+    for machine in & state.map.machines {
+      let last_disbursement = machine.materials_state.current_output_pattern.last_disbursement_before (current_time).unwrap_or (-1000000);
+      let fraction = (current_time - last_disbursement) as f32/machine.machine_type.min_output_cycle_length as f32;
+      if fraction <= 1.0 {
+        let mut size = tile_size();
+        size [0] *= fraction;
+        draw_rectangle (&mut vertices,
+          tile_center (machine.map_state.position),
+          size,
+          [0.0,0.0,0.0]
+        );
+      }
+    }
     for (machine_index, machine) in state.map.machines.iter().enumerate() {
       for (input_location, storage) in machine.machine_type.input_locations (& machine.map_state).into_iter().zip (machine.machine_type.input_storage_at (& machine.materials_state, & state.future [machine_index].inputs_at (current_time), current_time)) {
         let storage_fraction = storage as f32*0.1;
