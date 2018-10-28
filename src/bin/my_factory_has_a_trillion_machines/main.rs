@@ -18,10 +18,11 @@ extern crate proptest;
 extern crate glium;
 extern crate siphasher;
 
-mod simulation;
-pub use simulation::*;
 pub use eliduprees_web_games::*;
-
+mod machine_data;
+pub use machine_data::*;
+mod graph_algorithms;
+pub use graph_algorithms::*;
 
 #[cfg (target_os = "emscripten")]
 mod web_ui;
