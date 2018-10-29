@@ -72,7 +72,7 @@ impl Map {
     let mut result: MachinesFuture = self.machines.iter().map (| machine | {
       MachineFuture {
         changes: Default::default(),
-        inputs: machine.machine_type.inputs.iter().map (| _input | Default::default()).collect()
+        inputs: (0..machine.machine_type.num_inputs()).map (|_| Default::default()).collect()
       }
     }).collect();
     
@@ -152,6 +152,7 @@ pub struct MachinesGraphInput {
   pub changes: Vec<(Number, FlowPattern)>,
 }
 
+/*
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
 pub struct MachinesGraphNode {
   pub machine: StandardMachine,
@@ -244,4 +245,4 @@ impl MachinesGraph {
   }
   
   }
-}
+}*/

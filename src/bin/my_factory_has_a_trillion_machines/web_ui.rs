@@ -44,7 +44,7 @@ struct Vertex {
 }
 implement_vertex!(Vertex, position, texture_coordinates, color);
 
-fn machine_choices()->Vec<StandardMachine> { vec![conveyor(), splitter(), merger(), slow_machine(), material_generator(), consumer()]}
+fn machine_choices()->Vec<MachineType> { vec![conveyor(), splitter(), merger(), slow_machine(), material_generator(), consumer()]}
 
 fn machine_color(machine: & StatefulMachine)->[f32; 3] {
   let mut hasher = SipHasher::new() ;
@@ -154,7 +154,7 @@ gl_FragColor = vec4(color_transfer, t.a);
     let id = format! ("Machine_choice_{}", index);
     js!{
       $("<input>", {type: "radio", id:@{& id}, name: "machine_choice", value: @{index as i32}, checked:@{index == 0}}).appendTo ($("#app"));
-      $("<label>", {for:@{& id}, text: @{choice.name}}).appendTo ($("#app"));
+      $("<label>", {for:@{& id}, text: @{choice.name()}}).appendTo ($("#app"));
     }
   }
   
@@ -236,9 +236,9 @@ fn do_frame(state: & Rc<RefCell<State>>) {
         );
       }
     }
-    for machine in & state.map.machines {
+    for machine in & state.map.machines {let MachineType::StandardMachine (standard_machine) = & machine.machine_type; {
       let last_disbursement = machine.materials_state.current_output_pattern.last_disbursement_before (state.current_game_time).unwrap_or (-1000000);
-      let fraction = (state.current_game_time - last_disbursement) as f32/machine.machine_type.min_output_cycle_length as f32;
+      let fraction = (state.current_game_time - last_disbursement) as f32/standard_machine.min_output_cycle_length as f32;
       if fraction <= 1.0 {
         let mut size = tile_size();
         size [0] *= fraction;
@@ -248,9 +248,9 @@ fn do_frame(state: & Rc<RefCell<State>>) {
           [0.0,0.0,0.0]
         );
       }
-    }
-    for (machine_index, machine) in state.map.machines.iter().enumerate() {
-      for ((input_location, input_facing), storage) in machine.machine_type.input_locations (& machine.map_state).into_iter().zip (machine.machine_type.input_storage_at (& machine.materials_state, & state.future [machine_index].inputs_at (state.current_game_time), state.current_game_time)) {
+    }}
+    for (machine_index, machine) in state.map.machines.iter().enumerate() {let MachineType::StandardMachine (standard_machine) = & machine.machine_type; {
+      for ((input_location, input_facing), storage) in machine.machine_type.input_locations (& machine.map_state).into_iter().zip (standard_machine.input_storage_at (& machine.materials_state, & state.future [machine_index].inputs_at (state.current_game_time), state.current_game_time)) {
         let storage_fraction = storage as f32*0.1;
         let mut size = tile_size();
         if storage_fraction < 1.0 {size [1] *= storage_fraction;}
@@ -260,7 +260,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
           [0.0,0.0,0.0]
         );
       }
-    }
+    }}
 
 
     target.draw(&glium::VertexBuffer::new(& state.glium_display, &vertices)

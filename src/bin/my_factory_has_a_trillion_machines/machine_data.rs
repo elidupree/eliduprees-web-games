@@ -20,6 +20,7 @@ pub type Facing = u8;
 
 pub trait MachineTypeTrait: Clone {
   // basic information
+  fn name (&self)->& str;
   fn num_inputs (&self)->usize;
   fn num_outputs (&self)->usize;
   
@@ -47,11 +48,12 @@ macro_rules! machine_type_enum {
   
 
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
-enum MachineType {
+pub enum MachineType {
   $($Variant ($Variant),)*
 }
 
 impl MachineTypeTrait for MachineType {
+  fn name (&self)->& str {match self {$(MachineType::$Variant (value) => value.name (),)*}}
   fn num_inputs (&self)->usize {match self {$(MachineType::$Variant (value) => value.num_inputs(),)*}}
   fn num_outputs (&self)->usize {match self {$(MachineType::$Variant (value) => value.num_outputs(),)*}}
   
@@ -120,17 +122,17 @@ pub struct StandardMachine {
 }
 
 
-pub fn conveyor()->StandardMachine {
-  StandardMachine {
+pub fn conveyor()->MachineType {
+  MachineType::StandardMachine (StandardMachine {
     name: "Conveyor",
     inputs: inputs! [StandardMachineInput {cost: 1, relative_location: (Vector::new (0, 0), 0)}],
     outputs: inputs! [StandardMachineOutput {amount: 1, relative_location: (Vector::new (1, 0), 0)}],
     min_output_cycle_length: 1,
-  }
+  })
 }
 
-pub fn splitter()->StandardMachine {
-  StandardMachine {
+pub fn splitter()->MachineType {
+  MachineType::StandardMachine (StandardMachine {
     name: "Splitter",
     inputs: inputs! [StandardMachineInput {cost: 2, relative_location: (Vector::new (0, 0), 0)}],
     outputs: inputs! [
@@ -138,10 +140,10 @@ pub fn splitter()->StandardMachine {
       StandardMachineOutput {amount: 1, relative_location: (Vector::new (0, -1), 3)},
     ],
     min_output_cycle_length: 1,
-  }
+  })
 }
-pub fn merger()->StandardMachine {
-  StandardMachine {
+pub fn merger()->MachineType {
+  MachineType::StandardMachine (StandardMachine {
     name: "Merger",
     inputs: inputs! [
       StandardMachineInput {cost: 1, relative_location: (Vector::new (0, 0), 3)},
@@ -149,34 +151,34 @@ pub fn merger()->StandardMachine {
      ],
     outputs: inputs! [StandardMachineOutput {amount: 2, relative_location: (Vector::new (1, 0), 0)}],
     min_output_cycle_length: 1,
-  }
+  })
 }
 
-pub fn slow_machine()->StandardMachine {
-  StandardMachine {
+pub fn slow_machine()->MachineType {
+  MachineType::StandardMachine (StandardMachine {
     name: "Slow machine",
     inputs: inputs! [StandardMachineInput {cost: 1, relative_location: (Vector::new (0, 0), 0)}],
     outputs: inputs! [StandardMachineOutput {amount: 1, relative_location: (Vector::new (1, 0), 0)}],
     min_output_cycle_length: 10,
-  }
+  })
 }
 
-pub fn material_generator()->StandardMachine {
-  StandardMachine {
+pub fn material_generator()->MachineType {
+  MachineType::StandardMachine (StandardMachine {
     name: "Material generator",
     inputs: inputs! [],
     outputs: inputs! [StandardMachineOutput {amount: 1, relative_location: (Vector::new (1, 0), 0)}],
     min_output_cycle_length: 1,
-  }
+  })
 }
 
-pub fn consumer()->StandardMachine {
-  StandardMachine {
+pub fn consumer()->MachineType {
+  MachineType::StandardMachine (StandardMachine {
     name: "Consumer",
     inputs: inputs! [StandardMachineInput {cost: 1, relative_location: (Vector::new (0, 0), 0)}],
     outputs: inputs! [],
     min_output_cycle_length: 1,
-  }
+  })
 }
 
 
@@ -245,6 +247,7 @@ impl StandardMachine {
 }
 
 impl MachineTypeTrait for StandardMachine {
+  fn name (&self)->& str {self.name}
   fn num_inputs (&self)->usize {self.inputs.len()}
   fn num_outputs (&self)->usize {self.outputs.len()}
   
@@ -316,7 +319,7 @@ impl MachineTypeTrait for StandardMachine {
 
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
 pub struct StatefulMachine {
-  pub machine_type: StandardMachine,
+  pub machine_type: MachineType,
   pub map_state: MachineMapState,
   pub materials_state: MachineMaterialsState,
 }
