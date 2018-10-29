@@ -31,8 +31,7 @@ pub trait MachineTypeTrait: Clone {
   // property: with valid inputs, the returned values have the same length given by num_inputs/num_outputs
   // property: these are consistent with each other
   fn max_output_rates (&self, input_rates: & [Number])->Inputs <Number>;
-  // note: this API implies that mergers must have fixed ratios
-  fn min_input_rates_to_produce (&self, output_rates: & [Number])->Inputs <Number>;
+  fn reduced_input_rates_that_can_still_produce (&self, input_rates: & [Number], output_rates: & [Number])->Inputs <Number>;
   
   // property: if inputs don't change, current_output_rates doesn't change before next_output_change_time
   // property: when there is no next output change time, current_output_rates is equivalent to max_output_rates
@@ -61,7 +60,7 @@ impl MachineTypeTrait for MachineType {
   fn output_locations (&self, state: &MachineMapState)->Inputs <(Vector, Facing)> {match self {$(MachineType::$Variant (value) => value.output_locations (state ),)*}}
   
   fn max_output_rates (&self, input_rates: & [Number])->Inputs <Number> {match self {$(MachineType::$Variant (value) => value.max_output_rates (input_rates ),)*}}
-  fn min_input_rates_to_produce (&self, output_rates: & [Number])->Inputs <Number> {match self {$(MachineType::$Variant (value) => value.min_input_rates_to_produce (output_rates ),)*}}
+  fn reduced_input_rates_that_can_still_produce (&self, input_rates: & [Number], output_rates: & [Number])->Inputs <Number> {match self {$(MachineType::$Variant (value) => value.reduced_input_rates_that_can_still_produce (input_rates, output_rates ),)*}}
   
   fn with_input_changed (&self, old_state: &MachineMaterialsState, change_time: Number, old_input_patterns: & [FlowPattern], changed_index: usize, new_pattern: FlowPattern)->MachineMaterialsState {match self {$(MachineType::$Variant (value) => value.with_input_changed (old_state, change_time, old_input_patterns, changed_index, new_pattern ),)*}}
   fn current_outputs_and_next_change (&self, state: &MachineMaterialsState, input_patterns: & [FlowPattern])->(Inputs <FlowPattern>, Option <(Number, MachineMaterialsState)>) {match self {$(MachineType::$Variant (value) => value.current_outputs_and_next_change (state, input_patterns ),)*}}
@@ -268,7 +267,7 @@ impl MachineTypeTrait for StandardMachine {
     let ideal_rate = self.max_output_rate_with_inputs (input_rates.iter().cloned());
     self.outputs.iter().map (| output | ideal_rate*output.amount).collect()
   }
-  fn min_input_rates_to_produce (&self, output_rates: & [Number])->Inputs <Number> {
+  fn reduced_input_rates_that_can_still_produce (&self, _input_rates: & [Number], output_rates: & [Number])->Inputs <Number> {
     let ideal_rate = self.min_output_rate_to_produce (output_rates.iter().cloned());
     self.inputs.iter().map (| input | ideal_rate*input.cost).collect()
   }
