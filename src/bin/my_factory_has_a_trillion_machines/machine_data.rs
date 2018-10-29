@@ -15,6 +15,7 @@ macro_rules! inputs {
   ($($whatever:tt)*) => {Inputs::from_iter ([$($whatever)*].iter().cloned())};
 }
 pub type Vector = Vector2 <Number>;
+pub type Facing = u8;
 
 
 pub trait MachineType: Clone {
@@ -41,8 +42,8 @@ pub trait MachineType: Clone {
 
 }
 
-pub fn rotate_90 (vector: Vector, angle: u8)->Vector {
-  match angle % 4 {
+pub fn rotate_90 (vector: Vector, facing: Facing)->Vector {
+  match facing {
     0 => vector,
     1 => Vector::new (-vector [1],  vector [0]),
     2 => - vector,
@@ -158,7 +159,7 @@ impl MachineMaterialsState {
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
 pub struct MachineMapState {
   pub position: Vector,
-  pub facing: u8,
+  pub facing: Facing,
 }
 
 impl StandardMachine {
@@ -284,7 +285,7 @@ enum ComponentType {
 pub struct Component {
   position: Vector2 <Number>,
   scale: u8,
-  facing: u8,
+  facing: Facing,
   component_type: ComponentType,
 }
 
