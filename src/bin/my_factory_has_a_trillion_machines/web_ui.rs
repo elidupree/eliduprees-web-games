@@ -219,7 +219,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
       );
     }
     for machine in & state.map.machines {
-      for input_location in machine.machine_type.input_locations (& machine.map_state) {
+      for (input_location, input_facing) in machine.machine_type.input_locations (& machine.map_state) {
         draw_rectangle (&mut vertices, sprite_sheet,
           tile_center (input_location),
           tile_size()* 0.8,
@@ -228,7 +228,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
       }
     }
     for machine in & state.map.machines {
-      for output_location in machine.machine_type.output_locations (& machine.map_state) {
+      for (output_location, output_facing) in machine.machine_type.output_locations (& machine.map_state) {
         draw_rectangle (&mut vertices, sprite_sheet,
           tile_center (output_location),
           tile_size()* 0.6,
@@ -250,7 +250,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
       }
     }
     for (machine_index, machine) in state.map.machines.iter().enumerate() {
-      for (input_location, storage) in machine.machine_type.input_locations (& machine.map_state).into_iter().zip (machine.machine_type.input_storage_at (& machine.materials_state, & state.future [machine_index].inputs_at (state.current_game_time), state.current_game_time)) {
+      for ((input_location, input_facing), storage) in machine.machine_type.input_locations (& machine.map_state).into_iter().zip (machine.machine_type.input_storage_at (& machine.materials_state, & state.future [machine_index].inputs_at (state.current_game_time), state.current_game_time)) {
         let storage_fraction = storage as f32*0.1;
         let mut size = tile_size();
         if storage_fraction < 1.0 {size [1] *= storage_fraction;}

@@ -23,8 +23,8 @@ pub trait MachineType: Clone {
   fn num_inputs (&self)->usize;
   fn num_outputs (&self)->usize;
   
-  fn input_locations (&self, state: &MachineMapState)->Inputs <Vector>;
-  fn output_locations (&self, state: &MachineMapState)->Inputs <Vector>;
+  fn input_locations (&self, state: &MachineMapState)->Inputs <(Vector, Facing)>;
+  fn output_locations (&self, state: &MachineMapState)->Inputs <(Vector, Facing)>;
   
   // used to infer group input flow rates
   // property: with valid inputs, the returned values have the same length given by num_inputs/num_outputs
@@ -42,13 +42,29 @@ pub trait MachineType: Clone {
 
 }
 
-pub fn rotate_90 (vector: Vector, facing: Facing)->Vector {
-  match facing {
-    0 => vector,
-    1 => Vector::new (-vector [1],  vector [0]),
-    2 => - vector,
-    3 => Vector::new ( vector [1], -vector [0]),
-    _=> unreachable!()
+pub trait Rotate90 {
+  fn rotate_90 (self, facing: Facing)->Self;
+}
+
+impl Rotate90 for Vector {
+  fn rotate_90 (self, facing: Facing)->Vector {
+    match facing {
+      0 => self,
+      1 => Vector::new (-self[1],  self[0]),
+      2 => - self,
+      3 => Vector::new ( self[1], -self[0]),
+      _=> unreachable!()
+    }
+  }
+}
+impl Rotate90 for Facing {
+  fn rotate_90 (self, facing: Facing)->Facing {
+    (self + facing) % 4
+  }
+}
+impl <T: Rotate90, U: Rotate90> Rotate90 for (T, U) {
+  fn rotate_90 (self, facing: Facing)->Self {
+    (self.0.rotate_90(facing), self.1.rotate_90(facing))
   }
 }
 
@@ -56,13 +72,13 @@ pub fn rotate_90 (vector: Vector, facing: Facing)->Vector {
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
 pub struct StandardMachineInput {
   pub cost: Number,
-  pub relative_location: Vector,
+  pub relative_location: (Vector, Facing),
 }
 
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
 pub struct StandardMachineOutput {
   pub amount: Number,
-  pub relative_location: Vector,
+  pub relative_location: (Vector, Facing),
 }
 
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
@@ -77,8 +93,8 @@ pub struct StandardMachine {
 pub fn conveyor()->StandardMachine {
   StandardMachine {
     name: "Conveyor",
-    inputs: inputs! [StandardMachineInput {cost: 1, relative_location: Vector::new (0, 0)}],
-    outputs: inputs! [StandardMachineOutput {amount: 1, relative_location: Vector::new (1, 0)}],
+    inputs: inputs! [StandardMachineInput {cost: 1, relative_location: (Vector::new (0, 0), 0)}],
+    outputs: inputs! [StandardMachineOutput {amount: 1, relative_location: (Vector::new (1, 0), 0)}],
     min_output_cycle_length: 1,
   }
 }
@@ -86,10 +102,10 @@ pub fn conveyor()->StandardMachine {
 pub fn splitter()->StandardMachine {
   StandardMachine {
     name: "Splitter",
-    inputs: inputs! [StandardMachineInput {cost: 2, relative_location: Vector::new (0, 0)}],
+    inputs: inputs! [StandardMachineInput {cost: 2, relative_location: (Vector::new (0, 0), 0)}],
     outputs: inputs! [
-      StandardMachineOutput {amount: 1, relative_location: Vector::new (0,  1)},
-      StandardMachineOutput {amount: 1, relative_location: Vector::new (0, -1)},
+      StandardMachineOutput {amount: 1, relative_location: (Vector::new (0,  1), 1)},
+      StandardMachineOutput {amount: 1, relative_location: (Vector::new (0, -1), 3)},
     ],
     min_output_cycle_length: 1,
   }
@@ -98,10 +114,10 @@ pub fn merger()->StandardMachine {
   StandardMachine {
     name: "Merger",
     inputs: inputs! [
-      StandardMachineInput {cost: 1, relative_location: Vector::new (0,  1)},
-      StandardMachineInput {cost: 1, relative_location: Vector::new (0, -1)},
+      StandardMachineInput {cost: 1, relative_location: (Vector::new (0, 0), 3)},
+      StandardMachineInput {cost: 1, relative_location: (Vector::new (0, 0), 1)},
      ],
-    outputs: inputs! [StandardMachineOutput {amount: 2, relative_location: Vector::new (1, 0)}],
+    outputs: inputs! [StandardMachineOutput {amount: 2, relative_location: (Vector::new (1, 0), 0)}],
     min_output_cycle_length: 1,
   }
 }
@@ -109,8 +125,8 @@ pub fn merger()->StandardMachine {
 pub fn slow_machine()->StandardMachine {
   StandardMachine {
     name: "Slow machine",
-    inputs: inputs! [StandardMachineInput {cost: 1, relative_location: Vector::new (0, 0)}],
-    outputs: inputs! [StandardMachineOutput {amount: 1, relative_location: Vector::new (1, 0)}],
+    inputs: inputs! [StandardMachineInput {cost: 1, relative_location: (Vector::new (0, 0), 0)}],
+    outputs: inputs! [StandardMachineOutput {amount: 1, relative_location: (Vector::new (1, 0), 0)}],
     min_output_cycle_length: 10,
   }
 }
@@ -119,7 +135,7 @@ pub fn material_generator()->StandardMachine {
   StandardMachine {
     name: "Material generator",
     inputs: inputs! [],
-    outputs: inputs![StandardMachineOutput {amount: 1, relative_location: Vector::new (1, 0)}],
+    outputs: inputs! [StandardMachineOutput {amount: 1, relative_location: (Vector::new (1, 0), 0)}],
     min_output_cycle_length: 1,
   }
 }
@@ -127,7 +143,7 @@ pub fn material_generator()->StandardMachine {
 pub fn consumer()->StandardMachine {
   StandardMachine {
     name: "Consumer",
-    inputs: inputs! [StandardMachineInput {cost: 1, relative_location: Vector::new (0, 0)}],
+    inputs: inputs! [StandardMachineInput {cost: 1, relative_location: (Vector::new (0, 0), 0)}],
     outputs: inputs! [],
     min_output_cycle_length: 1,
   }
@@ -202,11 +218,17 @@ impl MachineType for StandardMachine {
   fn num_inputs (&self)->usize {self.inputs.len()}
   fn num_outputs (&self)->usize {self.outputs.len()}
   
-  fn input_locations (&self, state: &MachineMapState)->Inputs <Vector> {
-    self.inputs.iter().map (| input | rotate_90 (input.relative_location, state.facing) + state.position).collect()
+  fn input_locations (&self, state: &MachineMapState)->Inputs <(Vector, Facing)> {
+    self.inputs.iter().map (| input | {
+      let (position, facing) = input.relative_location.rotate_90 (state.facing);
+      (position + state.position, facing)
+    }).collect()
   }
-  fn output_locations (&self, state: &MachineMapState)->Inputs <Vector> {
-    self.outputs.iter().map (| input | rotate_90 (input.relative_location, state.facing) + state.position).collect()
+  fn output_locations (&self, state: &MachineMapState)->Inputs <(Vector, Facing)> {
+    self.outputs.iter().map (| output | {
+      let (position, facing) = output.relative_location.rotate_90 (state.facing);
+      (position + state.position, facing)
+    }).collect()
   }
   
   fn max_output_rates (&self, input_rates: & [Number])->Inputs <Number> {
