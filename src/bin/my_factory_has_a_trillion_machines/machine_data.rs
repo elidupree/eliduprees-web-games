@@ -18,7 +18,7 @@ pub type Vector = Vector2 <Number>;
 pub type Facing = u8;
 
 
-pub trait MachineType: Clone {
+pub trait MachineTypeTrait: Clone {
   // basic information
   fn num_inputs (&self)->usize;
   fn num_outputs (&self)->usize;
@@ -40,6 +40,36 @@ pub trait MachineType: Clone {
   // property: next_change is not the same time twice in a row
   fn current_outputs_and_next_change (&self, state: &MachineMaterialsState, input_patterns: & [FlowPattern])->(Inputs <FlowPattern>, Option <(Number, MachineMaterialsState)>);
 
+}
+
+macro_rules! machine_type_enum {
+  ($($Variant: ident,)*) => {
+  
+
+#[derive (Clone, PartialEq, Eq, Hash, Debug)]
+enum MachineType {
+  $($Variant ($Variant),)*
+}
+
+impl MachineTypeTrait for MachineType {
+  fn num_inputs (&self)->usize {match self {$(MachineType::$Variant (value) => value.num_inputs(),)*}}
+  fn num_outputs (&self)->usize {match self {$(MachineType::$Variant (value) => value.num_outputs(),)*}}
+  
+  fn input_locations (&self, state: &MachineMapState)->Inputs <(Vector, Facing)> {match self {$(MachineType::$Variant (value) => value.input_locations (state ),)*}}
+  fn output_locations (&self, state: &MachineMapState)->Inputs <(Vector, Facing)> {match self {$(MachineType::$Variant (value) => value.output_locations (state ),)*}}
+  
+  fn max_output_rates (&self, input_rates: & [Number])->Inputs <Number> {match self {$(MachineType::$Variant (value) => value.max_output_rates (input_rates ),)*}}
+  fn min_input_rates_to_produce (&self, output_rates: & [Number])->Inputs <Number> {match self {$(MachineType::$Variant (value) => value.min_input_rates_to_produce (output_rates ),)*}}
+  
+  fn with_input_changed (&self, old_state: &MachineMaterialsState, change_time: Number, old_input_patterns: & [FlowPattern], changed_index: usize, new_pattern: FlowPattern)->MachineMaterialsState {match self {$(MachineType::$Variant (value) => value.with_input_changed (old_state, change_time, old_input_patterns, changed_index, new_pattern ),)*}}
+  fn current_outputs_and_next_change (&self, state: &MachineMaterialsState, input_patterns: & [FlowPattern])->(Inputs <FlowPattern>, Option <(Number, MachineMaterialsState)>) {match self {$(MachineType::$Variant (value) => value.current_outputs_and_next_change (state, input_patterns ),)*}}
+}
+  
+  };
+}
+
+machine_type_enum! {
+  StandardMachine,
 }
 
 pub trait Rotate90 {
@@ -163,7 +193,7 @@ pub struct MachineMaterialsState {
 }
 
 impl MachineMaterialsState {
-  pub fn empty <M: MachineType> (machine: & M, time: Number)->MachineMaterialsState {
+  pub fn empty <M: MachineTypeTrait> (machine: & M, time: Number)->MachineMaterialsState {
     MachineMaterialsState {
       current_output_pattern: Default::default(),
       last_flow_change: time,
@@ -214,7 +244,7 @@ impl StandardMachine {
   }
 }
 
-impl MachineType for StandardMachine {
+impl MachineTypeTrait for StandardMachine {
   fn num_inputs (&self)->usize {self.inputs.len()}
   fn num_outputs (&self)->usize {self.outputs.len()}
   
