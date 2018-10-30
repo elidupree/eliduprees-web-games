@@ -348,10 +348,11 @@ impl MachineTypeTrait for Conveyor {
     let mut last_change_time = Number::min_value();
     let mut next_change = None;
     for num_patterns_started in 1..=3 {
-      let active_patterns = &input_patterns [0..num_patterns_started];
-      let latest_pattern = & input_patterns [num_patterns_started - 1];
+      let active_patterns = &sorted_input_patterns [0..num_patterns_started];
+      let latest_pattern = & sorted_input_patterns [num_patterns_started - 1];
       if latest_pattern.rate == 0 {continue}
       let change_time = latest_pattern.start_time;
+      assert!(change_time >= last_change_time);
       let interval = [last_change_time, change_time];
       let already_disbursed = input_patterns.iter().map (| pattern | pattern.num_disbursed_before (change_time)).sum::<Number>();
       assert_eq!(already_disbursed, active_patterns.iter().map (| pattern | pattern.num_disbursed_before (change_time)).sum::<Number>());
