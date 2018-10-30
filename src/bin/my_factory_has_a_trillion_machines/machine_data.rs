@@ -311,7 +311,7 @@ impl MachineTypeTrait for Conveyor {
   fn num_outputs (&self)->usize {1}
   
   fn input_locations (&self, state: &MachineMapState)->Inputs <(Vector, Facing)> {
-    (1..=3).map (| direction | (state.position, direction.rotate_90 (state.facing))).collect()
+    (1..=3).map (| direction | (state.position, direction.rotate_90 (2).rotate_90 (state.facing))).collect()
   }
   fn output_locations (&self, state: &MachineMapState)->Inputs <(Vector, Facing)> {
     inputs! [(state.position + Vector::new (1, 0).rotate_90 (state.facing), state.facing)]
