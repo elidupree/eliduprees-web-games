@@ -44,7 +44,7 @@ struct Vertex {
 }
 implement_vertex!(Vertex, position, texture_coordinates, color);
 
-fn machine_choices()->Vec<MachineType> { vec![conveyor(), splitter(), merger(), slow_machine(), material_generator(), consumer()]}
+fn machine_choices()->Vec<MachineType> { vec![conveyor(), splitter(), slow_machine(), material_generator(), consumer()]}
 
 fn machine_color(machine: & StatefulMachine)->[f32; 3] {
   let mut hasher = SipHasher::new() ;
@@ -236,7 +236,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
         );
       }
     }
-    for machine in & state.map.machines {let MachineType::StandardMachine (standard_machine) = & machine.machine_type; {
+    for machine in & state.map.machines {if let MachineType::StandardMachine (standard_machine) = & machine.machine_type {
       let last_disbursement = machine.materials_state.current_output_pattern.last_disbursement_before (state.current_game_time).unwrap_or (-1000000);
       let fraction = (state.current_game_time - last_disbursement) as f32/standard_machine.min_output_cycle_length as f32;
       if fraction <= 1.0 {
@@ -249,7 +249,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
         );
       }
     }}
-    for (machine_index, machine) in state.map.machines.iter().enumerate() {let MachineType::StandardMachine (standard_machine) = & machine.machine_type; {
+    for (machine_index, machine) in state.map.machines.iter().enumerate() {if let MachineType::StandardMachine (standard_machine) = & machine.machine_type {
       for ((input_location, input_facing), storage) in machine.machine_type.input_locations (& machine.map_state).into_iter().zip (standard_machine.input_storage_at (& machine.materials_state, & state.future [machine_index].inputs_at (state.current_game_time), state.current_game_time)) {
         let storage_fraction = storage as f32*0.1;
         let mut size = tile_size();

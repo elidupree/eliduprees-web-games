@@ -40,7 +40,7 @@ fn main() {
 
 #[cfg (not(target_os = "emscripten"))]
 fn main() {
-  MachinesGraph::new (vec![
+  /*MachinesGraph::new (vec![
     (material_generator(), None, & []),
   ]).simulate_future();
   println!( "\n\n");
@@ -58,5 +58,5 @@ fn main() {
    (merger(), None, & [(10, 1)]),
    (merger(), None, & [(11, 0)]),
    (consumer(), None, & []),
- ]).simulate_future();
+ ]).simulate_future();*/
 }

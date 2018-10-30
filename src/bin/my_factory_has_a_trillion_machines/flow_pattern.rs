@@ -1,6 +1,7 @@
 use super::*;
 
 use std::hash::{Hash, Hasher};
+use std::cmp::{max};
 
 use num::Integer;
 
@@ -57,10 +58,31 @@ impl Hash for FlowPattern {
   }
 }
 
+pub fn time_from_which_patterns_will_always_disburse_at_least_amount_plus_ideal_rate_in_total <I: IntoIterator <Item = FlowPattern> + Clone> (patterns: I, amount: Number)->Option <Number> {
+  let mut total_rate = 0;
+  let mut max_rounding_loss = 0;
+  let mut last_start_time = Number::min_value();
+  for pattern in patterns.clone().into_iter() {
+    if pattern.rate > 0 {
+      total_rate += pattern.rate;
+      last_start_time = max (last_start_time, pattern.start_time);
+      max_rounding_loss += RATE_DIVISOR - 1;
+    }
+  }
+  if total_rate <= 0 && amount > 0 {return None;}
+  let fractional_progress_before_start: Number = patterns.into_iter().filter (| pattern | pattern.rate > 0).map (| pattern | pattern.fractional_progress_before (last_start_time)).sum();
+  Some (last_start_time + (
+    amount*RATE_DIVISOR + max_rounding_loss - fractional_progress_before_start
+    + total_rate - 1).div_floor(&total_rate)
+  )
+}
+
 
 #[cfg (test)]
 mod tests {
   use super::*;
+  
+  use std::iter;
   
   fn assert_flow_pattern (rate: Number, prefix: & [Number]) {
     assert_eq! (
@@ -125,5 +147,12 @@ mod tests {
       prop_assert!(observed_count >= ideal_count_rounded_up);
     }
 
+    #[test]
+    fn randomly_test_at_least_amount_plus_ideal_rate_functions_are_consistent (start in 0i64..1000000, rate in 1..=RATE_DIVISOR, amount in -100000i64..1000000, duration in 0i64..1000000) {
+      let pattern = FlowPattern {start_time: start, rate: rate};
+      let single = pattern.time_from_which_this_will_always_disburse_at_least_amount_plus_ideal_rate (amount).unwrap();
+      let collection = time_from_which_patterns_will_always_disburse_at_least_amount_plus_ideal_rate_in_total (iter::once(pattern), amount).unwrap();
+      prop_assert_eq!(single, collection);
+    }
   }
 }
