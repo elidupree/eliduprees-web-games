@@ -369,7 +369,7 @@ impl MachineTypeTrait for Conveyor {
         break
       }
       
-      let ideal_rate = active_patterns.iter().map (| pattern | pattern.rate).sum () ;
+      let ideal_rate = min (RATE_DIVISOR, active_patterns.iter().map (| pattern | pattern.rate).sum ());
       let legal_output_start_time = time_from_which_patterns_will_always_disburse_at_least_amount_plus_ideal_rate_in_total (active_patterns.iter().cloned(), already_disbursed - storage_before).unwrap();
       let output_pattern = FlowPattern {start_time: legal_output_start_time, rate: ideal_rate};
       last_output_pattern = output_pattern;
