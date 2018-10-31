@@ -2,6 +2,7 @@ use super::*;
 
 use std::cmp::{min, max};
 use std::iter::{self, FromIterator};
+use std::ops::Neg;
 
 use nalgebra::Vector2;
 use arrayvec::ArrayVec;
@@ -77,13 +78,13 @@ pub trait Rotate90 {
   fn rotate_90 (self, facing: Facing)->Self;
 }
 
-impl Rotate90 for Vector {
-  fn rotate_90 (self, facing: Facing)->Vector {
+impl <T: ::nalgebra::Scalar + Neg<Output=T>> Rotate90 for Vector2 <T> {
+  fn rotate_90 (self, facing: Facing)->Self {
     match facing {
       0 => self,
-      1 => Vector::new (-self[1],  self[0]),
-      2 => - self,
-      3 => Vector::new ( self[1], -self[0]),
+      1 => Vector2::new (-self[1],  self[0]),
+      2 => Vector2::new (-self[0], -self[1]),
+      3 => Vector2::new ( self[1], -self[0]),
       _=> unreachable!()
     }
   }

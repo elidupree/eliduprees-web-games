@@ -196,7 +196,8 @@ fn do_frame(state: & Rc<RefCell<State>>) {
   
   let mut state = state.borrow_mut();
   let state = &mut *state;
-  state.current_game_time =((now() - state.start_ui_time)*2.0) as Number;
+  let fractional_time = (now() - state.start_ui_time)*2.0;
+  state.current_game_time = fractional_time as Number;
   state.map.update_to (& state.future, state.current_game_time);
   
   let sprite_sheet = match state.sprite_sheet {Some (ref value) => value, None => return};
@@ -236,19 +237,19 @@ fn do_frame(state: & Rc<RefCell<State>>) {
         );
       }
     }
-    for machine in & state.map.machines {if let MachineType::StandardMachine (standard_machine) = & machine.machine_type {
-      let last_disbursement = machine.materials_state.current_output_pattern.last_disbursement_before (state.current_game_time).unwrap_or (-1000000);
-      let fraction = (state.current_game_time - last_disbursement) as f32/standard_machine.min_output_cycle_length as f32;
-      if fraction <= 1.0 {
-        let mut size = tile_size();
-        size [0] *= fraction;
-        draw_rectangle (&mut vertices, sprite_sheet,
-          tile_center (machine.map_state.position),
-          size,
-          [0.0,0.0,0.0]
-        );
+    for (machine_index, machine) in state.map.machines.iter().enumerate() {
+      let patterns = machine.machine_type.current_outputs_and_next_change (& machine.materials_state, & state.future [machine_index].inputs_at (state.current_game_time)).0;
+      for ((output_location, output_facing), pattern) in machine.machine_type.output_locations (& machine.map_state).into_iter().zip (patterns) {
+        if pattern.num_disbursed_at_time (state.current_game_time) > 0 {
+          let offset = Vector2::new (tile_size() [0]*(fractional_time.fract() as f32 - 1.0), 0.0).rotate_90 (output_facing);
+          draw_rectangle (&mut vertices, sprite_sheet,
+            tile_center (output_location) + offset,
+            tile_size()*0.6,
+            [0.0,0.0,0.0]
+          );
+        }
       }
-    }}
+    }
     for (machine_index, machine) in state.map.machines.iter().enumerate() {if let MachineType::StandardMachine (standard_machine) = & machine.machine_type {
       for ((input_location, input_facing), storage) in machine.machine_type.input_locations (& machine.map_state).into_iter().zip (standard_machine.input_storage_at (& machine.materials_state, & state.future [machine_index].inputs_at (state.current_game_time), state.current_game_time)) {
         let storage_fraction = storage as f32*0.1;
