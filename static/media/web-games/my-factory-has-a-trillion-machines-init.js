@@ -11,14 +11,23 @@ var roundUpToPowerOfTwo = (n) => {
   return 1 << (32 - Math.clz32(n - 1));
 };
 
-var images = ["/media/web-games/factory-images/chest.png?rr", "/media/web-games/factory-images/conveyor.png?rr", "/media/web-games/factory-images/iron.png?rr", "/media/web-games/factory-images/machine.png?rr", "/media/web-games/factory-images/merger.png?rr", "/media/web-games/factory-images/mine.png?rr", "/media/web-games/factory-images/ore.png?rr", "/media/web-games/factory-images/splitter.png?rr"]; 
+var images = [
+["chest", "/media/web-games/factory-images/chest.png?rr"],
+["conveyor", "/media/web-games/factory-images/conveyor.png?rr"],
+["iron", "/media/web-games/factory-images/iron.png?rr"],
+["machine", "/media/web-games/factory-images/machine.png?rr"],
+["merger", "/media/web-games/factory-images/merger.png?rr"],
+["mine", "/media/web-games/factory-images/mine.png?rr"],
+["ore", "/media/web-games/factory-images/ore.png?rr"],
+["splitter", "/media/web-games/factory-images/splitter.png?rr"]
+]; 
 
-Promise.all(images.map((path) =>
+Promise.all(images.map((image) =>
   new Promise((resolve, reject) => {
     var img = new Image();
-    img.addEventListener('load', () => resolve(img), false);
-    img.addEventListener('error', () => reject(img), false);
-    img.src = path;
+    img.addEventListener('load', () => resolve([image [0], img]), false);
+    img.addEventListener('error', () => reject([image [0], img]), false);
+    img.src = image [1];
 }))).then(
   (images) => {
     var coords = {};
@@ -26,9 +35,9 @@ Promise.all(images.map((path) =>
     var totalheight = 1;
     var maxwidth = 1;
     for(var img of images) {
-      var width = Math.min (64, img.width);
-      var height = Math.min (64, img.height);
-      coords[img.src] = {
+      var width = Math.min (64, img [1].width);
+      var height = Math.min (64, img [1].height);
+      coords[img [0]] = {
         x: 2,
         y: totalheight,
         width,
@@ -48,7 +57,7 @@ Promise.all(images.map((path) =>
     ctx.fillStyle = 'rgba(255, 0, 127, 0.5)';
     ctx.fillRect(0, 0, texturewidth, textureheight);
     for(var img of images) {
-      var c = coords[img.src];
+      var c = coords[img[0]];
       // drawImage() doesn't copy the alpha of the image rectangle
       // (unless globalCompositeOperation = 'copy' but then that
       // erases the rest of the destination image)
@@ -60,14 +69,14 @@ Promise.all(images.map((path) =>
       // hopefully 'copy' preserves even the rgb values of alpha=0 pixels,
       // because those might matter to some antialiasing approaches
       subctx.globalCompositeOperation = 'copy';
-      subctx.drawImage(img, 0, 0, c.width, c.height);
+      subctx.drawImage(img[1], 0, 0, c.width, c.height);
       ctx.putImageData(subctx.getImageData(0, 0, c.width, c.height), c.x, c.y);
     }
     var imageData = ctx.getImageData(0, 0, texturewidth, textureheight);
     return { rgba: imageData.data, width: texturewidth, height: textureheight, coords: coords };
   },
   (img) => {
-    console.log("image loading failed: ", img.src);
+    console.log("image loading failed: ", img[1].src);
   }).then((textureinfo) => {
     window.loaded_sprites = textureinfo;
     console.log(textureinfo);
