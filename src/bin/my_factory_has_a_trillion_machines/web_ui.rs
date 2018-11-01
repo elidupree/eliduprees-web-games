@@ -5,6 +5,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::hash::{Hash, Hasher};
 use std::collections::HashMap;
+use std::cmp::min;
 use glium::{Surface};
 use arrayvec::ArrayVec;
 use stdweb::unstable::TryInto;
@@ -55,9 +56,9 @@ fn machine_color(machine: & StatefulMachine)->[f32; 3] {
       let mask = (1u64 << 20)-1;
       let factor = 0.8 / (mask as f32);
       [
-        ((hash      ) & mask) as f32*factor,
-        ((hash >> 20) & mask) as f32*factor,
-        ((hash >> 40) & mask) as f32*factor,
+        0.1+ ((hash      ) & mask) as f32*factor,
+        0.1+ ((hash >> 20) & mask) as f32*factor,
+        0.1+ ((hash >> 40) & mask) as f32*factor,
       ]
 }
 
@@ -274,14 +275,15 @@ fn do_frame(state: & Rc<RefCell<State>>) {
     }
     for (machine_index, machine) in state.map.machines.iter().enumerate() {
       for (storage_location, storage) in machine.machine_type.displayed_storage (& machine.map_state, & machine.materials_state,& state.future [machine_index].inputs_at (state.current_game_time), state.current_game_time) {
-        let storage_fraction = storage as f32*0.1;
-        let mut size = tile_size();
-        if storage_fraction < 1.0 {size [1] *= storage_fraction;}
-        draw_rectangle (&mut vertices, sprite_sheet,
-          tile_center (storage_location),
-          size,
-          [0.0,0.0,0.0], "iron"
-        );
+        for index in 0..min (3, storage) {
+          let mut position = tile_center (storage_location);
+          position [1] += tile_size() [1]*index as f32*0.1;
+          draw_rectangle (&mut vertices, sprite_sheet,
+            position,
+            tile_size()*0.6,
+            [0.0,0.0,0.0], "iron"
+          );
+        }
       }
     }
 
