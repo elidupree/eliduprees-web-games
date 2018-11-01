@@ -35,6 +35,9 @@ struct State {
   future: MachinesFuture,
   start_ui_time: f64,
   current_game_time: Number,
+  mouse_position: Vector,
+  mouse_facing: Facing,
+  mouse_pressed: bool,
 }
 
 #[derive(Copy, Clone)]
@@ -67,6 +70,9 @@ fn tile_center (position: Vector)->Vector2 <f32> {
 }
 fn tile_size()->Vector2 <f32> {
   Vector2::new (1.0/30.0, 1.0/30.0)
+}
+fn tile_position (visual: Vector2 <f64>)->Vector {
+  Vector::new ((visual [0]*30.0).round() as Number, (visual [1]*30.0).round() as Number)
 }
 
 fn draw_rectangle (vertices: &mut Vec<Vertex>, sprite_sheet: & SpriteSheet, center: Vector2<f32>, size: Vector2<f32>, color: [f32; 3], sprite: & str) {
@@ -145,31 +151,37 @@ gl_FragColor = vec4(color_transfer, t.a);
   let state = Rc::new (RefCell::new (State {
     glium_display: display, glium_program: program, sprite_sheet: None,
     map, future, start_ui_time: now(), current_game_time: 0,
+    mouse_facing: 0, mouse_position: Vector::new (0, 0), mouse_pressed: false,
   }));
   
   let click_callback = {let state = state.clone(); move |x: f64,y: f64 | {
-    let position = Vector::new ((x*30.0).round() as Number, (y*30.0).round() as Number);
-    let choice: usize = js!{ return +$("input:radio[name=machine_choice]:checked").val()}.try_into().unwrap();
-    let machine_type = machine_choices() [choice].clone();
-    let mut state = state.borrow_mut();
-    let materials_state =MachineMaterialsState::empty (& machine_type, state.current_game_time);
-    state.map.machines.push (StatefulMachine {
-      machine_type,
-      map_state: MachineMapState {position, facing: 0},
-      materials_state,
-    });
-    let output_edges = state.map.output_edges();
-    let ordering = state.map.topological_ordering_of_noncyclic_machines(& output_edges);
-    state.future = state.map.future (& output_edges, & ordering);
+    click (&mut state.borrow_mut(), tile_position (Vector2::new (x,y)));
+  }};
+  let mousedown_callback = {let state = state.clone(); move |_x: f64,_y: f64 | {
+    state.borrow_mut().mouse_pressed = true;
+  }};
+  let mouseup_callback = {let state = state.clone(); move |_x: f64,_y: f64 | {
+    state.borrow_mut().mouse_pressed = false;
+  }};
+  let mousemove_callback = {let state = state.clone(); move |x: f64,y: f64 | {
+    mouse_move(&mut state.borrow_mut(), tile_position (Vector2::new (x,y)));
   }};
   
   js!{
-    $("#canvas").attr ("width", 600).attr ("height", 600).click (function(event) {
-      var offset = canvas.getBoundingClientRect();
-      var x = (event.clientX - offset.left)/offset.width;
-      var y = 1.0 - (event.clientY - offset.top)/offset.height;
-      @{click_callback}(x,y);
-    })
+    function mouse_callback (callback) {
+      return function(event) {
+        var offset = canvas.getBoundingClientRect();
+        var x = (event.clientX - offset.left)/offset.width;
+        var y = 1.0 - (event.clientY - offset.top)/offset.height;
+        (callback)(x,y);
+      }
+    }
+    $("#canvas").attr ("width", 600).attr ("height", 600)
+      .click (mouse_callback (@{click_callback}));
+    $("body")
+      .on("mousedown", mouse_callback (@{mousedown_callback}))
+      .on("mouseup", mouse_callback (@{mouseup_callback}))
+      .on("mousemove", mouse_callback (@{mousemove_callback}));
   }
   
   for (index, choice) in machine_choices().into_iter().enumerate() {
@@ -187,7 +199,63 @@ gl_FragColor = vec4(color_transfer, t.a);
   stdweb::event_loop();
 }
 
+fn click (state: &mut State, position: Vector) {
+  let choice: usize = js!{ return +$("input:radio[name=machine_choice]:checked").val()}.try_into().unwrap();
+  let machine_type = machine_choices() [choice].clone();
+  build_machine (state, machine_type, MachineMapState {position, facing: 0});
+}
 
+fn build_machine (state: &mut State, machine_type: MachineType, map_state: MachineMapState) {
+  let materials_state =MachineMaterialsState::empty (& machine_type, state.current_game_time);
+  if state.map.machines.iter().any (| machine | machine.map_state.position == map_state.position) {
+    return;
+  }
+  if state.map.machines.try_push (StatefulMachine {
+    machine_type,
+    map_state,
+    materials_state,
+  }).is_err() {
+    return;
+  }
+  recalculate_future (state);
+}
+
+fn recalculate_future (state: &mut State) {
+  let output_edges = state.map.output_edges();
+  let ordering = state.map.topological_ordering_of_noncyclic_machines(& output_edges);
+  state.future = state.map.future (& output_edges, & ordering);
+}
+
+fn mouse_move (state: &mut State, position: Vector) {
+  let delta = position - state.mouse_position;
+  let facing = match (delta [0], delta [1]) {
+    (1, 0) => Some(0),
+    (0, 1) => Some(1),
+    (-1, 0) => Some(2),
+    (0, -1) => Some(3),
+    _=> None,
+  };
+  
+  if let Some(facing) = facing {
+    state.mouse_facing = facing;
+    if state.mouse_pressed {
+      let mut found_machine = false;
+      for machine in &mut state.map.machines {
+        if machine.map_state.position == state.mouse_position {
+          found_machine = true;
+          machine.map_state.facing = facing;
+        }
+      }
+      if found_machine {
+        recalculate_future (state) ;
+      } else {
+        build_machine (state, conveyor(), MachineMapState {position: state.mouse_position, facing: facing});
+      }
+    }
+  }
+
+  state.mouse_position = position;
+}
 
 fn do_frame(state: & Rc<RefCell<State>>) {
   
