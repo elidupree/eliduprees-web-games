@@ -39,10 +39,12 @@ struct State {
 #[derive(Copy, Clone)]
 struct Vertex {
   position: [f32; 2],
-  texture_coordinates: [f32; 2],
+  sprite_position: [f32; 2],
+  sprite_size: [f32; 2],
+  sprite_coordinates: [f32; 2],
   color: [f32; 3],
 }
-implement_vertex!(Vertex, position, texture_coordinates, color);
+implement_vertex!(Vertex, position, sprite_position, sprite_size, sprite_coordinates, color);
 
 fn machine_choices()->Vec<MachineType> { vec![conveyor(), splitter(), slow_machine(), material_generator(), consumer()]}
 
@@ -66,10 +68,21 @@ fn tile_size()->Vector2 <f32> {
   Vector2::new (1.0/30.0, 1.0/30.0)
 }
 
-fn draw_rectangle (vertices: &mut Vec<Vertex>, sprite_sheet: & SpriteSheet, center: Vector2<f32>, size: Vector2<f32>, color: [f32; 3]) {
+fn draw_rectangle (vertices: &mut Vec<Vertex>, sprite_sheet: & SpriteSheet, center: Vector2<f32>, size: Vector2<f32>, color: [f32; 3], sprite: & str) {
+  let bounds = &sprite_sheet.bounds_map [sprite];
+  let sprite_size = [
+    bounds.width as f32/sprite_sheet.size [0] as f32,
+    -(bounds.height as f32/sprite_sheet.size [1] as f32),
+  ];
+  let sprite_position = [
+    bounds.x as f32/sprite_sheet.size [0] as f32,
+    (bounds.y + bounds.height) as f32/sprite_sheet.size [1] as f32,
+  ];
   let vertex = |x,y| Vertex {
             position: [center [0] + size [0]*x, center [1] + size [1]*y],
-            texture_coordinates: [(x+0.5)*64.0/sprite_sheet.size [0] as f32, (y+0.5)*64.0/sprite_sheet.size [1] as f32], 
+            sprite_position,
+            sprite_size,
+            sprite_coordinates: [(x+0.5), (y+0.5)], 
             color,
           };
           vertices.extend(&[
@@ -83,13 +96,19 @@ pub fn run_game() {
 #version 100
 attribute highp vec2 position;
 attribute lowp vec3 color;
-attribute highp vec2 texture_coordinates;
+attribute highp vec2 sprite_position;
+attribute highp vec2 sprite_size;
+attribute highp vec2 sprite_coordinates;
 varying lowp vec3 color_transfer;
-varying highp vec2 texture_coordinates_transfer;
+varying highp vec2 sprite_position_transfer;
+varying highp vec2 sprite_size_transfer;
+varying highp vec2 sprite_coordinates_transfer;
 
 void main() {
 gl_Position = vec4 (position*2.0 - 1.0, 0.0, 1.0);
-texture_coordinates_transfer = texture_coordinates;
+sprite_position_transfer = sprite_position;
+sprite_size_transfer = sprite_size;
+sprite_coordinates_transfer = sprite_coordinates;
 color_transfer = color;
 }
 
@@ -98,11 +117,13 @@ color_transfer = color;
   let fragment_shader_source = r#"
 #version 100
 varying lowp vec3 color_transfer;
-varying highp vec2 texture_coordinates_transfer;
+varying highp vec2 sprite_position_transfer;
+varying highp vec2 sprite_size_transfer;
+varying highp vec2 sprite_coordinates_transfer;
 uniform sampler2D sprite_sheet;
 
 void main() {
-lowp vec4 t = texture2D (sprite_sheet, texture_coordinates_transfer);
+lowp vec4 t = texture2D (sprite_sheet, sprite_position_transfer + sprite_size_transfer*sprite_coordinates_transfer);
 gl_FragColor = vec4(color_transfer, t.a);
 }
 
@@ -213,13 +234,14 @@ fn do_frame(state: & Rc<RefCell<State>>) {
     let mut vertices = Vec::<Vertex>::new();
     
     for machine in & state.map.machines {
+      let drawn = machine.machine_type.drawn_machine(& machine.map_state);
       draw_rectangle (&mut vertices, sprite_sheet,
         tile_center (machine.map_state.position),
         tile_size(),
-        machine_color (machine)
+        machine_color (machine), drawn.icon
       );
     }
-    for machine in & state.map.machines {
+    /*for machine in & state.map.machines {
       for (input_location, input_facing) in machine.machine_type.input_locations (& machine.map_state) {
         draw_rectangle (&mut vertices, sprite_sheet,
           tile_center (input_location),
@@ -236,7 +258,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
           machine_color (machine)
         );
       }
-    }
+    }*/
     for (machine_index, machine) in state.map.machines.iter().enumerate() {
       let patterns = machine.machine_type.current_outputs_and_next_change (& machine.materials_state, & state.future [machine_index].inputs_at (state.current_game_time)).0;
       for ((output_location, output_facing), pattern) in machine.machine_type.output_locations (& machine.map_state).into_iter().zip (patterns) {
@@ -245,7 +267,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
           draw_rectangle (&mut vertices, sprite_sheet,
             tile_center (output_location) + offset,
             tile_size()*0.6,
-            [0.0,0.0,0.0]
+            [0.0,0.0,0.0], "iron"
           );
         }
       }
@@ -258,7 +280,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
         draw_rectangle (&mut vertices, sprite_sheet,
           tile_center (storage_location),
           size,
-          [0.0,0.0,0.0]
+          [0.0,0.0,0.0], "iron"
         );
       }
     }

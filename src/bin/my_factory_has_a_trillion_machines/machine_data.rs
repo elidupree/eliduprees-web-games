@@ -18,6 +18,13 @@ macro_rules! inputs {
 pub type Vector = Vector2 <Number>;
 pub type Facing = u8;
 
+pub struct DrawnMachine {
+  pub icon: & 'static str,
+  pub position: Vector,
+  pub size: Vector,
+  pub facing: Facing,
+}
+
 
 pub trait MachineTypeTrait: Clone {
   // basic information
@@ -29,6 +36,7 @@ pub trait MachineTypeTrait: Clone {
   fn output_locations (&self, state: &MachineMapState)->Inputs <(Vector, Facing)>;
   
   fn displayed_storage (&self, map_state: & MachineMapState, materials_state: & MachineMaterialsState, input_patterns: & [FlowPattern], time: Number)->Inputs <(Vector, Number)>;
+  fn drawn_machine (&self, map_state: & MachineMapState)->DrawnMachine;
   
   // used to infer group input flow rates
   // property: with valid inputs, the returned values have the same length given by num_inputs/num_outputs
@@ -63,6 +71,7 @@ impl MachineTypeTrait for MachineType {
   fn output_locations (&self, state: &MachineMapState)->Inputs <(Vector, Facing)> {match self {$(MachineType::$Variant (value) => value.output_locations (state ),)*}}
   
   fn displayed_storage (&self, map_state: & MachineMapState, materials_state: & MachineMaterialsState, input_patterns: & [FlowPattern], time: Number)->Inputs <(Vector, Number)> {match self {$(MachineType::$Variant (value) => value.displayed_storage (map_state, materials_state, input_patterns, time ),)*}}
+  fn drawn_machine (&self, map_state: & MachineMapState)->DrawnMachine {match self {$(MachineType::$Variant (value) => value.drawn_machine (map_state),)*}}
   
   fn max_output_rates (&self, input_rates: & [Number])->Inputs <Number> {match self {$(MachineType::$Variant (value) => value.max_output_rates (input_rates ),)*}}
   fn reduced_input_rates_that_can_still_produce (&self, input_rates: & [Number], output_rates: & [Number])->Inputs <Number> {match self {$(MachineType::$Variant (value) => value.reduced_input_rates_that_can_still_produce (input_rates, output_rates ),)*}}
@@ -120,6 +129,7 @@ pub struct StandardMachineOutput {
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
 pub struct StandardMachine {
   pub name: & 'static str,
+  pub icon: & 'static str,
   pub inputs: Inputs <StandardMachineInput>,
   pub outputs: Inputs <StandardMachineOutput>,
   pub min_output_cycle_length: Number,
@@ -135,7 +145,7 @@ pub fn conveyor()->MachineType {
 
 pub fn splitter()->MachineType {
   MachineType::StandardMachine (StandardMachine {
-    name: "Splitter",
+    name: "Splitter", icon: "splitter",
     inputs: inputs! [StandardMachineInput {cost: 2, relative_location: (Vector::new (0, 0), 0)}],
     outputs: inputs! [
       StandardMachineOutput {amount: 1, relative_location: (Vector::new (0,  1), 1)},
@@ -147,7 +157,7 @@ pub fn splitter()->MachineType {
 
 pub fn slow_machine()->MachineType {
   MachineType::StandardMachine (StandardMachine {
-    name: "Slow machine",
+    name: "Slow machine", icon: "machine",
     inputs: inputs! [StandardMachineInput {cost: 1, relative_location: (Vector::new (0, 0), 0)}],
     outputs: inputs! [StandardMachineOutput {amount: 1, relative_location: (Vector::new (1, 0), 0)}],
     min_output_cycle_length: 10,
@@ -156,7 +166,7 @@ pub fn slow_machine()->MachineType {
 
 pub fn material_generator()->MachineType {
   MachineType::StandardMachine (StandardMachine {
-    name: "Material generator",
+    name: "Material generator", icon: "mine",
     inputs: inputs! [],
     outputs: inputs! [StandardMachineOutput {amount: 1, relative_location: (Vector::new (1, 0), 0)}],
     min_output_cycle_length: 1,
@@ -165,7 +175,7 @@ pub fn material_generator()->MachineType {
 
 pub fn consumer()->MachineType {
   MachineType::StandardMachine (StandardMachine {
-    name: "Consumer",
+    name: "Consumer", icon: "chest",
     inputs: inputs! [StandardMachineInput {cost: 1, relative_location: (Vector::new (0, 0), 0)}],
     outputs: inputs! [],
     min_output_cycle_length: 1,
@@ -258,6 +268,14 @@ impl MachineTypeTrait for StandardMachine {
   fn displayed_storage (&self, map_state: & MachineMapState, materials_state: & MachineMaterialsState, input_patterns: & [FlowPattern], time: Number)->Inputs <(Vector, Number)> {
     self.input_storage_at (materials_state, input_patterns, time).into_iter().zip (self.input_locations (map_state)).map (| (amount, (position,_facing)) | (position, amount)).collect()
   }
+  fn drawn_machine (&self, map_state: & MachineMapState)->DrawnMachine {
+    DrawnMachine {
+      icon: self.icon,
+      position: map_state.position,
+      size: Vector::new (1, 1),
+      facing: map_state.facing,
+    }
+  }
   
   fn max_output_rates (&self, input_rates: & [Number])->Inputs <Number> {
     let ideal_rate = self.max_output_rate_with_inputs (input_rates.iter().cloned());
@@ -340,6 +358,14 @@ impl MachineTypeTrait for Conveyor {
   
   fn displayed_storage (&self, map_state: & MachineMapState, materials_state: & MachineMaterialsState, input_patterns: & [FlowPattern], time: Number)->Inputs <(Vector, Number)> {
     inputs! [(map_state.position, self.input_storage_at (materials_state, input_patterns, time))]
+  }
+  fn drawn_machine (&self, map_state: & MachineMapState)->DrawnMachine {
+    DrawnMachine {
+      icon: "conveyor",
+      position: map_state.position,
+      size: Vector::new (1, 1),
+      facing: map_state.facing,
+    }
   }
   
   fn max_output_rates (&self, input_rates: & [Number])->Inputs <Number> {
