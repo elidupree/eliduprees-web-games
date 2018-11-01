@@ -250,18 +250,18 @@ fn do_frame(state: & Rc<RefCell<State>>) {
         }
       }
     }
-    for (machine_index, machine) in state.map.machines.iter().enumerate() {if let MachineType::StandardMachine (standard_machine) = & machine.machine_type {
-      for ((input_location, input_facing), storage) in machine.machine_type.input_locations (& machine.map_state).into_iter().zip (standard_machine.input_storage_at (& machine.materials_state, & state.future [machine_index].inputs_at (state.current_game_time), state.current_game_time)) {
+    for (machine_index, machine) in state.map.machines.iter().enumerate() {
+      for (storage_location, storage) in machine.machine_type.displayed_storage (& machine.map_state, & machine.materials_state,& state.future [machine_index].inputs_at (state.current_game_time), state.current_game_time) {
         let storage_fraction = storage as f32*0.1;
         let mut size = tile_size();
         if storage_fraction < 1.0 {size [1] *= storage_fraction;}
         draw_rectangle (&mut vertices, sprite_sheet,
-          tile_center (input_location),
+          tile_center (storage_location),
           size,
           [0.0,0.0,0.0]
         );
       }
-    }}
+    }
 
 
     target.draw(&glium::VertexBuffer::new(& state.glium_display, &vertices)

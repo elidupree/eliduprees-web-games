@@ -28,6 +28,8 @@ pub trait MachineTypeTrait: Clone {
   fn input_locations (&self, state: &MachineMapState)->Inputs <(Vector, Facing)>;
   fn output_locations (&self, state: &MachineMapState)->Inputs <(Vector, Facing)>;
   
+  fn displayed_storage (&self, map_state: & MachineMapState, materials_state: & MachineMaterialsState, input_patterns: & [FlowPattern], time: Number)->Inputs <(Vector, Number)>;
+  
   // used to infer group input flow rates
   // property: with valid inputs, the returned values have the same length given by num_inputs/num_outputs
   // property: these are consistent with each other
@@ -59,6 +61,8 @@ impl MachineTypeTrait for MachineType {
   
   fn input_locations (&self, state: &MachineMapState)->Inputs <(Vector, Facing)> {match self {$(MachineType::$Variant (value) => value.input_locations (state ),)*}}
   fn output_locations (&self, state: &MachineMapState)->Inputs <(Vector, Facing)> {match self {$(MachineType::$Variant (value) => value.output_locations (state ),)*}}
+  
+  fn displayed_storage (&self, map_state: & MachineMapState, materials_state: & MachineMaterialsState, input_patterns: & [FlowPattern], time: Number)->Inputs <(Vector, Number)> {match self {$(MachineType::$Variant (value) => value.displayed_storage (map_state, materials_state, input_patterns, time ),)*}}
   
   fn max_output_rates (&self, input_rates: & [Number])->Inputs <Number> {match self {$(MachineType::$Variant (value) => value.max_output_rates (input_rates ),)*}}
   fn reduced_input_rates_that_can_still_produce (&self, input_rates: & [Number], output_rates: & [Number])->Inputs <Number> {match self {$(MachineType::$Variant (value) => value.reduced_input_rates_that_can_still_produce (input_rates, output_rates ),)*}}
@@ -251,6 +255,10 @@ impl MachineTypeTrait for StandardMachine {
     }).collect()
   }
   
+  fn displayed_storage (&self, map_state: & MachineMapState, materials_state: & MachineMaterialsState, input_patterns: & [FlowPattern], time: Number)->Inputs <(Vector, Number)> {
+    self.input_storage_at (materials_state, input_patterns, time).into_iter().zip (self.input_locations (map_state)).map (| (amount, (position,_facing)) | (position, amount)).collect()
+  }
+  
   fn max_output_rates (&self, input_rates: & [Number])->Inputs <Number> {
     let ideal_rate = self.max_output_rate_with_inputs (input_rates.iter().cloned());
     self.outputs.iter().map (| output | ideal_rate*output.amount).collect()
@@ -306,6 +314,18 @@ impl MachineTypeTrait for StandardMachine {
 
 
 
+impl Conveyor {
+  fn input_storage_at (&self, state: & MachineMaterialsState, input_patterns: & [FlowPattern], time: Number)->Number {
+    // hack – just infer the consumed output from what's given to the next title, by subtracting 1 time
+    let mut output_pattern = self.current_outputs_and_next_change(state, input_patterns).0[0];
+    output_pattern.start_time -= 1;
+    
+    let interval = [state.last_flow_change, time];
+    state.inputs [0].storage_before_last_flow_change + input_patterns.iter().map (| pattern | pattern.num_disbursed_between (interval)).sum::<Number>() - output_pattern.num_disbursed_between (interval)
+  }
+}
+
+
 impl MachineTypeTrait for Conveyor {
   fn name (&self)->& str {"Conveyor"}
   fn num_inputs (&self)->usize {3}
@@ -316,6 +336,10 @@ impl MachineTypeTrait for Conveyor {
   }
   fn output_locations (&self, state: &MachineMapState)->Inputs <(Vector, Facing)> {
     inputs! [(state.position + Vector::new (1, 0).rotate_90 (state.facing), state.facing)]
+  }
+  
+  fn displayed_storage (&self, map_state: & MachineMapState, materials_state: & MachineMaterialsState, input_patterns: & [FlowPattern], time: Number)->Inputs <(Vector, Number)> {
+    inputs! [(map_state.position, self.input_storage_at (materials_state, input_patterns, time))]
   }
   
   fn max_output_rates (&self, input_rates: & [Number])->Inputs <Number> {
@@ -330,13 +354,8 @@ impl MachineTypeTrait for Conveyor {
   
   fn with_input_changed (&self, old_state: &MachineMaterialsState, change_time: Number, old_input_patterns: & [FlowPattern], _changed_index: usize, _new_pattern: FlowPattern)->MachineMaterialsState {
     let mut new_state = old_state.clone();
-    
-    // hack – just infer the consumed output from what's given to the next title, by subtracting 1 time
-    let mut output_pattern = self.current_outputs_and_next_change(old_state, old_input_patterns).0[0];
-    output_pattern.start_time -= 1;
-    
-    let interval = [old_state.last_flow_change, change_time];
-    new_state.inputs [0].storage_before_last_flow_change += old_input_patterns.iter().map (| pattern | pattern.num_disbursed_between (interval)).sum::<Number>() - output_pattern.num_disbursed_between (interval);
+
+    new_state.inputs [0].storage_before_last_flow_change = self.input_storage_at (old_state, old_input_patterns, change_time);
     
     new_state
   }
