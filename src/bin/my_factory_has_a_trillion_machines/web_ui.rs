@@ -53,11 +53,11 @@ fn machine_color(machine: & StatefulMachine)->[f32; 3] {
       machine.hash (&mut hasher);
       let hash = hasher.finish();
       let mask = (1u64 << 20)-1;
-      let divisor = mask as f32 * 0.7;
+      let factor = 0.8 / (mask as f32);
       [
-        ((hash      ) & mask) as f32/divisor,
-        ((hash >> 20) & mask) as f32/divisor,
-        ((hash >> 40) & mask) as f32/divisor,
+        ((hash      ) & mask) as f32*factor,
+        ((hash >> 20) & mask) as f32*factor,
+        ((hash >> 40) & mask) as f32*factor,
       ]
 }
 
