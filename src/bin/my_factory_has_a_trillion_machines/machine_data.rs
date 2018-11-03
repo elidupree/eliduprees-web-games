@@ -11,6 +11,7 @@ pub type Number = i64;
 pub const MAX_COMPONENTS: usize = 32;
 pub const RATE_DIVISOR: Number = 2*2*2*2*2*2 * 3*3*3 * 5*5;
 pub const MAX_MACHINE_INPUTS: usize = 8;
+pub const TIME_TO_MOVE_MATERIAL: Number = 1;
 pub type Inputs<T> = ArrayVec <[T; MAX_MACHINE_INPUTS]>;
 macro_rules! inputs {
   ($($whatever:tt)*) => {Inputs::from_iter ([$($whatever)*].iter().cloned())};
@@ -151,7 +152,7 @@ pub fn splitter()->MachineType {
       StandardMachineOutput {amount: 1, relative_location: (Vector::new (0,  1), 1)},
       StandardMachineOutput {amount: 1, relative_location: (Vector::new (0, -1), 3)},
     ],
-    min_output_cycle_length: 1,
+    min_output_cycle_length: TIME_TO_MOVE_MATERIAL,
   })
 }
 
@@ -160,7 +161,7 @@ pub fn slow_machine()->MachineType {
     name: "Slow machine", icon: "machine",
     inputs: inputs! [StandardMachineInput {cost: 1, relative_location: (Vector::new (0, 0), 0)}],
     outputs: inputs! [StandardMachineOutput {amount: 1, relative_location: (Vector::new (1, 0), 0)}],
-    min_output_cycle_length: 10,
+    min_output_cycle_length: 10*TIME_TO_MOVE_MATERIAL,
   })
 }
 
@@ -169,7 +170,7 @@ pub fn material_generator()->MachineType {
     name: "Material generator", icon: "mine",
     inputs: inputs! [],
     outputs: inputs! [StandardMachineOutput {amount: 1, relative_location: (Vector::new (1, 0), 0)}],
-    min_output_cycle_length: 1,
+    min_output_cycle_length: TIME_TO_MOVE_MATERIAL,
   })
 }
 
@@ -178,7 +179,7 @@ pub fn consumer()->MachineType {
     name: "Consumer", icon: "chest",
     inputs: inputs! [StandardMachineInput {cost: 1, relative_location: (Vector::new (0, 0), 0)}],
     outputs: inputs! [],
-    min_output_cycle_length: 1,
+    min_output_cycle_length: TIME_TO_MOVE_MATERIAL,
   })
 }
 
@@ -323,7 +324,7 @@ impl MachineTypeTrait for StandardMachine {
     };
     
     let current_outputs = self.outputs.iter().map (| output | {
-      FlowPattern {start_time: state.current_output_pattern.start_time + 1, rate: state.current_output_pattern.rate*output.amount}
+      FlowPattern {start_time: state.current_output_pattern.start_time + TIME_TO_MOVE_MATERIAL, rate: state.current_output_pattern.rate*output.amount}
     }).collect();
     (current_outputs, next_change)
   }
@@ -336,7 +337,7 @@ impl Conveyor {
   fn input_storage_at (&self, state: & MachineMaterialsState, input_patterns: & [FlowPattern], time: Number)->Number {
     // hack – just infer the consumed output from what's given to the next title, by subtracting 1 time
     let mut output_pattern = self.current_outputs_and_next_change(state, input_patterns).0[0];
-    output_pattern.start_time -= 1;
+    output_pattern.start_time -= TIME_TO_MOVE_MATERIAL;
     
     let interval = [state.last_flow_change, time];
     state.inputs [0].storage_before_last_flow_change + input_patterns.iter().map (| pattern | pattern.num_disbursed_between (interval)).sum::<Number>() - output_pattern.num_disbursed_between (interval)
@@ -387,6 +388,11 @@ impl MachineTypeTrait for Conveyor {
   }
   fn current_outputs_and_next_change (&self, state: &MachineMaterialsState, input_patterns: & [FlowPattern])->(Inputs <FlowPattern>, Option <(Number, MachineMaterialsState)>)
  {
+    let min_time_to_switch_output = match state.current_output_pattern.last_disbursement_before (state.last_flow_change) {
+      Some (time) => max (state.last_flow_change, time + TIME_TO_MOVE_MATERIAL),
+      None => state.last_flow_change,
+    };
+ 
     let mut sorted_input_patterns: Inputs <FlowPattern> = input_patterns.iter().cloned().collect();
     sorted_input_patterns.sort_by_key (| pattern | pattern.start_time);
     let mut last_output_pattern = FlowPattern {start_time: Number::min_value(), rate: 0};
@@ -422,7 +428,7 @@ impl MachineTypeTrait for Conveyor {
       last_change_time = change_time;
     }
         
-    let current_outputs = inputs! [FlowPattern {start_time: last_output_pattern.start_time + 1, rate: last_output_pattern.rate}];
+    let current_outputs = inputs! [FlowPattern {start_time: state.current_output_pattern.start_time + TIME_TO_MOVE_MATERIAL, rate: state.current_output_pattern.rate}];
     
     (current_outputs, next_change)
   }
