@@ -428,7 +428,7 @@ impl MachineTypeTrait for Conveyor {
       last_change_time = change_time;
     }
         
-    let current_outputs = inputs! [FlowPattern {start_time: state.current_output_pattern.start_time + TIME_TO_MOVE_MATERIAL, rate: state.current_output_pattern.rate}];
+    let current_outputs = inputs! [FlowPattern {start_time: last_output_pattern.start_time + TIME_TO_MOVE_MATERIAL, rate: last_output_pattern.rate}];
     
     (current_outputs, next_change)
   }

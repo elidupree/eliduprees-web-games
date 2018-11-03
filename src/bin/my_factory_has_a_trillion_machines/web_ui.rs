@@ -331,8 +331,14 @@ fn do_frame(state: & Rc<RefCell<State>>) {
     for (machine_index, machine) in state.map.machines.iter().enumerate() {
       let patterns = machine.machine_type.current_outputs_and_next_change (& machine.materials_state, & state.future [machine_index].inputs_at (state.current_game_time)).0;
       for ((output_location, output_facing), pattern) in machine.machine_type.output_locations (& machine.map_state).into_iter().zip (patterns) {
-        if pattern.num_disbursed_at_time (state.current_game_time) > 0 {
-          let offset = Vector2::new (tile_size() [0]*(fractional_time.fract() as f32 - 1.0), 0.0).rotate_90 (output_facing);
+        let soon_disbursements = pattern.num_disbursed_between ([state.current_game_time, state.current_game_time + TIME_TO_MOVE_MATERIAL]);
+        if soon_disbursements > 1 {
+          eprintln!(" Warning: things released more frequently than permitted {:?} ", soon_disbursements);
+        }
+        if soon_disbursements > 0 {
+          let time = pattern.last_disbursement_before (state.current_game_time + TIME_TO_MOVE_MATERIAL).unwrap();
+          let progress = ((TIME_TO_MOVE_MATERIAL - 1 - (time - state.current_game_time)) as f32 + fractional_time.fract() as f32) / TIME_TO_MOVE_MATERIAL as f32;
+          let offset = Vector2::new (tile_size() [0]*(progress - 1.0), 0.0).rotate_90 (output_facing);
           draw_rectangle (&mut vertices, sprite_sheet,
             tile_center (output_location) + offset,
             tile_size()*0.6,
