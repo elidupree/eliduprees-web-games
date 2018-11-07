@@ -49,7 +49,7 @@ pub trait MachineTypeTrait: Clone {
   // property: if inputs don't change, current_output_rates doesn't change before next_output_change_time
   // property: when there is no next output change time, current_output_rates is equivalent to max_output_rates
   // maybe some property that limits the total amount of rate changes resulting from a single change by the player?
-  fn with_input_changed (&self, old_state: &MachineMaterialsState, change_time: Number, old_input_patterns: & [FlowPattern], changed_index: usize, new_pattern: FlowPattern)->MachineMaterialsState;
+  fn with_inputs_changed (&self, old_state: &MachineMaterialsState, change_time: Number, old_input_patterns: & [FlowPattern])->MachineMaterialsState;
   // property: next_change is not the same time twice in a row
   fn future_output_patterns (&self, state: &MachineMaterialsState, input_patterns: & [FlowPattern])->Inputs <ArrayVec<[(Number, FlowPattern); MAX_IMPLICIT_OUTPUT_FLOW_CHANGES]>>;
 
@@ -78,7 +78,7 @@ impl MachineTypeTrait for MachineType {
   fn max_output_rates (&self, input_rates: & [Number])->Inputs <Number> {match self {$(MachineType::$Variant (value) => value.max_output_rates (input_rates ),)*}}
   fn reduced_input_rates_that_can_still_produce (&self, input_rates: & [Number], output_rates: & [Number])->Inputs <Number> {match self {$(MachineType::$Variant (value) => value.reduced_input_rates_that_can_still_produce (input_rates, output_rates ),)*}}
   
-  fn with_input_changed (&self, old_state: &MachineMaterialsState, change_time: Number, old_input_patterns: & [FlowPattern], changed_index: usize, new_pattern: FlowPattern)->MachineMaterialsState {match self {$(MachineType::$Variant (value) => value.with_input_changed (old_state, change_time, old_input_patterns, changed_index, new_pattern ),)*}}
+  fn with_inputs_changed (&self, old_state: &MachineMaterialsState, change_time: Number, old_input_patterns: & [FlowPattern])->MachineMaterialsState {match self {$(MachineType::$Variant (value) => value.with_inputs_changed (old_state, change_time, old_input_patterns),)*}}
   fn future_output_patterns (&self, state: &MachineMaterialsState, input_patterns: & [FlowPattern])->Inputs <ArrayVec<[(Number, FlowPattern); MAX_IMPLICIT_OUTPUT_FLOW_CHANGES]>> {match self {$(MachineType::$Variant (value) => value.future_output_patterns (state, input_patterns ),)*}}
 }
   
@@ -332,7 +332,7 @@ impl MachineTypeTrait for StandardMachine {
     self.inputs.iter().map (| input | ideal_rate*input.cost).collect()
   }
   
-  fn with_input_changed (&self, old_state: &MachineMaterialsState, change_time: Number, old_input_patterns: & [FlowPattern], _changed_index: usize, _new_pattern: FlowPattern)->MachineMaterialsState {
+  fn with_inputs_changed (&self, old_state: &MachineMaterialsState, change_time: Number, old_input_patterns: & [FlowPattern])->MachineMaterialsState {
     let mut new_state = old_state.clone();
     self.update_last_flow_change (&mut new_state, change_time, old_input_patterns);    
     new_state
@@ -452,7 +452,7 @@ impl MachineTypeTrait for Conveyor {
   }
   
     
-  fn with_input_changed (&self, old_state: &MachineMaterialsState, change_time: Number, old_input_patterns: & [FlowPattern], _changed_index: usize, _new_pattern: FlowPattern)->MachineMaterialsState {
+  fn with_inputs_changed (&self, old_state: &MachineMaterialsState, change_time: Number, old_input_patterns: & [FlowPattern])->MachineMaterialsState {
     let mut new_state = old_state.clone();
     self.update_last_flow_change (&mut new_state, change_time, old_input_patterns);    
     new_state

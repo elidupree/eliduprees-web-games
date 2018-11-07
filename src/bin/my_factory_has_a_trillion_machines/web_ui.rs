@@ -206,6 +206,7 @@ fn click (state: &mut State, position: Vector) {
 }
 
 fn build_machine (state: &mut State, machine_type: MachineType, map_state: MachineMapState) {
+  prepare_to_change_map (state) ;
   let materials_state =MachineMaterialsState::empty (& machine_type, state.current_game_time);
   if state.map.machines.iter().any (| machine | machine.map_state.position == map_state.position) {
     return;
@@ -217,7 +218,13 @@ fn build_machine (state: &mut State, machine_type: MachineType, map_state: Machi
   }).is_err() {
     return;
   }
-  recalculate_future (state);
+  recalculate_future (state) ;
+}
+
+fn prepare_to_change_map(state: &mut State) {
+  for (machine, future) in state.map.machines.iter_mut().zip (& state.future) {
+    machine.materials_state = machine.machine_type.with_inputs_changed(& future.materials_state_at (state.current_game_time, & machine.materials_state), state.current_game_time, &future.inputs_at(state.current_game_time));
+  }
 }
 
 fn recalculate_future (state: &mut State) {
@@ -225,6 +232,7 @@ fn recalculate_future (state: &mut State) {
   let ordering = state.map.topological_ordering_of_noncyclic_machines(& output_edges);
   state.future = state.map.future (& output_edges, & ordering);
 }
+
 
 fn mouse_move (state: &mut State, position: Vector) {
   let delta = position - state.mouse_position;
@@ -240,6 +248,7 @@ fn mouse_move (state: &mut State, position: Vector) {
     state.mouse_facing = facing;
     if state.mouse_pressed {
       let mut found_machine = false;
+      prepare_to_change_map (state) ;
       for machine in &mut state.map.machines {
         if machine.map_state.position == state.mouse_position {
           found_machine = true;

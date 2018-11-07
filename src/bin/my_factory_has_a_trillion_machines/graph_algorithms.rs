@@ -110,7 +110,7 @@ impl Map {
         for (input_index, (_time, pattern)) in result [machine_index].inputs.iter().enumerate().filter_map (
               | (input_index, input) | input.changes.iter().find (| (time,_pattern) | *time == next_change_time).map (| whatever | (input_index, whatever))
             ) {
-          state = machine.machine_type.with_input_changed (&state, next_change_time, & input_patterns, input_index, *pattern);
+          state = machine.machine_type.with_inputs_changed (&state, next_change_time, & input_patterns);
           input_patterns [input_index] = *pattern;
         }
         
@@ -131,9 +131,7 @@ impl Map {
   
   pub fn update_to (&mut self, future: & MachinesFuture, time: Number) {
     for (machine, future) in self.machines.iter_mut().zip (future.iter()) {
-      if let Some ((_, state)) = future.changes.iter().rev().find (| (change_time,_) | *change_time <= time) {
-        machine.materials_state = state.clone();
-      }
+      machine.materials_state = future.materials_state_at (time, & machine.materials_state);
     }
   }
 }
@@ -141,6 +139,9 @@ impl Map {
 impl MachineFuture {
   pub fn inputs_at (&self, time: Number)->Inputs <FlowPattern> {
     self.inputs.iter().map (| future | future.changes.iter().rev().find (| (change_time,_) | *change_time <= time).map_or_else (Default::default, | (_, pattern) | *pattern)).collect()
+  }
+  pub fn materials_state_at (&self, time: Number, initial_state: & MachineMaterialsState)->MachineMaterialsState {
+    self.changes.iter().rev().find (| (change_time,_) | *change_time <= time).map_or_else (| | initial_state.clone(), | (_change_time, state) | state.clone())
   }
 }
 
