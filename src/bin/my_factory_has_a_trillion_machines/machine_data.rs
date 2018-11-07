@@ -245,13 +245,13 @@ impl StandardMachine {
   }
   
   pub fn input_storage_before (&self, state: &MachineMaterialsState, input_patterns: & [FlowPattern], time: Number)->Inputs <Number> {
-    let (start_time, output_pattern, starting_storage) = self.future_internal_output_patterns (state, input_patterns).into_iter().rev().find (| (start_time, _, _) | *start_time <= time).unwrap();
+    let (start_time, output_pattern, starting_storage) = self.future_internal_output_patterns (state, input_patterns).into_iter().rev().find (| (start_time, _, _) | *start_time < time).unwrap();
     
     self.input_storage_before_impl (input_patterns, output_pattern, starting_storage, [max (start_time, state.last_flow_change), time])
   }
   
   fn update_last_flow_change (&self, state: &mut MachineMaterialsState, change_time: Number, old_input_patterns: & [FlowPattern]) {
-    let (start_time, output_pattern, starting_storage) = self.future_internal_output_patterns (state, old_input_patterns).into_iter().rev().find (| (time,_,_) | *time <= change_time).unwrap();
+    let (start_time, output_pattern, starting_storage) = self.future_internal_output_patterns (state, old_input_patterns).into_iter().rev().find (| (time,_,_) | *time < change_time).unwrap();
     state.input_storage_before_last_flow_change = self.input_storage_before_impl (old_input_patterns, output_pattern, starting_storage, [max (start_time, state.last_flow_change), change_time]);
     state.retained_output_pattern = output_pattern;
     state.last_flow_change = change_time;
@@ -371,13 +371,13 @@ impl Conveyor {
   }
   
   pub fn input_storage_before (&self, state: &MachineMaterialsState, input_patterns: & [FlowPattern], time: Number)->Number {
-    let (start_time, output_pattern, starting_storage) = self.future_internal_output_patterns (state, input_patterns).into_iter().rev().find (| (start_time, _, _) | *start_time <= time).unwrap();
+    let (start_time, output_pattern, starting_storage) = self.future_internal_output_patterns (state, input_patterns).into_iter().rev().find (| (start_time, _, _) | *start_time < time).unwrap();
     
     self.input_storage_before_impl (input_patterns, output_pattern, starting_storage, [max (start_time, state.last_flow_change), time])
   }
   
   fn update_last_flow_change (&self, state: &mut MachineMaterialsState, change_time: Number, old_input_patterns: & [FlowPattern]) {
-    let (start_time, output_pattern, starting_storage) = self.future_internal_output_patterns (state, old_input_patterns).into_iter().rev().find (| (time,_,_) | *time <= change_time).unwrap();
+    let (start_time, output_pattern, starting_storage) = self.future_internal_output_patterns (state, old_input_patterns).into_iter().rev().find (| (time,_,_) | *time < change_time).unwrap();
     state.input_storage_before_last_flow_change = inputs! [self.input_storage_before_impl (old_input_patterns, output_pattern, starting_storage, [max (start_time, state.last_flow_change), change_time])];
     state.retained_output_pattern = output_pattern;
     state.last_flow_change = change_time;

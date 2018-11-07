@@ -80,7 +80,7 @@ impl Map {
     for &machine_index in topological_ordering {
       let machine = & self.machines [machine_index];
       let mut state = machine.materials_state.clone();
-      let mut input_patterns: Inputs <_> = result [machine_index].inputs.iter().map (| input | input.changes.first().cloned().unwrap_or_default().1).collect();
+      let mut input_patterns: Inputs <_> = result [machine_index].inputs.iter().map (| _input | FlowPattern::default()).collect();
       let mut outputs: Inputs <_> = iter::repeat (MachineInputFuture::default()).take(machine.machine_type.num_outputs()).collect();
       let mut last_change_time = -1;
       let mut total_changes = 0;
@@ -96,7 +96,9 @@ impl Map {
         for (delivered_output, output_future) in outputs.iter_mut().zip(future_output) {
           for (when, pattern) in output_future {
             if when < next_change_time {
-              delivered_output.changes.push ((when, pattern));
+              if pattern != delivered_output.changes.last().map_or_else (Default::default, | change | change.1) {
+                delivered_output.changes.push ((when, pattern));
+              }
             }
           }
         }
