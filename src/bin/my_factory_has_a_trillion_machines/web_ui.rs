@@ -78,12 +78,12 @@ fn tile_position (visual: Vector2 <f64>)->Vector {
 fn draw_rectangle (vertices: &mut Vec<Vertex>, sprite_sheet: & SpriteSheet, center: Vector2<f32>, size: Vector2<f32>, color: [f32; 3], sprite: & str) {
   let bounds = &sprite_sheet.bounds_map [sprite];
   let sprite_size = [
-    bounds.width as f32/sprite_sheet.size [0] as f32,
-    -(bounds.height as f32/sprite_sheet.size [1] as f32),
+    (bounds.width-1) as f32/sprite_sheet.size [0] as f32,
+    -((bounds.height-1) as f32/sprite_sheet.size [1] as f32),
   ];
   let sprite_position = [
-    bounds.x as f32/sprite_sheet.size [0] as f32,
-    (bounds.y + bounds.height) as f32/sprite_sheet.size [1] as f32,
+    (bounds.x as f32 + 0.5)/sprite_sheet.size [0] as f32,
+    ((bounds.y + bounds.height) as f32 - 0.5)/sprite_sheet.size [1] as f32,
   ];
   let vertex = |x,y| Vertex {
             position: [center [0] + size [0]*x, center [1] + size [1]*y],
@@ -329,7 +329,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
       }
     }*/
     for (machine_index, machine) in state.map.machines.iter().enumerate() {
-      let patterns = machine.machine_type.current_outputs_and_next_change (& machine.materials_state, & state.future [machine_index].inputs_at (state.current_game_time)).0;
+      let patterns: Inputs <_> = machine.machine_type.future_output_patterns (& machine.materials_state, & state.future [machine_index].inputs_at (state.current_game_time)).into_iter().map (| list | list.into_iter().rev().find(|(time,_pattern)| *time <= state.current_game_time).unwrap().1).collect();
       for ((output_location, output_facing), pattern) in machine.machine_type.output_locations (& machine.map_state).into_iter().zip (patterns) {
         let soon_disbursements = pattern.num_disbursed_between ([state.current_game_time, state.current_game_time + TIME_TO_MOVE_MATERIAL]);
         if soon_disbursements > 1 {
