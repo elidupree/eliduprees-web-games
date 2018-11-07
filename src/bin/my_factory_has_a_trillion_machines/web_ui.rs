@@ -32,6 +32,7 @@ struct State {
   glium_program: glium::Program,
   sprite_sheet: Option <SpriteSheet>,
   map: Map,
+  output_edges: OutputEdges,
   future: MachinesFuture,
   start_ui_time: f64,
   current_game_time: Number,
@@ -150,7 +151,7 @@ gl_FragColor = vec4(color_transfer, t.a);
       
   let state = Rc::new (RefCell::new (State {
     glium_display: display, glium_program: program, sprite_sheet: None,
-    map, future, start_ui_time: now(), current_game_time: 0,
+    map, output_edges, future, start_ui_time: now(), current_game_time: 0,
     mouse_facing: 0, mouse_position: Vector::new (0, 0), mouse_pressed: false,
   }));
   
@@ -228,9 +229,9 @@ fn prepare_to_change_map(state: &mut State) {
 }
 
 fn recalculate_future (state: &mut State) {
-  let output_edges = state.map.output_edges();
-  let ordering = state.map.topological_ordering_of_noncyclic_machines(& output_edges);
-  state.future = state.map.future (& output_edges, & ordering);
+  state.output_edges = state.map.output_edges();
+  let ordering = state.map.topological_ordering_of_noncyclic_machines(& state.output_edges);
+  state.future = state.map.future (& state.output_edges, & ordering);
 }
 
 
@@ -337,12 +338,15 @@ fn do_frame(state: & Rc<RefCell<State>>) {
         );
       }
     }*/
-    for (machine_index, machine) in state.map.machines.iter().enumerate() {
-      let future_output_patterns: Inputs <_> = machine.machine_type.future_output_patterns (& machine.materials_state, & state.future [machine_index].inputs_at (state.current_game_time));
+    for (machine, edges) in state.map.machines.iter().zip (state.output_edges.iter()) {
+      
+      //let future_output_patterns: Inputs <_> = machine.machine_type.future_output_patterns (& machine.materials_state, & state.future [machine_index].inputs_at (state.current_game_time));
       //let relevant_output_patterns = future_output_patterns.into_iter().map (| list | list.into_iter().rev().find(|(time,_pattern)| *time <= state.current_game_time).unwrap().1).collect();
       let start_time = state.current_game_time;
       let end_time = start_time + TIME_TO_MOVE_MATERIAL;
-      for ((output_location, output_facing), patterns) in machine.machine_type.output_locations (& machine.map_state).into_iter().zip (future_output_patterns) {
+      for ((output_location, output_facing), edge) in machine.machine_type.output_locations (& machine.map_state).into_iter().zip (edges) {
+        if let Some((target_machine_index, target_input_index)) = edge {
+        let patterns = & state.future [*target_machine_index].inputs [*target_input_index].changes;
         for (pattern_index, (pattern_start_time, pattern)) in patterns.iter().enumerate() {
           let pattern_end_time = patterns.get (pattern_index + 1).map_or_else (Number::max_value, | (time,_pattern) | *time) ;
           if *pattern_start_time >= end_time || pattern_end_time <= start_time { continue; }
@@ -362,7 +366,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
               [0.0,0.0,0.0], "iron"
             );
           }
-        }
+        }}
       }
     }
     for (machine_index, machine) in state.map.machines.iter().enumerate() {
