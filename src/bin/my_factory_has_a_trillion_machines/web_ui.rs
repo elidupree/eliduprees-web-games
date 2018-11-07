@@ -5,7 +5,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::hash::{Hash, Hasher};
 use std::collections::HashMap;
-use std::cmp::min;
+use std::cmp::{min,max};
 use glium::{Surface};
 use arrayvec::ArrayVec;
 use stdweb::unstable::TryInto;
@@ -329,21 +329,30 @@ fn do_frame(state: & Rc<RefCell<State>>) {
       }
     }*/
     for (machine_index, machine) in state.map.machines.iter().enumerate() {
-      let patterns: Inputs <_> = machine.machine_type.future_output_patterns (& machine.materials_state, & state.future [machine_index].inputs_at (state.current_game_time)).into_iter().map (| list | list.into_iter().rev().find(|(time,_pattern)| *time <= state.current_game_time).unwrap().1).collect();
-      for ((output_location, output_facing), pattern) in machine.machine_type.output_locations (& machine.map_state).into_iter().zip (patterns) {
-        let soon_disbursements = pattern.num_disbursed_between ([state.current_game_time, state.current_game_time + TIME_TO_MOVE_MATERIAL]);
-        if soon_disbursements > 1 {
-          eprintln!(" Warning: things released more frequently than permitted {:?} ", soon_disbursements);
-        }
-        if soon_disbursements > 0 {
-          let time = pattern.last_disbursement_before (state.current_game_time + TIME_TO_MOVE_MATERIAL).unwrap();
-          let progress = ((TIME_TO_MOVE_MATERIAL - 1 - (time - state.current_game_time)) as f32 + fractional_time.fract() as f32) / TIME_TO_MOVE_MATERIAL as f32;
-          let offset = Vector2::new (tile_size() [0]*(progress - 1.0), 0.0).rotate_90 (output_facing);
-          draw_rectangle (&mut vertices, sprite_sheet,
-            tile_center (output_location) + offset,
-            tile_size()*0.6,
-            [0.0,0.0,0.0], "iron"
-          );
+      let future_output_patterns: Inputs <_> = machine.machine_type.future_output_patterns (& machine.materials_state, & state.future [machine_index].inputs_at (state.current_game_time));
+      //let relevant_output_patterns = future_output_patterns.into_iter().map (| list | list.into_iter().rev().find(|(time,_pattern)| *time <= state.current_game_time).unwrap().1).collect();
+      let start_time = state.current_game_time;
+      let end_time = start_time + TIME_TO_MOVE_MATERIAL;
+      for ((output_location, output_facing), patterns) in machine.machine_type.output_locations (& machine.map_state).into_iter().zip (future_output_patterns) {
+        for (pattern_index, (pattern_start_time, pattern)) in patterns.iter().enumerate() {
+          let pattern_end_time = patterns.get (pattern_index + 1).map_or_else (Number::max_value, | (time,_pattern) | *time) ;
+          if *pattern_start_time >= end_time || pattern_end_time <= start_time { continue; }
+          
+          let soon_disbursements = pattern.num_disbursed_between ([max (*pattern_start_time, start_time), min(pattern_end_time, end_time)]);
+          if soon_disbursements > 1 {
+            eprintln!(" Warning: things released more frequently than permitted {:?} ", soon_disbursements);
+          }
+          if soon_disbursements > 0 {
+            let time = pattern.last_disbursement_before (state.current_game_time + TIME_TO_MOVE_MATERIAL).unwrap();
+            assert!(time >= start_time) ;
+            let progress = ((TIME_TO_MOVE_MATERIAL - 1 - (time - start_time)) as f32 + fractional_time.fract() as f32) / TIME_TO_MOVE_MATERIAL as f32;
+            let offset = Vector2::new (tile_size() [0]*(progress - 1.0), 0.0).rotate_90 (output_facing);
+            draw_rectangle (&mut vertices, sprite_sheet,
+              tile_center (output_location) + offset,
+              tile_size()*0.6,
+              [0.0,0.0,0.0], "iron"
+            );
+          }
         }
       }
     }
