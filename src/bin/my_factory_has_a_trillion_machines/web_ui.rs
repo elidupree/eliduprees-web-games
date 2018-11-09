@@ -207,18 +207,19 @@ fn click (state: &mut State, position: Vector) {
 }
 
 fn build_machine (state: &mut State, machine_type: MachineType, map_state: MachineMapState) {
-  prepare_to_change_map (state) ;
   let materials_state =MachineMaterialsState::empty (& machine_type, state.current_game_time);
   if state.map.machines.iter().any (| machine | machine.map_state.position == map_state.position) {
     return;
   }
-  if state.map.machines.try_push (StatefulMachine {
+  if state.map.machines.len() == state.map.machines.capacity() {
+    return;
+  }
+  prepare_to_change_map (state);
+  state.map.machines.push (StatefulMachine {
     machine_type,
     map_state,
     materials_state,
-  }).is_err() {
-    return;
-  }
+  });
   recalculate_future (state) ;
 }
 
@@ -248,17 +249,12 @@ fn mouse_move (state: &mut State, position: Vector) {
   if let Some(facing) = facing {
     state.mouse_facing = facing;
     if state.mouse_pressed {
-      let mut found_machine = false;
-      prepare_to_change_map (state) ;
-      for machine in &mut state.map.machines {
-        if machine.map_state.position == state.mouse_position {
-          found_machine = true;
-          machine.map_state.facing = facing;
-        }
-      }
-      if found_machine {
+      if let Some(index) =  state.map.machines.iter().position(|machine| machine.map_state.position == state.mouse_position) {
+        prepare_to_change_map (state) ;
+        state.map.machines[index].map_state.facing = facing;
         recalculate_future (state) ;
-      } else {
+      }
+      else {
         build_machine (state, conveyor(), MachineMapState {position: state.mouse_position, facing: facing});
       }
     }
@@ -298,7 +294,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
   let state = &mut *state;
   let fractional_time = (now() - state.start_ui_time)*2.0;
   state.current_game_time = fractional_time as Number;
-  state.map.update_to (& state.future, state.current_game_time);
+  //state.map.update_to (& state.future, state.current_game_time);
   
   let sprite_sheet = match state.sprite_sheet {Some (ref value) => value, None => return};
   
@@ -345,7 +341,12 @@ fn do_frame(state: & Rc<RefCell<State>>) {
       }));
       let mut future_output_patterns: Inputs <Vec<_>> = (0..machine.machine_type.num_outputs()).map(|_| Vec::new()).collect();
       for (materials, next) in with_optional_next (materials_states) {
+        //if state.mouse_pressed {println!(" {:?} ", (&materials, &next));}
         let end_time = match next {None => Number::max_value(), Some (state) => state.last_flow_change};
+        assert!(end_time >= materials.last_flow_change, "{:?} > {:?}", materials, next) ;
+        if end_time == materials.last_flow_change {continue;}
+        assert_eq!(materials, &future.materials_state_at(materials.last_flow_change, & machine.materials_state));
+        assert_eq!(materials, &future.materials_state_at(end_time-1, & machine.materials_state));
         for (collector, patterns) in future_output_patterns.iter_mut().zip (machine.machine_type.future_output_patterns (& materials, & future.inputs_at (materials.last_flow_change))) {
           for (time, pattern) in patterns {
             if time < end_time {
@@ -354,6 +355,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
           }
         }
       }
+      //if state.mouse_pressed {println!(" {:?} ", future_output_patterns);}
       //let relevant_output_patterns = future_output_patterns.into_iter().map (| list | list.into_iter().rev().find(|(time,_pattern)| *time <= state.current_game_time).unwrap().1).collect();
       let start_time = state.current_game_time;
       let end_time = start_time + TIME_TO_MOVE_MATERIAL;
@@ -380,8 +382,8 @@ fn do_frame(state: & Rc<RefCell<State>>) {
         }
       }
     }
-    for (machine_index, machine) in state.map.machines.iter().enumerate() {
-      for (storage_location, storage) in machine.machine_type.displayed_storage (& machine.map_state, & machine.materials_state,& state.future [machine_index].inputs_at (state.current_game_time), state.current_game_time) {
+    for (machine, future) in state.map.machines.iter().zip (&state.future) {
+      for (storage_location, storage) in machine.machine_type.displayed_storage (& machine.map_state, & future.materials_state_at(state.current_game_time, & machine.materials_state),& future.inputs_at (state.current_game_time), state.current_game_time) {
         for index in 0..min (3, storage) {
           let mut position = tile_center (storage_location);
           position [1] += tile_size() [1]*index as f32*0.1;

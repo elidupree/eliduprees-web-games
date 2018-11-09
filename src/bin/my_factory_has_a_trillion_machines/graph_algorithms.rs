@@ -19,6 +19,15 @@ pub struct MachineInputFuture {
   pub changes: Vec<(Number, FlowPattern)>,
 }
 
+impl MachineFuture {
+  fn push_change (&mut self, change: (Number, MachineMaterialsState)) {
+    if self.changes.last().map_or (false, | (time,_state) | *time == change.0) {
+      self.changes.pop();
+    }
+    self.changes.push (change);
+  }
+}
+
 impl Map {
   pub fn output_edges (&self)->OutputEdges {
     self.machines.iter().map (| machine | {
@@ -82,7 +91,7 @@ impl Map {
       let mut state = machine.materials_state.clone();
       let mut input_patterns: Inputs <_> = result [machine_index].inputs.iter().map (| _input | FlowPattern::default()).collect();
       let mut outputs: Inputs <_> = iter::repeat (MachineInputFuture::default()).take(machine.machine_type.num_outputs()).collect();
-      let mut last_change_time = -1;
+      let mut last_change_time = machine.materials_state.last_flow_change-1;
       let mut total_changes = 0;
       loop {
         total_changes += total_changes;
@@ -107,10 +116,12 @@ impl Map {
         
         //eprintln!(" {:?} ", (next_change_time, last_change_time, &personal_change)) ;
         assert!(next_change_time > last_change_time);
-        for (input_index, (_time, pattern)) in result [machine_index].inputs.iter().enumerate().filter_map (
+        for (input_index, (_time, pattern)) in result [machine_index].inputs.clone().iter().enumerate().filter_map (
               | (input_index, input) | input.changes.iter().find (| (time,_pattern) | *time == next_change_time).map (| whatever | (input_index, whatever))
             ) {
           state = machine.machine_type.with_inputs_changed (&state, next_change_time, & input_patterns);
+          assert!(state.last_flow_change == next_change_time);
+          result [machine_index].push_change ((next_change_time, state.clone()));
           input_patterns [input_index] = *pattern;
         }
         
