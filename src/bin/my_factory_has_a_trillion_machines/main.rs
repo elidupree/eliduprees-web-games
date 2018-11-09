@@ -18,8 +18,11 @@ extern crate proptest;
 #[macro_use]
 extern crate glium;
 extern crate siphasher;
+extern crate itertools;
 
 pub use eliduprees_web_games::*;
+mod misc;
+pub use misc::*;
 mod flow_pattern;
 pub use flow_pattern::*;
 mod machine_data;

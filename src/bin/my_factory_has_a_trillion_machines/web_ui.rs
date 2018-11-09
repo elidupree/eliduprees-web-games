@@ -6,6 +6,7 @@ use std::cell::RefCell;
 use std::hash::{Hash, Hasher};
 use std::collections::HashMap;
 use std::cmp::{min,max};
+use std::iter;
 use glium::{Surface};
 use arrayvec::ArrayVec;
 use stdweb::unstable::TryInto;
@@ -337,8 +338,22 @@ fn do_frame(state: & Rc<RefCell<State>>) {
         );
       }
     }*/
-    for (machine_index, machine) in state.map.machines.iter().enumerate() {
-      let future_output_patterns: Inputs <_> = machine.machine_type.future_output_patterns (& machine.materials_state, & state.future [machine_index].inputs_at (state.current_game_time));
+    for (machine, future) in state.map.machines.iter().zip (&state.future) {
+      let materials_states = iter::once (&machine.materials_state).chain (future.changes.iter().map (| (time, state) | {
+        assert!(*time == state.last_flow_change);
+        state
+      }));
+      let mut future_output_patterns: Inputs <Vec<_>> = (0..machine.machine_type.num_outputs()).map(|_| Vec::new()).collect();
+      for (materials, next) in with_optional_next (materials_states) {
+        let end_time = match next {None => Number::max_value(), Some (state) => state.last_flow_change};
+        for (collector, patterns) in future_output_patterns.iter_mut().zip (machine.machine_type.future_output_patterns (& materials, & future.inputs_at (materials.last_flow_change))) {
+          for (time, pattern) in patterns {
+            if time < end_time {
+              collector.push ((time, pattern)) ;
+            }
+          }
+        }
+      }
       //let relevant_output_patterns = future_output_patterns.into_iter().map (| list | list.into_iter().rev().find(|(time,_pattern)| *time <= state.current_game_time).unwrap().1).collect();
       let start_time = state.current_game_time;
       let end_time = start_time + TIME_TO_MOVE_MATERIAL;
