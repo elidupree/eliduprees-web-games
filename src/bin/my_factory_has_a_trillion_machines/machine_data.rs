@@ -296,7 +296,7 @@ impl StandardMachine {
     let output_disbursements = output_pattern.num_disbursed_between (interval);
     if self.merge_inputs {
       let (storage, material) = starting_storage[0];
-      let amount = storage - output_disbursements + input_patterns.iter().map (| (pattern,_) | pattern.num_disbursed_between (interval)).sum::<Number>();
+      let amount = storage - output_disbursements*self.inputs[0].cost + input_patterns.iter().map (| (pattern,_) | pattern.num_disbursed_between (interval)).sum::<Number>();
       inputs! [(amount, material)]
     }
     else {
@@ -377,7 +377,7 @@ impl StandardMachine {
       let mut when_enough_inputs_to_begin_output = time_to_switch_output;
       let storage_before = result.last().unwrap().2.clone();
       if self.merge_inputs {
-        when_enough_inputs_to_begin_output = max(when_enough_inputs_to_begin_output, time_from_which_patterns_will_always_disburse_at_least_amount_plus_ideal_rate_in_total (input_patterns.iter().map (| (pattern, _material) | *pattern), time_to_switch_output, -storage_before[0].0).unwrap());
+        when_enough_inputs_to_begin_output = max(when_enough_inputs_to_begin_output, time_from_which_patterns_will_always_disburse_at_least_amount_plus_ideal_rate_in_total (input_patterns.iter().map (| (pattern, _material) | *pattern), time_to_switch_output, (self.inputs[0].cost - 1) - storage_before[0].0).unwrap());
       }
       else {
         for (((pattern, _material), input), (storage_amount, _storage_material)) in input_patterns.iter().zip (self.inputs.iter()).zip (storage_before) {
@@ -453,7 +453,7 @@ impl MachineTypeTrait for StandardMachine {
     
     self.outputs.iter().map (| output | {
       internal.iter().map (| (start, pattern, storage) | {
-        (max (start + TIME_TO_MOVE_MATERIAL, state.last_flow_change), (pattern.delayed_by (TIME_TO_MOVE_MATERIAL), output.material.unwrap_or(storage[0].1)))
+        (max (start + TIME_TO_MOVE_MATERIAL, state.last_flow_change), (pattern.delayed_by (TIME_TO_MOVE_MATERIAL), output.material.unwrap_or_else(|| storage[0].1)))
       }).collect()
     }).collect()
   }

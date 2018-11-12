@@ -36,13 +36,15 @@ mod web_ui;
 #[cfg (target_os = "emscripten")]
 fn main() {
   stdweb::initialize();
-
+  println!( "Starting emscripten build");
+  
   web_ui::run_game();
 }
 
 
 #[cfg (not(target_os = "emscripten"))]
 fn main() {
+  println!( "Non-emscripten builds don't do anything right now");
   /*MachinesGraph::new (vec![
     (material_generator(), None, & []),
   ]).simulate_future();
