@@ -7,8 +7,8 @@ extern crate eliduprees_web_games;
 extern crate stdweb;
 #[macro_use]
 extern crate serde_derive;
-//#[macro_use]
-//extern crate derivative;
+#[macro_use]
+extern crate derivative;
 extern crate num;
 extern crate nalgebra;
 extern crate arrayvec;

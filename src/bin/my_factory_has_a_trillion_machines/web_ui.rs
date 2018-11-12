@@ -51,7 +51,7 @@ struct Vertex {
 }
 implement_vertex!(Vertex, position, sprite_position, sprite_size, sprite_coordinates, color);
 
-fn machine_choices()->Vec<MachineType> { vec![conveyor(), splitter(), slow_machine(), material_generator(), consumer()]}
+fn machine_choices()->Vec<MachineType> { vec![conveyor(), splitter(), iron_smelter(), material_generator(), consumer()]}
 
 fn machine_color(machine: & StatefulMachine)->[f32; 3] {
   let mut hasher = SipHasher::new() ;
@@ -360,7 +360,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
       let start_time = state.current_game_time;
       let end_time = start_time + TIME_TO_MOVE_MATERIAL;
       for ((output_location, output_facing), patterns) in machine.machine_type.output_locations (& machine.map_state).into_iter().zip (future_output_patterns) {
-        for (pattern_index, (pattern_start_time, pattern)) in patterns.iter().enumerate() {
+        for (pattern_index, (pattern_start_time, (pattern, pattern_material))) in patterns.iter().enumerate() {
           let pattern_end_time = patterns.get (pattern_index + 1).map_or_else (Number::max_value, | (time,_pattern) | *time) ;
           if *pattern_start_time >= end_time || pattern_end_time <= start_time { continue; }
           
@@ -376,21 +376,21 @@ fn do_frame(state: & Rc<RefCell<State>>) {
             draw_rectangle (&mut vertices, sprite_sheet,
               tile_center (output_location) + offset,
               tile_size()*0.6,
-              [0.0,0.0,0.0], "iron"
+              [0.0,0.0,0.0], pattern_material.icon()
             );
           }
         }
       }
     }
     for (machine, future) in state.map.machines.iter().zip (&state.future) {
-      for (storage_location, storage) in machine.machine_type.displayed_storage (& machine.map_state, & future.materials_state_at(state.current_game_time, & machine.materials_state),& future.inputs_at (state.current_game_time), state.current_game_time) {
-        for index in 0..min (3, storage) {
+      for (storage_location, (storage_amount, storage_material)) in machine.machine_type.displayed_storage (& machine.map_state, & future.materials_state_at(state.current_game_time, & machine.materials_state),& future.inputs_at (state.current_game_time), state.current_game_time) {
+        for index in 0..min (3, storage_amount) {
           let mut position = tile_center (storage_location);
           position [1] += tile_size() [1]*index as f32*0.1;
           draw_rectangle (&mut vertices, sprite_sheet,
             position,
             tile_size()*0.6,
-            [0.0,0.0,0.0], "iron"
+            [0.0,0.0,0.0], storage_material.icon()
           );
         }
       }

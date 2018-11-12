@@ -16,7 +16,7 @@ pub struct MachineFuture {
 
 #[derive (Clone, PartialEq, Eq, Hash, Debug, Default)]
 pub struct MachineInputFuture {
-  pub changes: Vec<(Number, FlowPattern)>,
+  pub changes: Vec<(Number, (FlowPattern, Material))>,
 }
 
 impl MachineFuture {
@@ -89,7 +89,7 @@ impl Map {
     for &machine_index in topological_ordering {
       let machine = & self.machines [machine_index];
       let mut state = machine.materials_state.clone();
-      let mut input_patterns: Inputs <_> = result [machine_index].inputs.iter().map (| _input | FlowPattern::default()).collect();
+      let mut input_patterns: Inputs <_> = result [machine_index].inputs.iter().map (| _input | Default::default()).collect();
       let mut outputs: Inputs <_> = iter::repeat (MachineInputFuture::default()).take(machine.machine_type.num_outputs()).collect();
       let mut last_change_time = machine.materials_state.last_flow_change-1;
       let mut total_changes = 0;
@@ -132,7 +132,7 @@ impl Map {
           result [destination_machine].inputs [destination_input] = output;
         }
         else {
-          println!("Machine {} outputted {:?}", machine_index, output);
+          //println!("Machine {} outputted {:?}", machine_index, output);
         }
       }
     }
@@ -148,7 +148,7 @@ impl Map {
 }
 
 impl MachineFuture {
-  pub fn inputs_at (&self, time: Number)->Inputs <FlowPattern> {
+  pub fn inputs_at (&self, time: Number)->Inputs <(FlowPattern, Material)> {
     self.inputs.iter().map (| future | future.changes.iter().rev().find (| (change_time,_) | *change_time <= time).map_or_else (Default::default, | (_, pattern) | *pattern)).collect()
   }
   pub fn materials_state_at (&self, time: Number, initial_state: & MachineMaterialsState)->MachineMaterialsState {
