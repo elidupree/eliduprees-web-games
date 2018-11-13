@@ -9,9 +9,9 @@ use arrayvec::ArrayVec;
 
 pub type Number = i64;
 pub const MAX_COMPONENTS: usize = 32;
-pub const RATE_DIVISOR: Number = 2*2*2*2*2*2 * 3*3*3 * 5*5;
+pub const RATE_DIVISOR: Number = TIME_TO_MOVE_MATERIAL * 2*2*2*2*2*2 * 3*3*3 * 5*5;
 pub const MAX_MACHINE_INPUTS: usize = 8;
-pub const TIME_TO_MOVE_MATERIAL: Number = 3;
+pub const TIME_TO_MOVE_MATERIAL: Number = 60;
 pub const MAX_IMPLICIT_OUTPUT_FLOW_CHANGES: usize = 3;
 pub type Inputs<T> = ArrayVec <[T; MAX_MACHINE_INPUTS]>;
 macro_rules! inputs {

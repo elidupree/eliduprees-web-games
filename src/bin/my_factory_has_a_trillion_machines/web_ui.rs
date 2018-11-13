@@ -292,7 +292,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
   
   let mut state = state.borrow_mut();
   let state = &mut *state;
-  let fractional_time = (now() - state.start_ui_time)*2.0;
+  let fractional_time = (now() - state.start_ui_time)*TIME_TO_MOVE_MATERIAL as f64*2.0;
   state.current_game_time = fractional_time as Number;
   //state.map.update_to (& state.future, state.current_game_time);
   
