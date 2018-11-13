@@ -295,18 +295,36 @@ impl StandardMachine {
   fn input_storage_before_impl (&self, input_patterns: & [(FlowPattern, Material)], output_pattern: FlowPattern, starting_storage: & [(Number, Material)], interval: [Number; 2])->Inputs <(Number, Material)> {
     let output_disbursements = output_pattern.num_disbursed_between (interval);
     if self.merge_inputs {
-      let (storage, material) = starting_storage[0];
-      let amount = storage - output_disbursements*self.inputs[0].cost + input_patterns.iter().map (| (pattern,_) | pattern.num_disbursed_between (interval)).sum::<Number>();
-      inputs! [(amount, material)]
+      let (storage, mut material) = starting_storage[0];
+      let input_materials = input_patterns.iter().filter_map (| (pattern, material) | if pattern.rate() >0 {Some (material)} else {None});
+      let only_input_material = only_value (input_materials);
+      let mut used_storage = storage;
+      let mut amount = 0;
+      for (pattern, pattern_material) in input_patterns.iter() {
+        let disbursed = pattern.num_disbursed_between (interval);
+        amount += disbursed;
+        if disbursed > 0 && *pattern_material != material {
+          if only_input_material == Some(pattern_material) {
+            used_storage = 0;
+            material = *pattern_material;
+          }
+          else {
+            material = Material::Garbage;
+          }
+        }
+      }
+      inputs! [(used_storage + amount - output_disbursements*self.inputs[0].cost, material)]
     }
     else {
       self.inputs.iter().zip (starting_storage).zip (input_patterns).map (| ((input, (storage_amount, storage_material)), (pattern, pattern_material)) | {
         let allowed_material = input.material.unwrap_or (*pattern_material) == *pattern_material;
         if allowed_material && pattern.rate() > 0 {
-          assert_eq!(storage_material, pattern_material);
+          if *storage_amount > 0 {
+            assert_eq!(storage_material, pattern_material);
+          }
           let accumulated = pattern.num_disbursed_between (interval);
           let spent = output_disbursements*input.cost;
-          (storage_amount + accumulated - spent, *storage_material)
+          (storage_amount + accumulated - spent, *pattern_material)
         }
         else {
           (*storage_amount, *storage_material)
@@ -343,31 +361,7 @@ impl StandardMachine {
   
   fn future_internal_output_patterns (&self, state: &MachineMaterialsState, input_patterns: & [(FlowPattern, Material)])->ArrayVec<[(Number, FlowPattern, Inputs <(Number, Material)>); MAX_IMPLICIT_OUTPUT_FLOW_CHANGES]> {
     let mut result = ArrayVec::new();
-    let starting_storage = if self.merge_inputs {
-      let mut input_materials = input_patterns.iter().filter_map (| (pattern, material) | if pattern.rate() >0 {Some (material)} else {None});
-      let mut starting_storage = state.input_storage_before_last_flow_change.clone();
-      if let Some(first) = input_materials.next() {
-        let material = if input_materials.all (| material | material == first) {
-          *first
-        } else {Material::Garbage};
-        if material != starting_storage [0].1 && material != Material::Garbage {
-          starting_storage [0].0 = 0;
-        }
-        starting_storage [0].1 = material;
-      }
-      starting_storage
-    }
-    else {
-      state.input_storage_before_last_flow_change.iter().zip (input_patterns).zip (& self.inputs).map (| (((storage_amount, storage_material), (pattern, pattern_material)), input)| {
-        let allowed_material = input.material.unwrap_or (*pattern_material) == *pattern_material;
-        if pattern.rate() > 0 && allowed_material && pattern_material != storage_material {
-          (0, *pattern_material)
-        } else {
-          (*storage_amount, *storage_material)
-        }
-      }).collect()
-    };
-    result.push ((Number::min_value(), state.retained_output_pattern, starting_storage));
+    result.push ((Number::min_value(), state.retained_output_pattern, state.input_storage_before_last_flow_change.clone()));
     
     let time_to_switch_output = state.next_legal_output_change_time (self.min_output_cycle_length);
     self.push_output_pattern_impl (&mut result, state, input_patterns, time_to_switch_output, FlowPattern::default());
@@ -425,7 +419,7 @@ impl MachineTypeTrait for StandardMachine {
   
   fn max_output_rates (&self, input_rates: & [(Number, Material)])->Inputs <(Number, Material)> {
     let input_materials = input_rates.iter().filter_map (| (rate, material) | if *rate > 0 {Some (*material)} else {None});
-    let merged_material = only_value (input_materials). unwrap_or (Material::Garbage) ;
+    let merged_material = only_value (input_materials).unwrap_or (Material::Garbage) ;
     let ideal_rate = self.max_output_rate_with_inputs (input_rates.iter().cloned());
     self.outputs.iter().map (| output | (ideal_rate, output.material.unwrap_or (merged_material))).collect()
   }
@@ -450,10 +444,13 @@ impl MachineTypeTrait for StandardMachine {
   
   fn future_output_patterns (&self, state: &MachineMaterialsState, input_patterns: & [(FlowPattern, Material)])->Inputs <ArrayVec<[(Number, (FlowPattern, Material)); MAX_IMPLICIT_OUTPUT_FLOW_CHANGES]>> {
     let internal = self.future_internal_output_patterns (state, input_patterns);
+    let storage_after: Inputs<_> = internal.iter().map (| (start, pattern, storage) | {
+      self.input_storage_before_impl (input_patterns, *pattern, storage, [*start, start + 1])
+    }).collect();
     
     self.outputs.iter().map (| output | {
-      internal.iter().map (| (start, pattern, storage) | {
-        (max (start + TIME_TO_MOVE_MATERIAL, state.last_flow_change), (pattern.delayed_by (TIME_TO_MOVE_MATERIAL), output.material.unwrap_or_else(|| storage[0].1)))
+      internal.iter().zip(&storage_after).map (| ((start, pattern, _storage_before), storage_after) | {
+        (max (start + TIME_TO_MOVE_MATERIAL, state.last_flow_change), (pattern.delayed_by (TIME_TO_MOVE_MATERIAL), output.material.unwrap_or_else(|| storage_after[0].1)))
       }).collect()
     }).collect()
   }
