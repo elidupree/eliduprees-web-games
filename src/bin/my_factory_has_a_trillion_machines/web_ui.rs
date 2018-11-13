@@ -44,12 +44,10 @@ struct State {
 #[derive(Copy, Clone)]
 struct Vertex {
   position: [f32; 2],
-  sprite_position: [f32; 2],
-  sprite_size: [f32; 2],
   sprite_coordinates: [f32; 2],
   color: [f32; 3],
 }
-implement_vertex!(Vertex, position, sprite_position, sprite_size, sprite_coordinates, color);
+implement_vertex!(Vertex, position, sprite_coordinates, color);
 
 fn machine_choices()->Vec<MachineType> { vec![conveyor(), splitter(), iron_smelter(), material_generator(), consumer()]}
 
@@ -76,23 +74,31 @@ fn tile_position (visual: Vector2 <f64>)->Vector {
   Vector::new ((visual [0]*30.0).round() as Number, (visual [1]*30.0).round() as Number)
 }
 
-fn draw_rectangle (vertices: &mut Vec<Vertex>, sprite_sheet: & SpriteSheet, center: Vector2<f32>, size: Vector2<f32>, color: [f32; 3], sprite: & str) {
+fn draw_rectangle (vertices: &mut Vec<Vertex>, sprite_sheet: & SpriteSheet, center: Vector2<f32>, size: Vector2<f32>, color: [f32; 3], sprite: & str, facing: Facing) {
   let bounds = &sprite_sheet.bounds_map [sprite];
-  let sprite_size = [
-    (bounds.width-1) as f32/sprite_sheet.size [0] as f32,
-    -((bounds.height-1) as f32/sprite_sheet.size [1] as f32),
-  ];
-  let sprite_position = [
-    (bounds.x as f32 + 0.5)/sprite_sheet.size [0] as f32,
-    ((bounds.y + bounds.height) as f32 - 0.5)/sprite_sheet.size [1] as f32,
-  ];
-  let vertex = |x,y| Vertex {
-            position: [center [0] + size [0]*x, center [1] + size [1]*y],
-            sprite_position,
-            sprite_size,
-            sprite_coordinates: [(x+0.5), (y+0.5)], 
-            color,
-          };
+  let sprite_center = Vector2::new(
+    (bounds.x as f32 + bounds.width  as f32/2.0),
+    (bounds.y as f32 + bounds.height as f32/2.0),
+  );
+  let sprite_size = Vector2::new(
+    (bounds.width -1) as f32,
+    (bounds.height-1) as f32,
+  );
+    
+  let vertex = |x,y| {
+    let mut sprite_offset = Vector2::new(x*sprite_size[0], y*sprite_size[1]);
+    sprite_offset = sprite_offset.rotate_90((4-facing)%4);
+    sprite_offset[1] *= -1.0;
+    let sprite_coordinates = sprite_center + sprite_offset;
+    Vertex {
+      position: [center [0] + size [0]*x, center [1] + size [1]*y],
+      sprite_coordinates: [
+        sprite_coordinates [0]/sprite_sheet.size [0] as f32,
+        sprite_coordinates [1]/sprite_sheet.size [1] as f32,
+      ], 
+      color,
+    }
+  };
           vertices.extend(&[
             vertex(-0.5,-0.5),vertex( 0.5,-0.5),vertex( 0.5, 0.5),
             vertex(-0.5,-0.5),vertex( 0.5, 0.5),vertex(-0.5, 0.5)
@@ -104,18 +110,12 @@ pub fn run_game() {
 #version 100
 attribute highp vec2 position;
 attribute lowp vec3 color;
-attribute highp vec2 sprite_position;
-attribute highp vec2 sprite_size;
 attribute highp vec2 sprite_coordinates;
 varying lowp vec3 color_transfer;
-varying highp vec2 sprite_position_transfer;
-varying highp vec2 sprite_size_transfer;
 varying highp vec2 sprite_coordinates_transfer;
 
 void main() {
 gl_Position = vec4 (position*2.0 - 1.0, 0.0, 1.0);
-sprite_position_transfer = sprite_position;
-sprite_size_transfer = sprite_size;
 sprite_coordinates_transfer = sprite_coordinates;
 color_transfer = color;
 }
@@ -125,13 +125,11 @@ color_transfer = color;
   let fragment_shader_source = r#"
 #version 100
 varying lowp vec3 color_transfer;
-varying highp vec2 sprite_position_transfer;
-varying highp vec2 sprite_size_transfer;
 varying highp vec2 sprite_coordinates_transfer;
 uniform sampler2D sprite_sheet;
 
 void main() {
-lowp vec4 t = texture2D (sprite_sheet, sprite_position_transfer + sprite_size_transfer*sprite_coordinates_transfer);
+lowp vec4 t = texture2D (sprite_sheet, sprite_coordinates_transfer);
 gl_FragColor = vec4(color_transfer, t.a);
 }
 
@@ -313,7 +311,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
       draw_rectangle (&mut vertices, sprite_sheet,
         tile_center (machine.map_state.position),
         tile_size(),
-        machine_color (machine), drawn.icon
+        machine_color (machine), drawn.icon, drawn.facing
       );
     }
     /*for machine in & state.map.machines {
@@ -376,7 +374,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
             draw_rectangle (&mut vertices, sprite_sheet,
               tile_center (output_location) + offset,
               tile_size()*0.6,
-              [0.0,0.0,0.0], pattern_material.icon()
+              [0.0,0.0,0.0], pattern_material.icon(), Facing::default()
             );
           }
         }
@@ -390,7 +388,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
           draw_rectangle (&mut vertices, sprite_sheet,
             position,
             tile_size()*0.6,
-            [0.0,0.0,0.0], storage_material.icon()
+            [0.0,0.0,0.0], storage_material.icon(), Facing::default()
           );
         }
       }
