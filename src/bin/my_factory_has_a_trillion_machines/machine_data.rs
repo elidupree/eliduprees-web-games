@@ -60,7 +60,7 @@ pub trait MachineTypeTrait: Clone {
   fn num_outputs (&self)->usize;
   
   fn input_locations (&self, state: &MachineMapState)->Inputs <(Vector, Facing)>;
-  fn output_locations (&self, state: &MachineMapState)->Inputs <(Vector, Facing)>;
+  fn output_locations (&self, state: &MachineMapState)->Inputs <(Vector, Option<Facing>)>;
   
   fn displayed_storage (&self, map_state: & MachineMapState, materials_state: & MachineMaterialsState, input_patterns: & [(FlowPattern, Material)], time: Number)->Inputs <(Vector, (Number, Material))>;
   fn drawn_machine (&self, map_state: & MachineMapState)->DrawnMachine;
@@ -95,7 +95,7 @@ impl MachineTypeTrait for MachineType {
   fn num_outputs (&self)->usize {match self {$(MachineType::$Variant (value) => value.num_outputs(),)*}}
   
   fn input_locations (&self, state: &MachineMapState)->Inputs <(Vector, Facing)> {match self {$(MachineType::$Variant (value) => value.input_locations (state ),)*}}
-  fn output_locations (&self, state: &MachineMapState)->Inputs <(Vector, Facing)> {match self {$(MachineType::$Variant (value) => value.output_locations (state ),)*}}
+  fn output_locations (&self, state: &MachineMapState)->Inputs <(Vector, Option<Facing>)> {match self {$(MachineType::$Variant (value) => value.output_locations (state ),)*}}
   
   fn displayed_storage (&self, map_state: & MachineMapState, materials_state: & MachineMaterialsState, input_patterns: & [(FlowPattern, Material)], time: Number)->Inputs <(Vector, (Number, Material))> {match self {$(MachineType::$Variant (value) => value.displayed_storage (map_state, materials_state, input_patterns, time ),)*}}
   fn drawn_machine (&self, map_state: & MachineMapState)->DrawnMachine {match self {$(MachineType::$Variant (value) => value.drawn_machine (map_state),)*}}
@@ -139,6 +139,11 @@ impl <T: Rotate90, U: Rotate90> Rotate90 for (T, U) {
     (self.0.rotate_90(facing), self.1.rotate_90(facing))
   }
 }
+impl <T: Rotate90> Rotate90 for Option<T> {
+  fn rotate_90 (self, facing: Facing)->Self {
+    self.map(|t| t.rotate_90(facing))
+  }
+}
 
 
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
@@ -151,7 +156,7 @@ pub struct StandardMachineInput {
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
 pub struct StandardMachineOutput {
   pub material: Option <Material>,
-  pub relative_location: (Vector, Facing),
+  pub relative_location: (Vector, Option<Facing>),
 }
 
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
@@ -176,7 +181,7 @@ pub fn conveyor()->MachineType {
       StandardMachineInput {cost: 1, material: None, relative_location: (Vector::new (0, 0), 1)},
       StandardMachineInput {cost: 1, material: None, relative_location: (Vector::new (0, 0), 3)},
     ],
-    outputs: inputs! [StandardMachineOutput {material: None, relative_location: (Vector::new (1,  0), 0)}],
+    outputs: inputs! [StandardMachineOutput {material: None, relative_location: (Vector::new (1,  0), Some(0))}],
     merge_inputs: true,
     min_output_cycle_length: TIME_TO_MOVE_MATERIAL,
   })
@@ -187,8 +192,8 @@ pub fn splitter()->MachineType {
     name: "Splitter", icon: "splitter",
     inputs: inputs! [StandardMachineInput {cost: 2, material: None, relative_location: (Vector::new (0, 0), 0)}],
     outputs: inputs! [
-      StandardMachineOutput {material: None, relative_location: (Vector::new (0,  1), 1)},
-      StandardMachineOutput {material: None, relative_location: (Vector::new (0, -1), 3)},
+      StandardMachineOutput {material: None, relative_location: (Vector::new (0,  1), Some(1))},
+      StandardMachineOutput {material: None, relative_location: (Vector::new (0, -1), Some(3))},
     ],
     merge_inputs: true,
     min_output_cycle_length: TIME_TO_MOVE_MATERIAL,
@@ -199,7 +204,7 @@ pub fn iron_smelter()->MachineType {
   MachineType::StandardMachine (StandardMachine {
     name: "Iron smelter", icon: "machine",
     inputs: inputs! [StandardMachineInput {cost: 1, material: Some(Material::IronOre), relative_location: (Vector::new (0, 0), 0)}],
-    outputs: inputs! [StandardMachineOutput {material: Some(Material::Iron), relative_location: (Vector::new (1, 0), 0)}],
+    outputs: inputs! [StandardMachineOutput {material: Some(Material::Iron), relative_location: (Vector::new (1, 0), Some(0))}],
     merge_inputs: false,
     min_output_cycle_length: 10*TIME_TO_MOVE_MATERIAL,
   })
@@ -209,7 +214,7 @@ pub fn material_generator()->MachineType {
   MachineType::StandardMachine (StandardMachine {
     name: "Iron mine", icon: "mine",
     inputs: inputs! [],
-    outputs: inputs! [StandardMachineOutput {material: Some(Material::IronOre), relative_location: (Vector::new (1, 0), 0)}],
+    outputs: inputs! [StandardMachineOutput {material: Some(Material::IronOre), relative_location: (Vector::new (1, 0), Some(0))}],
     merge_inputs: false,
     min_output_cycle_length: TIME_TO_MOVE_MATERIAL,
   })
@@ -219,12 +224,9 @@ pub fn consumer()->MachineType {
   MachineType::StandardMachine (StandardMachine {
     name: "Consumer", icon: "chest",
     inputs: inputs! [
-      StandardMachineInput {cost: 1, material: None, relative_location: (Vector::new (0, 0), 0)},
-      StandardMachineInput {cost: 1, material: None, relative_location: (Vector::new (0, 0), 1)},
-      StandardMachineInput {cost: 1, material: None, relative_location: (Vector::new (0, 0), 2)},
       StandardMachineInput {cost: 1, material: None, relative_location: (Vector::new (0, 0), 3)},
     ],
-    outputs: inputs! [],
+    outputs: inputs! [StandardMachineOutput {material: None, relative_location: (Vector::new (0,  0), None)}],
     merge_inputs: true,
     min_output_cycle_length: TIME_TO_MOVE_MATERIAL,
   })
@@ -398,7 +400,7 @@ impl MachineTypeTrait for StandardMachine {
       (position + state.position, facing)
     }).collect()
   }
-  fn output_locations (&self, state: &MachineMapState)->Inputs <(Vector, Facing)> {
+  fn output_locations (&self, state: &MachineMapState)->Inputs <(Vector, Option<Facing>)> {
     self.outputs.iter().map (| output | {
       let (position, facing) = output.relative_location.rotate_90 (state.facing);
       (position + state.position, facing)
@@ -445,7 +447,12 @@ impl MachineTypeTrait for StandardMachine {
   fn future_output_patterns (&self, state: &MachineMaterialsState, input_patterns: & [(FlowPattern, Material)])->Inputs <ArrayVec<[(Number, (FlowPattern, Material)); MAX_IMPLICIT_OUTPUT_FLOW_CHANGES]>> {
     let internal = self.future_internal_output_patterns (state, input_patterns);
     let storage_after: Inputs<_> = internal.iter().map (| (start, pattern, storage) | {
-      self.input_storage_before_impl (input_patterns, *pattern, storage, [*start, start + 1])
+      if *start < state.last_flow_change {
+        state.input_storage_before_last_flow_change.clone()
+      }
+      else {
+        self.input_storage_before_impl (input_patterns, *pattern, storage, [*start, start + 1])
+      }
     }).collect();
     
     self.outputs.iter().map (| output | {

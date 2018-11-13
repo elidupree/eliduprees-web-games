@@ -1,11 +1,16 @@
 use super::*;
 
 use std::iter;
+use std::cmp::{min, max};
+use std::collections::HashMap;
 
 use arrayvec::ArrayVec;
 
 pub type OutputEdges = ArrayVec<[Inputs<Option<(usize, usize)>>; MAX_COMPONENTS]>;
-pub type MachinesFuture = Vec<MachineFuture>;
+pub struct MapFuture {
+  pub machines: Vec<MachineFuture>,
+  pub inventory: HashMap <Material, InventoryFuture>
+}
 
 
 #[derive (Clone, PartialEq, Eq, Hash, Debug, Default)]
@@ -18,6 +23,13 @@ pub struct MachineFuture {
 pub struct MachineInputFuture {
   pub changes: Vec<(Number, (FlowPattern, Material))>,
 }
+
+#[derive (Clone, PartialEq, Eq, Hash, Debug, Default)]
+pub struct InventoryFuture {
+  pub flows: Vec<([Number; 2], FlowPattern)>,
+}
+
+
 
 impl MachineFuture {
   fn push_change (&mut self, change: (Number, MachineMaterialsState)) {
@@ -34,7 +46,7 @@ impl Map {
       machine.machine_type.output_locations(&machine.map_state).into_iter().map (| output_location | {
         self.machines.iter().enumerate().find_map(| (machine2_index, machine2) | {
           machine2.machine_type.input_locations(& machine2.map_state).into_iter().enumerate().find_map(| (input_index, input_location) | {
-            if input_location == output_location {
+            if (input_location.0, Some(input_location.1)) == output_location {
               Some((machine2_index, input_index))
             }
             else {
@@ -78,25 +90,28 @@ impl Map {
     result
   }
   
-  pub fn future (&self, output_edges: & OutputEdges, topological_ordering: & [usize])->MachinesFuture {
-    let mut result: MachinesFuture = self.machines.iter().map (| machine | {
-      MachineFuture {
-        changes: Default::default(),
-        inputs: (0..machine.machine_type.num_inputs()).map (|_| Default::default()).collect()
-      }
-    }).collect();
+  pub fn future (&self, output_edges: & OutputEdges, topological_ordering: & [usize])->MapFuture {
+    let mut result = MapFuture {
+      machines: self.machines.iter().map (| machine | {
+        MachineFuture {
+          changes: Default::default(),
+          inputs: (0..machine.machine_type.num_inputs()).map (|_| Default::default()).collect()
+        }
+      }).collect(),
+      inventory: Default::default(),
+    };
     
     for &machine_index in topological_ordering {
       let machine = & self.machines [machine_index];
       let mut state = machine.materials_state.clone();
-      let mut input_patterns: Inputs <_> = result [machine_index].inputs.iter().map (| _input | Default::default()).collect();
+      let mut input_patterns: Inputs <_> = result.machines [machine_index].inputs.iter().map (| _input | Default::default()).collect();
       let mut outputs: Inputs <_> = iter::repeat (MachineInputFuture::default()).take(machine.machine_type.num_outputs()).collect();
       let mut last_change_time = machine.materials_state.last_flow_change-1;
       let mut total_changes = 0;
       loop {
         total_changes += total_changes;
         assert!(total_changes < 100, "a machine probably entered an infinite loop");
-        let next_change_time = result [machine_index].inputs.iter().filter_map (| input |
+        let next_change_time = result.machines [machine_index].inputs.iter().filter_map (| input |
           input.changes.iter().map (| (time,_pattern) | *time).find (| &time | time > last_change_time)
         ).min().unwrap_or_else (Number::max_value);
         
@@ -116,35 +131,40 @@ impl Map {
         
         //eprintln!(" {:?} ", (next_change_time, last_change_time, &personal_change)) ;
         assert!(next_change_time > last_change_time);
-        for (input_index, (_time, pattern)) in result [machine_index].inputs.clone().iter().enumerate().filter_map (
+        for (input_index, (_time, pattern)) in result.machines [machine_index].inputs.clone().iter().enumerate().filter_map (
               | (input_index, input) | input.changes.iter().find (| (time,_pattern) | *time == next_change_time).map (| whatever | (input_index, whatever))
             ) {
           state = machine.machine_type.with_inputs_changed (&state, next_change_time, & input_patterns);
           assert!(state.last_flow_change == next_change_time);
-          result [machine_index].push_change ((next_change_time, state.clone()));
+          result.machines [machine_index].push_change ((next_change_time, state.clone()));
           input_patterns [input_index] = *pattern;
         }
         
         last_change_time = next_change_time;
       }
-      for (output, destination) in outputs.into_iter().zip (output_edges [machine_index].iter()) {
+      for ((output, destination), (_location, facing)) in outputs.into_iter().zip (output_edges [machine_index].iter()).zip (machine.machine_type.output_locations (&machine.map_state)) {
         if let Some ((destination_machine, destination_input)) = *destination {
-          result [destination_machine].inputs [destination_input] = output;
+          result.machines [destination_machine].inputs [destination_input] = output;
         }
-        else {
+        else if facing.is_none() {
+          for ((start_time, (pattern, material)), next) in with_optional_next (output.changes.iter()) {
+            result.inventory.entry(*material).or_default().flows.push (([*start_time, next.map_or_else (Number::max_value, | next | next.0)], *pattern));
+          }
+        }
+        //else {
           //println!("Machine {} outputted {:?}", machine_index, output);
-        }
+        //}
       }
     }
 
     result
   }
   
-  pub fn update_to (&mut self, future: & MachinesFuture, time: Number) {
-    for (machine, future) in self.machines.iter_mut().zip (future.iter()) {
+  /*pub fn update_to (&mut self, future: & MapFuture, time: Number) {
+    for (machine, future) in self.machines.iter_mut().zip (future.machines.iter()) {
       machine.materials_state = future.materials_state_at (time, & machine.materials_state);
     }
-  }
+  }*/
 }
 
 impl MachineFuture {
@@ -153,6 +173,16 @@ impl MachineFuture {
   }
   pub fn materials_state_at (&self, time: Number, initial_state: & MachineMaterialsState)->MachineMaterialsState {
     self.changes.iter().rev().find (| (change_time,_) | *change_time <= time).map_or_else (| | initial_state.clone(), | (_change_time, state) | state.clone())
+  }
+}
+
+impl InventoryFuture {
+  pub fn accumulation_between(&self, interval: [Number; 2])->Number {
+    self.flows.iter().map(| (pattern_interval, pattern) | {
+      let final_interval = [max (interval [0], pattern_interval [0]), min (interval [1], pattern_interval [1])];
+      if final_interval[0] > final_interval [1] {return 0;}
+      pattern.num_disbursed_between (final_interval)
+    }).sum()
   }
 }
 

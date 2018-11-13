@@ -33,7 +33,7 @@ struct State {
   glium_program: glium::Program,
   sprite_sheet: Option <SpriteSheet>,
   map: Map,
-  future: MachinesFuture,
+  future: MapFuture,
   start_ui_time: f64,
   current_game_time: Number,
   mouse_position: Vector,
@@ -77,8 +77,8 @@ fn tile_position (visual: Vector2 <f64>)->Vector {
 fn draw_rectangle (vertices: &mut Vec<Vertex>, sprite_sheet: & SpriteSheet, center: Vector2<f32>, size: Vector2<f32>, color: [f32; 3], sprite: & str, facing: Facing) {
   let bounds = &sprite_sheet.bounds_map [sprite];
   let sprite_center = Vector2::new(
-    (bounds.x as f32 + bounds.width  as f32/2.0),
-    (bounds.y as f32 + bounds.height as f32/2.0),
+    bounds.x as f32 + bounds.width  as f32/2.0,
+    bounds.y as f32 + bounds.height as f32/2.0,
   );
   let sprite_size = Vector2::new(
     (bounds.width -1) as f32,
@@ -222,7 +222,7 @@ fn build_machine (state: &mut State, machine_type: MachineType, map_state: Machi
 }
 
 fn prepare_to_change_map(state: &mut State) {
-  for (machine, future) in state.map.machines.iter_mut().zip (& state.future) {
+  for (machine, future) in state.map.machines.iter_mut().zip (& state.future.machines) {
     machine.materials_state = machine.machine_type.with_inputs_changed(& future.materials_state_at (state.current_game_time, & machine.materials_state), state.current_game_time, &future.inputs_at(state.current_game_time));
   }
 }
@@ -332,7 +332,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
         );
       }
     }*/
-    for (machine, future) in state.map.machines.iter().zip (&state.future) {
+    for (machine, future) in state.map.machines.iter().zip (&state.future.machines) {
       let materials_states = iter::once (&machine.materials_state).chain (future.changes.iter().map (| (time, state) | {
         assert!(*time == state.last_flow_change);
         state
@@ -370,7 +370,12 @@ fn do_frame(state: & Rc<RefCell<State>>) {
             let time = pattern.last_disbursement_before (state.current_game_time + TIME_TO_MOVE_MATERIAL).unwrap();
             assert!(time >= start_time) ;
             let progress = ((TIME_TO_MOVE_MATERIAL - 1 - (time - start_time)) as f32 + fractional_time.fract() as f32) / TIME_TO_MOVE_MATERIAL as f32;
-            let offset = Vector2::new (tile_size() [0]*(progress - 1.0), 0.0).rotate_90 (output_facing);
+            let offset = if let Some(output_facing) = output_facing {
+              Vector2::new (tile_size() [0]*(progress - 1.0), 0.0).rotate_90 (output_facing)
+            }
+            else {
+              Vector2::new (tile_size() [0]*progress*1.2, -tile_size() [1]*progress*1.6)
+            };
             draw_rectangle (&mut vertices, sprite_sheet,
               tile_center (output_location) + offset,
               tile_size()*0.6,
@@ -380,7 +385,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
         }
       }
     }
-    for (machine, future) in state.map.machines.iter().zip (&state.future) {
+    for (machine, future) in state.map.machines.iter().zip (&state.future.machines) {
       for (storage_location, (storage_amount, storage_material)) in machine.machine_type.displayed_storage (& machine.map_state, & future.materials_state_at(state.current_game_time, & machine.materials_state),& future.inputs_at (state.current_game_time), state.current_game_time) {
         for index in 0..min (3, storage_amount) {
           let mut position = tile_center (storage_location);
