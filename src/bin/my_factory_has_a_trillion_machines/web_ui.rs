@@ -142,7 +142,8 @@ gl_FragColor = vec4(color_transfer, t.a);
     glium::Program::from_source(&display, vertex_shader_source, fragment_shader_source, None)
       .expect("glium program generation failed");
       
-  let map =Map {machines: ArrayVec::new(), last_change_time: 0, inventory_before_last_change: Default::default()};
+  let mut map =Map {machines: ArrayVec::new(), last_change_time: 0, inventory_before_last_change: Default::default()};
+  map.inventory_before_last_change.insert (Material::Iron, 100);
   let output_edges = map.output_edges();
   let ordering = map.topological_ordering_of_noncyclic_machines(& output_edges);
   let future = map.future (& output_edges, & ordering);
@@ -212,7 +213,16 @@ fn build_machine (state: &mut State, machine_type: MachineType, map_state: Machi
   if state.map.machines.len() == state.map.machines.capacity() {
     return;
   }
+  let inventory = state.map.inventory_at (& state.future, state.current_game_time);
+  for (amount, material) in machine_type.cost() {
+    if inventory.get(&material).map_or (true, | storage | *storage <amount) {
+      return;
+    }
+  }
   prepare_to_change_map (state);
+  for (amount, material) in machine_type.cost() {
+    *state.map.inventory_before_last_change.get_mut(&material).unwrap() -= amount;
+  }
   state.map.machines.push (StatefulMachine {
     machine_type,
     map_state,
