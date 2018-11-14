@@ -165,6 +165,15 @@ impl Map {
       machine.materials_state = future.materials_state_at (time, & machine.materials_state);
     }
   }*/
+  
+  pub fn inventory_at (&self, future: & MapFuture, time: Number)->HashMap <Material, Number> {
+    let mut inventory = self.inventory_before_last_change.clone();
+    let interval = [self.last_change_time, time];
+    for (material, future) in &future.inventory {
+      *inventory.entry (*material).or_default() += future.accumulation_between (interval);
+    }
+    inventory
+  }
 }
 
 impl MachineFuture {

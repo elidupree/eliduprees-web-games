@@ -3,6 +3,7 @@ use super::*;
 use std::cmp::{min, max};
 use std::iter::{self, FromIterator};
 use std::ops::Neg;
+use std::collections::HashMap;
 
 use nalgebra::Vector2;
 use arrayvec::ArrayVec;
@@ -503,4 +504,6 @@ pub struct Group {
 
 pub struct Map {
   pub machines: ArrayVec <[StatefulMachine; MAX_COMPONENTS]>,
+  pub last_change_time: Number,
+  pub inventory_before_last_change: HashMap <Material, Number>,
 }
