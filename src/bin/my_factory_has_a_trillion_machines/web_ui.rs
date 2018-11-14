@@ -28,6 +28,19 @@ struct SpriteSheet {
   bounds_map: HashMap <String, SpriteBounds>
 }
 
+#[derive (Clone)]
+struct DragState {
+  original_position: Vector,
+  moved: bool,
+}
+
+#[derive (Default)]
+struct MouseState {
+  drag: Option <DragState>,
+  position: Option <Vector>,
+  previous_position: Option <Vector>,
+}
+
 struct State {
   glium_display: glium::Display,
   glium_program: glium::Program,
@@ -36,9 +49,7 @@ struct State {
   future: MapFuture,
   start_ui_time: f64,
   current_game_time: Number,
-  mouse_position: Vector,
-  mouse_facing: Facing,
-  mouse_pressed: bool,
+  mouse: MouseState,
 }
 
 #[derive(Copy, Clone)]
@@ -151,17 +162,16 @@ gl_FragColor = vec4(color_transfer, t.a);
   let state = Rc::new (RefCell::new (State {
     glium_display: display, glium_program: program, sprite_sheet: None,
     map, future, start_ui_time: now(), current_game_time: 0,
-    mouse_facing: 0, mouse_position: Vector::new (0, 0), mouse_pressed: false,
+    mouse: Default::default(),
   }));
   
-  let click_callback = {let state = state.clone(); move |x: f64,y: f64 | {
-    click (&mut state.borrow_mut(), tile_position (Vector2::new (x,y)));
+  let mousedown_callback = {let state = state.clone(); move |x: f64,y: f64 | {
+    mouse_move(&mut state.borrow_mut(), tile_position (Vector2::new (x,y)));
+    mouse_down(&mut state.borrow_mut());
   }};
-  let mousedown_callback = {let state = state.clone(); move |_x: f64,_y: f64 | {
-    state.borrow_mut().mouse_pressed = true;
-  }};
-  let mouseup_callback = {let state = state.clone(); move |_x: f64,_y: f64 | {
-    state.borrow_mut().mouse_pressed = false;
+  let mouseup_callback = {let state = state.clone(); move |x: f64,y: f64 | {
+    mouse_move(&mut state.borrow_mut(), tile_position (Vector2::new (x,y)));
+    mouse_up(&mut state.borrow_mut());
   }};
   let mousemove_callback = {let state = state.clone(); move |x: f64,y: f64 | {
     mouse_move(&mut state.borrow_mut(), tile_position (Vector2::new (x,y)));
@@ -177,18 +187,17 @@ gl_FragColor = vec4(color_transfer, t.a);
       }
     }
     $("#canvas").attr ("width", 600).attr ("height", 600)
-      .click (mouse_callback (@{click_callback}));
+      .on("mousedown", mouse_callback (@{mousedown_callback}));
     $("body")
-      .on("mousedown", mouse_callback (@{mousedown_callback}))
       .on("mouseup", mouse_callback (@{mouseup_callback}))
       .on("mousemove", mouse_callback (@{mousemove_callback}));
   }
   
-  for (index, choice) in machine_choices().into_iter().enumerate() {
-    let id = format! ("Machine_choice_{}", index);
+  for name in machine_choices().iter().map(| machine_type | machine_type.name()).chain (vec!["erase"]) {
+    let id = format! ("Machine_choice_{}", name);
     js!{
-      $("<input>", {type: "radio", id:@{& id}, name: "machine_choice", value: @{index as i32}, checked:@{index == 0}}).appendTo ($("#app"));
-      $("<label>", {for:@{& id}, text: @{choice.name()}}).appendTo ($("#app"));
+      $("<input>", {type: "radio", id:@{& id}, name: "machine_choice", value: @{name}, checked:@{name == "Iron mine"}}).appendTo ($("#app"));
+      $("<label>", {for:@{& id}, text: @{name}}).appendTo ($("#app"));
     }
   }
   
@@ -199,10 +208,9 @@ gl_FragColor = vec4(color_transfer, t.a);
   stdweb::event_loop();
 }
 
-fn click (state: &mut State, position: Vector) {
-  let choice: usize = js!{ return +$("input:radio[name=machine_choice]:checked").val()}.try_into().unwrap();
-  let machine_type = machine_choices() [choice].clone();
-  build_machine (state, machine_type, MachineMapState {position, facing: 0});
+fn current_mode ()->String {
+  let foo = js!{ return $("input:radio[name=machine_choice]:checked").val(); }.try_into().unwrap();
+  foo
 }
 
 fn build_machine (state: &mut State, machine_type: MachineType, map_state: MachineMapState) {
@@ -245,32 +253,92 @@ fn recalculate_future (state: &mut State) {
   state.future = state.map.future (& output_edges, & ordering);
 }
 
+fn single_distance_facing (vector: Vector)->Option <Facing> {
+  match (vector[0], vector[1]) {
+      (1, 0) => Some(0),
+      (0, 1) => Some(1),
+      (-1, 0) => Some(2),
+      (0, -1) => Some(3),
+      _=>None,
+  }
+}
 
 fn mouse_move (state: &mut State, position: Vector) {
-  let delta = position - state.mouse_position;
-  let facing = match (delta [0], delta [1]) {
-    (1, 0) => Some(0),
-    (0, 1) => Some(1),
-    (-1, 0) => Some(2),
-    (0, -1) => Some(3),
-    _=> None,
+  let facing = match state.mouse.position {
+    None => 0,
+    Some(previous_position) => {
+    let delta = position - previous_position;
+     match single_distance_facing (delta) {
+      Some (facing) => facing,
+      _=> loop {
+        let difference = position - state.mouse.position.unwrap();
+        if difference[0] != 0 {
+          mouse_move (state, state.mouse.position.unwrap() + Vector::new (difference[0].signum(), 0));
+        }
+        let difference = position - state.mouse.position.unwrap();
+        if difference[1] != 0 {
+          mouse_move (state, state.mouse.position.unwrap() + Vector::new (0, difference[1].signum()));
+        }
+        if position == state.mouse.position.unwrap() {
+          return;
+        }
+      },
+     }
+    },
   };
   
-  if let Some(facing) = facing {
-    state.mouse_facing = facing;
-    if state.mouse_pressed {
-      if let Some(index) =  state.map.machines.iter().position(|machine| machine.map_state.position == state.mouse_position) {
+  state.mouse.previous_position = state.mouse.position;
+  state.mouse.position = Some(position);
+  
+  if let Some(ref mut drag) = state.mouse.drag {
+    drag.moved = true;
+    if state.mouse.previous_position == Some(drag.original_position) {
+      if let Some(index) = state.map.machines.iter().position(|machine| machine.map_state.position == drag.original_position) {
         prepare_to_change_map (state) ;
         state.map.machines[index].map_state.facing = facing;
         recalculate_future (state) ;
       }
-      else {
-        build_machine (state, conveyor(), MachineMapState {position: state.mouse_position, facing: facing});
+    }
+  }
+  mouse_maybe_held(state);
+}
+
+fn mouse_down(state: &mut State) {
+  state.mouse.drag = Some (DragState {
+    original_position: state.mouse.position.unwrap(),
+    moved: false,
+  });
+  mouse_maybe_held(state);
+}
+
+fn mouse_maybe_held(state: &mut State) {
+  let facing = match (state.mouse.previous_position, state.mouse.position) {
+    (Some (first), Some (second)) => single_distance_facing (second - first).unwrap_or (0),
+    _=> 0,
+  };
+  if let Some(_drag) = state.mouse.drag.clone() {
+    if current_mode() == "Conveyor" {
+      build_machine (state, conveyor(), MachineMapState {position: state.mouse.position.unwrap(), facing: facing});
+    }
+    if current_mode() == "erase" {
+      if let Some(index) = state.map.machines.iter().position(|machine| Some(machine.map_state.position) == state.mouse.position) {
+        prepare_to_change_map (state) ;
+        state.map.machines.remove(index);
+        recalculate_future (state) ;
       }
     }
   }
+}
 
-  state.mouse_position = position;
+fn mouse_up(state: &mut State) {
+  if let Some(drag) = state.mouse.drag.clone() {
+    if !drag.moved {
+      if let Some(machine_type) = machine_choices().into_iter().find (| machine_type | machine_type.name() == current_mode()) {
+        build_machine (state, machine_type, MachineMapState {position: drag.original_position, facing: 0});
+      }
+    }
+  }
+  state.mouse.drag = None;
 }
 
 fn do_frame(state: & Rc<RefCell<State>>) {
