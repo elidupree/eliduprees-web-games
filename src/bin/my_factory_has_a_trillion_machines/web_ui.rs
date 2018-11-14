@@ -292,8 +292,8 @@ fn mouse_move (state: &mut State, position: Vector) {
   
   if let Some(ref mut drag) = state.mouse.drag {
     drag.moved = true;
-    if state.mouse.previous_position == Some(drag.original_position) {
-      if let Some(index) = state.map.machines.iter().position(|machine| machine.map_state.position == drag.original_position) {
+    if state.mouse.previous_position == Some(drag.original_position) || current_mode() == "Conveyor" {
+      if let Some(index) = state.map.machines.iter().position(|machine| Some(machine.map_state.position) == state.mouse.previous_position) {
         prepare_to_change_map (state) ;
         state.map.machines[index].map_state.facing = facing;
         recalculate_future (state) ;
