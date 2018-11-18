@@ -28,17 +28,23 @@ struct SpriteSheet {
   bounds_map: HashMap <String, SpriteBounds>
 }
 
+#[derive (Copy, Clone)]
+struct MousePosition {
+  tile_center: Vector,
+  nearest_lines: Vector,
+}
+
 #[derive (Clone)]
 struct DragState {
-  original_position: Vector,
+  original_position: MousePosition,
   moved: bool,
 }
 
 #[derive (Default)]
 struct MouseState {
   drag: Option <DragState>,
-  position: Option <Vector>,
-  previous_position: Option <Vector>,
+  position: Option <MousePosition>,
+  previous_position: Option <MousePosition>,
 }
 
 struct State {
@@ -75,14 +81,23 @@ fn machine_color(machine: & StatefulMachine)->[f32; 3] {
       ]
 }
 
-fn tile_center (position: Vector)->Vector2 <f32> {
-  Vector2::new (position [0] as f32/30.0, position [1] as f32/30.0)
+fn canvas_position (position: Vector)->Vector2 <f32> {
+  Vector2::new (position [0] as f32/60.0, position [1] as f32/60.0)
 }
 fn tile_size()->Vector2 <f32> {
   Vector2::new (1.0/30.0, 1.0/30.0)
 }
-fn tile_position (visual: Vector2 <f64>)->Vector {
-  Vector::new ((visual [0]*30.0).round() as Number, (visual [1]*30.0).round() as Number)
+fn tile_position (visual: Vector2 <f64>)->MousePosition {
+  MousePosition {
+    tile_center: Vector::new (
+      (visual [0]*30.0).floor() as Number * 2 + 1,
+      (visual [1]*30.0).floor() as Number * 2 + 1,
+    ),
+    nearest_lines: Vector::new (
+      (visual [0]*30.0).round() as Number * 2,
+      (visual [1]*30.0).round() as Number * 2,
+    ),
+  }
 }
 
 fn draw_rectangle (vertices: &mut Vec<Vertex>, sprite_sheet: & SpriteSheet, center: Vector2<f32>, size: Vector2<f32>, color: [f32; 3], sprite: & str, facing: Facing) {
@@ -114,6 +129,14 @@ fn draw_rectangle (vertices: &mut Vec<Vertex>, sprite_sheet: & SpriteSheet, cent
             vertex(-0.5,-0.5),vertex( 0.5,-0.5),vertex( 0.5, 0.5),
             vertex(-0.5,-0.5),vertex( 0.5, 0.5),vertex(-0.5, 0.5)
           ]);
+}
+
+impl MousePosition {
+  fn overlaps_machine (&self, machine: & StatefulMachine)->bool {
+    let radius = machine.machine_type.radius();
+    let offset = machine.map_state.position - self.tile_center;
+    offset [0].abs() <radius && offset [1].abs() <radius
+  }
 }
 
 pub fn run_game() {
@@ -215,7 +238,11 @@ fn current_mode ()->String {
 
 fn build_machine (state: &mut State, machine_type: MachineType, map_state: MachineMapState) {
   let materials_state =MachineMaterialsState::empty (& machine_type, state.current_game_time);
-  if state.map.machines.iter().any (| machine | machine.map_state.position == map_state.position) {
+  if state.map.machines.iter().any (| machine | {
+    let radius = machine.machine_type.radius() + machine_type.radius();
+    let offset = machine.map_state.position - map_state.position;
+    offset[0].abs() < radius && offset[1].abs() < radius
+  }) {
     return;
   }
   if state.map.machines.len() == state.map.machines.capacity() {
@@ -253,8 +280,8 @@ fn recalculate_future (state: &mut State) {
   state.future = state.map.future (& output_edges, & ordering);
 }
 
-fn single_distance_facing (vector: Vector)->Option <Facing> {
-  match (vector[0], vector[1]) {
+fn exact_facing (vector: Vector)->Option <Facing> {
+  match (vector[0].signum(), vector[1].signum()) {
       (1, 0) => Some(0),
       (0, 1) => Some(1),
       (-1, 0) => Some(2),
@@ -263,23 +290,25 @@ fn single_distance_facing (vector: Vector)->Option <Facing> {
   }
 }
 
-fn mouse_move (state: &mut State, position: Vector) {
+fn mouse_move (state: &mut State, position: MousePosition) {
   let facing = match state.mouse.position {
     None => 0,
     Some(previous_position) => {
-    let delta = position - previous_position;
-     match single_distance_facing (delta) {
+    let delta = position.tile_center - previous_position.tile_center;
+     match exact_facing (delta) {
       Some (facing) => facing,
       _=> loop {
-        let difference = position - state.mouse.position.unwrap();
+        let difference = position.tile_center - state.mouse.position.unwrap().tile_center;
         if difference[0] != 0 {
-          mouse_move (state, state.mouse.position.unwrap() + Vector::new (difference[0].signum(), 0));
+          let pos = state.mouse.position.unwrap().tile_center + Vector::new (difference[0].signum()*2, 0);
+          mouse_move (state, MousePosition {tile_center: pos, nearest_lines: pos});
         }
-        let difference = position - state.mouse.position.unwrap();
+        let difference = position.tile_center - state.mouse.position.unwrap().tile_center;
         if difference[1] != 0 {
-          mouse_move (state, state.mouse.position.unwrap() + Vector::new (0, difference[1].signum()));
+          let pos = state.mouse.position.unwrap().tile_center + Vector::new (0, difference[1].signum()*2);
+          mouse_move (state, MousePosition {tile_center: pos, nearest_lines: pos});
         }
-        if position == state.mouse.position.unwrap() {
+        if position.tile_center == state.mouse.position.unwrap().tile_center {
           return;
         }
       },
@@ -292,11 +321,13 @@ fn mouse_move (state: &mut State, position: Vector) {
   
   if let Some(ref mut drag) = state.mouse.drag {
     drag.moved = true;
-    if state.mouse.previous_position == Some(drag.original_position) || current_mode() == "Conveyor" {
-      if let Some(index) = state.map.machines.iter().position(|machine| Some(machine.map_state.position) == state.mouse.previous_position) {
-        prepare_to_change_map (state) ;
-        state.map.machines[index].map_state.facing = facing;
-        recalculate_future (state) ;
+    if let Some(previous) = state.mouse.previous_position {
+      if previous.tile_center == drag.original_position.tile_center || current_mode() == "Conveyor" {
+        if let Some(index) = state.map.machines.iter().position(|machine| previous.overlaps_machine (machine)) {
+          prepare_to_change_map (state) ;
+          state.map.machines[index].map_state.facing = facing;
+          recalculate_future (state) ;
+        }
       }
     }
   }
@@ -313,15 +344,16 @@ fn mouse_down(state: &mut State) {
 
 fn mouse_maybe_held(state: &mut State) {
   let facing = match (state.mouse.previous_position, state.mouse.position) {
-    (Some (first), Some (second)) => single_distance_facing (second - first).unwrap_or (0),
+    (Some (first), Some (second)) => exact_facing (second.tile_center - first.tile_center).unwrap_or (0),
     _=> 0,
   };
   if let Some(_drag) = state.mouse.drag.clone() {
+    let position = state.mouse.position.unwrap();
     if current_mode() == "Conveyor" {
-      build_machine (state, conveyor(), MachineMapState {position: state.mouse.position.unwrap(), facing: facing});
+      build_machine (state, conveyor(), MachineMapState {position: position.tile_center, facing});
     }
     if current_mode() == "erase" {
-      if let Some(index) = state.map.machines.iter().position(|machine| Some(machine.map_state.position) == state.mouse.position) {
+      if let Some(index) = state.map.machines.iter().position(|machine| position.overlaps_machine (machine)) {
         prepare_to_change_map (state) ;
         state.map.machines.remove(index);
         recalculate_future (state) ;
@@ -334,7 +366,7 @@ fn mouse_up(state: &mut State) {
   if let Some(drag) = state.mouse.drag.clone() {
     if !drag.moved {
       if let Some(machine_type) = machine_choices().into_iter().find (| machine_type | machine_type.name() == current_mode()) {
-        build_machine (state, machine_type, MachineMapState {position: drag.original_position, facing: 0});
+        build_machine (state, machine_type, MachineMapState {position: drag.original_position.tile_center, facing: 0});
       }
     }
   }
@@ -389,15 +421,15 @@ fn do_frame(state: & Rc<RefCell<State>>) {
     for machine in & state.map.machines {
       let drawn = machine.machine_type.drawn_machine(& machine.map_state);
       draw_rectangle (&mut vertices, sprite_sheet,
-        tile_center (machine.map_state.position),
-        tile_size(),
+        canvas_position (machine.map_state.position),
+        Vector2::new(tile_size()[0] * drawn.size[0] as f32/2.0, tile_size()[1] * drawn.size[1] as f32/2.0),
         machine_color (machine), drawn.icon, drawn.facing
       );
     }
     /*for machine in & state.map.machines {
       for (input_location, input_facing) in machine.machine_type.input_locations (& machine.map_state) {
         draw_rectangle (&mut vertices, sprite_sheet,
-          tile_center (input_location),
+          canvas_position (input_location),
           tile_size()* 0.8,
           machine_color (machine)
         );
@@ -406,7 +438,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
     for machine in & state.map.machines {
       for (output_location, output_facing) in machine.machine_type.output_locations (& machine.map_state) {
         draw_rectangle (&mut vertices, sprite_sheet,
-          tile_center (output_location),
+          canvas_position (output_location),
           tile_size()* 0.6,
           machine_color (machine)
         );
@@ -457,7 +489,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
               Vector2::new (tile_size() [0]*progress*1.2, -tile_size() [1]*progress*1.6)
             };
             draw_rectangle (&mut vertices, sprite_sheet,
-              tile_center (output_location) + offset,
+              canvas_position (output_location) + offset,
               tile_size()*0.6,
               [0.0,0.0,0.0], pattern_material.icon(), Facing::default()
             );
@@ -468,7 +500,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
     for (machine, future) in state.map.machines.iter().zip (&state.future.machines) {
       for (storage_location, (storage_amount, storage_material)) in machine.machine_type.displayed_storage (& machine.map_state, & future.materials_state_at(state.current_game_time, & machine.materials_state),& future.inputs_at (state.current_game_time), state.current_game_time) {
         for index in 0..min (3, storage_amount) {
-          let mut position = tile_center (storage_location);
+          let mut position = canvas_position (storage_location);
           position [1] += tile_size() [1]*index as f32*0.1;
           draw_rectangle (&mut vertices, sprite_sheet,
             position,

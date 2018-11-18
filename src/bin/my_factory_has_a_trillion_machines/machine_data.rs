@@ -60,6 +60,7 @@ pub trait MachineTypeTrait: Clone {
   fn cost (&self)->Vec<(Number, Material)>;
   fn num_inputs (&self)->usize;
   fn num_outputs (&self)->usize;
+  fn radius (&self)->Number;
   
   fn input_locations (&self, state: &MachineMapState)->Inputs <(Vector, Facing)>;
   fn output_locations (&self, state: &MachineMapState)->Inputs <(Vector, Option<Facing>)>;
@@ -96,6 +97,7 @@ impl MachineTypeTrait for MachineType {
   fn cost (&self)->Vec<(Number, Material)> {match self {$(MachineType::$Variant (value) => value.cost (),)*}}
   fn num_inputs (&self)->usize {match self {$(MachineType::$Variant (value) => value.num_inputs(),)*}}
   fn num_outputs (&self)->usize {match self {$(MachineType::$Variant (value) => value.num_outputs(),)*}}
+  fn radius (&self)->Number {match self {$(MachineType::$Variant (value) => value.radius (),)*}}
   
   fn input_locations (&self, state: &MachineMapState)->Inputs <(Vector, Facing)> {match self {$(MachineType::$Variant (value) => value.input_locations (state ),)*}}
   fn output_locations (&self, state: &MachineMapState)->Inputs <(Vector, Option<Facing>)> {match self {$(MachineType::$Variant (value) => value.output_locations (state ),)*}}
@@ -166,6 +168,7 @@ pub struct StandardMachineOutput {
 pub struct StandardMachine {
   pub name: & 'static str,
   pub icon: & 'static str,
+  pub radius: Number,
   pub cost: Vec<(Number, Material)>,
   pub inputs: Inputs <StandardMachineInput>,
   pub outputs: Inputs <StandardMachineOutput>,
@@ -181,12 +184,13 @@ pub fn conveyor()->MachineType {
   MachineType::StandardMachine (StandardMachine {
     name: "Conveyor", icon: "conveyor",
     cost: vec![(1, Material::Iron)],
+    radius: 1,
     inputs: inputs! [
       StandardMachineInput {cost: 1, material: None, relative_location: (Vector::new (0, 0), 0)},
       StandardMachineInput {cost: 1, material: None, relative_location: (Vector::new (0, 0), 1)},
       StandardMachineInput {cost: 1, material: None, relative_location: (Vector::new (0, 0), 3)},
     ],
-    outputs: inputs! [StandardMachineOutput {material: None, relative_location: (Vector::new (1,  0), Some(0))}],
+    outputs: inputs! [StandardMachineOutput {material: None, relative_location: (Vector::new (2,  0), Some(0))}],
     merge_inputs: true,
     min_output_cycle_length: TIME_TO_MOVE_MATERIAL,
   })
@@ -196,10 +200,11 @@ pub fn splitter()->MachineType {
   MachineType::StandardMachine (StandardMachine {
     name: "Splitter", icon: "splitter",
     cost: vec![(1, Material::Iron)],
+    radius: 1,
     inputs: inputs! [StandardMachineInput {cost: 2, material: None, relative_location: (Vector::new (0, 0), 0)}],
     outputs: inputs! [
-      StandardMachineOutput {material: None, relative_location: (Vector::new (0,  1), Some(1))},
-      StandardMachineOutput {material: None, relative_location: (Vector::new (0, -1), Some(3))},
+      StandardMachineOutput {material: None, relative_location: (Vector::new (0,  2), Some(1))},
+      StandardMachineOutput {material: None, relative_location: (Vector::new (0, -2), Some(3))},
     ],
     merge_inputs: true,
     min_output_cycle_length: TIME_TO_MOVE_MATERIAL,
@@ -210,8 +215,9 @@ pub fn iron_smelter()->MachineType {
   MachineType::StandardMachine (StandardMachine {
     cost: vec![(5, Material::Iron)],
     name: "Iron smelter", icon: "machine",
-    inputs: inputs! [StandardMachineInput {cost: 1, material: Some(Material::IronOre), relative_location: (Vector::new (0, 0), 0)}],
-    outputs: inputs! [StandardMachineOutput {material: Some(Material::Iron), relative_location: (Vector::new (1, 0), Some(0))}],
+    radius: 3,
+    inputs: inputs! [StandardMachineInput {cost: 1, material: Some(Material::IronOre), relative_location: (Vector::new (-2, 0), 0)}],
+    outputs: inputs! [StandardMachineOutput {material: Some(Material::Iron), relative_location: (Vector::new (4, 0), Some(0))}],
     merge_inputs: false,
     min_output_cycle_length: 10*TIME_TO_MOVE_MATERIAL,
   })
@@ -221,8 +227,9 @@ pub fn material_generator()->MachineType {
   MachineType::StandardMachine (StandardMachine {
     name: "Iron mine", icon: "mine",
     cost: vec![(50, Material::Iron)],
+    radius: 3,
     inputs: inputs! [],
-    outputs: inputs! [StandardMachineOutput {material: Some(Material::IronOre), relative_location: (Vector::new (1, 0), Some(0))}],
+    outputs: inputs! [StandardMachineOutput {material: Some(Material::IronOre), relative_location: (Vector::new (4, 0), Some(0))}],
     merge_inputs: false,
     min_output_cycle_length: TIME_TO_MOVE_MATERIAL,
   })
@@ -232,6 +239,7 @@ pub fn consumer()->MachineType {
   MachineType::StandardMachine (StandardMachine {
     name: "Consumer", icon: "chest",
     cost: vec![(5, Material::Iron)],
+    radius: 1,
     inputs: inputs! [
       StandardMachineInput {cost: 1, material: None, relative_location: (Vector::new (0, 0), 3)},
     ],
@@ -403,6 +411,7 @@ impl MachineTypeTrait for StandardMachine {
   fn cost (&self)->Vec<(Number, Material)> {self.cost.clone()}
   fn num_inputs (&self)->usize {self.inputs.len()}
   fn num_outputs (&self)->usize {self.outputs.len()}
+  fn radius (&self)->Number {self.radius}
   
   fn input_locations (&self, state: &MachineMapState)->Inputs <(Vector, Facing)> {
     self.inputs.iter().map (| input | {
@@ -424,7 +433,7 @@ impl MachineTypeTrait for StandardMachine {
     DrawnMachine {
       icon: self.icon,
       position: map_state.position,
-      size: Vector::new (1, 1),
+      size: Vector::new (self.radius*2, self.radius*2),
       facing: map_state.facing,
     }
   }
