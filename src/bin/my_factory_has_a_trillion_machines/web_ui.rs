@@ -209,7 +209,13 @@ gl_FragColor = vec4(color_transfer, t.a);
         (callback)(x,y);
       }
     }
-    $("#canvas").attr ("width", 600).attr ("height", 600)
+    var dpr = window.devicePixelRatio || 1.0;
+    var width = 800;
+    var height = 800;
+    var physical_width = height*dpr;
+    var physical_height = width*dpr;
+    $("#canvas").css({width: width+"px", height:height+"px"})
+      .attr ("width", physical_width).attr ("height", physical_height)
       .on("mousedown", mouse_callback (@{mousedown_callback}));
     $("body")
       .on("mouseup", mouse_callback (@{mouseup_callback}))
