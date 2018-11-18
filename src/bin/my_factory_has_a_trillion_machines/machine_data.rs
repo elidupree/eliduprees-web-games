@@ -9,7 +9,7 @@ use nalgebra::Vector2;
 use arrayvec::ArrayVec;
 
 pub type Number = i64;
-pub const MAX_COMPONENTS: usize = 32;
+pub const MAX_COMPONENTS: usize = 256;
 pub const RATE_DIVISOR: Number = TIME_TO_MOVE_MATERIAL * 2*2*2*2*2*2 * 3*3*3 * 5*5;
 pub const MAX_MACHINE_INPUTS: usize = 8;
 pub const TIME_TO_MOVE_MATERIAL: Number = 60;
