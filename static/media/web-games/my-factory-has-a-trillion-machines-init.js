@@ -21,7 +21,10 @@ var images = [
 ["merger", "/media/web-games/factory-images/merger.png?rr"],
 ["mine", "/media/web-games/factory-images/mine.png?rr"],
 ["ore", "/media/web-games/factory-images/ore.png?rr"],
-["splitter", "/media/web-games/factory-images/splitter.png?rr"]
+["splitter", "/media/web-games/factory-images/splitter.png?rr"],
+["rounded-rectangle-solid", "/media/web-games/factory-images/rounded-rectangle-solid.png?rr"],
+["rounded-rectangle-transparent", "/media/web-games/factory-images/rounded-rectangle-transparent.png?rr"],
+["input", "/media/web-games/factory-images/input.png?rr"]
 ]; 
 
 Promise.all(images.map((image) =>

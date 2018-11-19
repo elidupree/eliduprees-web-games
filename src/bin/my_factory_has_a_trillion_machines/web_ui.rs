@@ -165,7 +165,12 @@ uniform sampler2D sprite_sheet;
 
 void main() {
 lowp vec4 t = texture2D (sprite_sheet, sprite_coordinates_transfer);
-gl_FragColor = vec4(color_transfer, t.a);
+if (t.rgba == vec4(1)) {
+  gl_FragColor = t;
+}
+else {
+  gl_FragColor = vec4(color_transfer, t.a);
+}
 }
 
 "#;
@@ -450,30 +455,42 @@ fn do_frame(state: & Rc<RefCell<State>>) {
     
     for machine in & state.map.machines {
       let drawn = machine.machine_type.drawn_machine(& machine.map_state);
+      let size = Vector2::new(tile_size()[0] * drawn.size[0] as f32/2.0, tile_size()[1] * drawn.size[1] as f32/2.0);
       draw_rectangle (&mut vertices, sprite_sheet,
         canvas_position (machine.map_state.position),
-        Vector2::new(tile_size()[0] * drawn.size[0] as f32/2.0, tile_size()[1] * drawn.size[1] as f32/2.0),
+        size,
+        machine_color (machine), "rounded-rectangle-transparent", drawn.facing
+      );
+      draw_rectangle (&mut vertices, sprite_sheet,
+        canvas_position (machine.map_state.position),
+        size,
         machine_color (machine), &drawn.icon, drawn.facing
       );
     }
-    /*for machine in & state.map.machines {
-      for (input_location, input_facing) in machine.machine_type.input_locations (& machine.map_state) {
-        draw_rectangle (&mut vertices, sprite_sheet,
-          canvas_position (input_location),
-          tile_size()* 0.8,
-          machine_color (machine)
-        );
+    for machine in & state.map.machines {
+      if machine.machine_type.radius() > 1 {
+        for (input_location, input_facing) in machine.machine_type.input_locations (& machine.map_state) {
+          draw_rectangle (&mut vertices, sprite_sheet,
+            canvas_position (input_location),
+            tile_size(),
+            machine_color (machine), "input", input_facing
+          );
+        }
       }
     }
     for machine in & state.map.machines {
-      for (output_location, output_facing) in machine.machine_type.output_locations (& machine.map_state) {
-        draw_rectangle (&mut vertices, sprite_sheet,
-          canvas_position (output_location),
-          tile_size()* 0.6,
-          machine_color (machine)
-        );
+      if machine.machine_type.radius() > 1 {
+        for (output_location, output_facing) in machine.machine_type.output_locations (& machine.map_state) {
+          if let Some(output_facing) = output_facing {
+          draw_rectangle (&mut vertices, sprite_sheet,
+            canvas_position (output_location - Vector::new(2, 0).rotate_90(output_facing)),
+            tile_size(),
+            machine_color (machine), "input", output_facing.rotate_90(2)
+          );
+          }
+        }
       }
-    }*/
+    }
     for (machine, future) in state.map.machines.iter().zip (&state.future.machines) {
       let materials_states = iter::once (&machine.materials_state).chain (future.changes.iter().map (| (time, state) | {
         assert!(*time == state.last_flow_change);
