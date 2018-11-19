@@ -34,9 +34,29 @@ struct MousePosition {
   nearest_lines: Vector,
 }
 
+#[derive (PartialEq, Eq, Clone, Deserialize)]
+struct ClickType {
+  buttons: u16,
+  shift: bool,
+  ctrl: bool,
+}
+
+const REGULAR_CLICK: ClickType = ClickType {
+  buttons: 1,
+  shift: false,
+  ctrl: false,
+};
+
+impl Default for ClickType {
+  fn default ()->Self {REGULAR_CLICK}
+}
+
+js_deserializable! (ClickType);
+
 #[derive (Clone)]
 struct DragState {
   original_position: MousePosition,
+  click_type: ClickType,
   moved: bool,
 }
 
@@ -213,9 +233,9 @@ else {
   
  
   
-  let mousedown_callback = {let state = state.clone(); move |x: f64,y: f64 | {
+  let mousedown_callback = {let state = state.clone(); move |x: f64,y: f64, click_type: ClickType | {
     mouse_move(&mut state.borrow_mut(), tile_position (Vector2::new (x,y)));
-    mouse_down(&mut state.borrow_mut());
+    mouse_down(&mut state.borrow_mut(), click_type);
   }};
   let mouseup_callback = {let state = state.clone(); move |x: f64,y: f64 | {
     mouse_move(&mut state.borrow_mut(), tile_position (Vector2::new (x,y)));
@@ -226,14 +246,24 @@ else {
   }};
   
   js!{
-    function mouse_callback (callback) {
+    window.mouse_coords = function (event) {
+      var offset = canvas.getBoundingClientRect();
+      var x = (event.clientX - offset.left)/offset.width;
+      var y = 1.0 - (event.clientY - offset.top)/offset.height;
+      return [x,y];
+    };
+    window.mouse_callback = function (callback) {
       return function(event) {
-        var offset = canvas.getBoundingClientRect();
-        var x = (event.clientX - offset.left)/offset.width;
-        var y = 1.0 - (event.clientY - offset.top)/offset.height;
-        (callback)(x,y);
+        var xy = mouse_coords(event);
+        (callback)(xy[0],xy[1]);
       }
-    }
+    };
+    window.mousedown_callback = function(event) {
+      var xy = mouse_coords(event);
+      (@{mousedown_callback})(xy[0],xy[1], {buttons: event.buttons, shift: event.shiftKey, ctrl: event.ctrlKey});
+    };
+  }
+  js!{
     var dpr = window.devicePixelRatio || 1.0;
     var width = 800;
     var height = 800;
@@ -241,13 +271,14 @@ else {
     var physical_height = width*dpr;
     $("#canvas").css({width: width+"px", height:height+"px"})
       .attr ("width", physical_width).attr ("height", physical_height)
-      .on("mousedown", mouse_callback (@{mousedown_callback}));
+      .on("mousedown", mousedown_callback)
+      .on("contextmenu", function(e) {e.preventDefault()});
     $("body")
       .on("mouseup", mouse_callback (@{mouseup_callback}))
       .on("mousemove", mouse_callback (@{mousemove_callback}));
   }
   
-  for name in machine_choices().iter().map(| machine_type | machine_type.name()).chain (vec!["erase"]) {
+  for name in machine_choices().iter().map(| machine_type | machine_type.name()).chain (vec![]) {
     let id = format! ("Machine_choice_{}", name);
     js!{
       $("<input>", {type: "radio", id:@{& id}, name: "machine_choice", value: @{name}, checked:@{name == "Iron mine"}}).appendTo ($("#app"));
@@ -357,7 +388,7 @@ fn mouse_move (state: &mut State, position: MousePosition) {
   if let Some(ref mut drag) = state.mouse.drag {
     drag.moved = true;
     if let Some(previous) = state.mouse.previous_position {
-      if previous.tile_center == drag.original_position.tile_center || current_mode() == "Conveyor" {
+      if drag.click_type == REGULAR_CLICK && (previous.tile_center == drag.original_position.tile_center || current_mode() == "Conveyor") {
         if let Some(index) = state.map.machines.iter().position(|machine| previous.overlaps_machine (machine)) {
           prepare_to_change_map (state) ;
           state.map.machines[index].map_state.facing = facing;
@@ -369,9 +400,10 @@ fn mouse_move (state: &mut State, position: MousePosition) {
   mouse_maybe_held(state);
 }
 
-fn mouse_down(state: &mut State) {
+fn mouse_down(state: &mut State, click_type: ClickType) {
   state.mouse.drag = Some (DragState {
     original_position: state.mouse.position.unwrap(),
+    click_type,
     moved: false,
   });
   mouse_maybe_held(state);
@@ -382,12 +414,12 @@ fn mouse_maybe_held(state: &mut State) {
     (Some (first), Some (second)) => exact_facing (second.tile_center - first.tile_center).unwrap_or (0),
     _=> 0,
   };
-  if let Some(_drag) = state.mouse.drag.clone() {
+  if let Some(drag) = state.mouse.drag.clone() {
     let position = state.mouse.position.unwrap();
-    if current_mode() == "Conveyor" {
+    if drag.click_type == REGULAR_CLICK && current_mode() == "Conveyor" {
       build_machine (state, conveyor(), MachineMapState {position: position.tile_center, facing});
     }
-    if current_mode() == "erase" {
+    if drag.click_type == (ClickType {buttons: 2,..Default::default()}) {
       if let Some(index) = state.map.machines.iter().position(|machine| position.overlaps_machine (machine)) {
         prepare_to_change_map (state) ;
         state.map.machines.remove(index);
@@ -399,7 +431,7 @@ fn mouse_maybe_held(state: &mut State) {
 
 fn mouse_up(state: &mut State) {
   if let Some(drag) = state.mouse.drag.clone() {
-    if !drag.moved {
+    if drag.click_type == REGULAR_CLICK && !drag.moved {
       if let Some(machine_type) = machine_choices().into_iter().find (| machine_type | machine_type.name() == current_mode()) {
         build_machine (state, machine_type, MachineMapState {position: drag.original_position.tile_center, facing: 0});
       }
