@@ -469,12 +469,19 @@ fn do_frame(state: & Rc<RefCell<State>>) {
     }
     for machine in & state.map.machines {
       if machine.machine_type.radius() > 1 {
-        for (input_location, input_facing) in machine.machine_type.input_locations (& machine.map_state) {
+        for ((input_location, input_facing), expected_material) in machine.machine_type.input_locations (& machine.map_state).into_iter().zip (machine.machine_type. input_materials()) {
           draw_rectangle (&mut vertices, sprite_sheet,
             canvas_position (input_location),
             tile_size(),
             machine_color (machine), "input", input_facing
           );
+          if let Some(material) = expected_material {
+            draw_rectangle (&mut vertices, sprite_sheet,
+              canvas_position (input_location),
+              tile_size()*0.8,
+              machine_color (machine), material.icon(), 0
+            );
+          }
         }
       }
     }

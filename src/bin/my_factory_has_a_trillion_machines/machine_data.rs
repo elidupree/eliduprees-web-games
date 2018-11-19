@@ -64,6 +64,7 @@ pub trait MachineTypeTrait {
   
   fn input_locations (&self, state: &MachineMapState)->Inputs <(Vector, Facing)>;
   fn output_locations (&self, state: &MachineMapState)->Inputs <(Vector, Option<Facing>)>;
+  fn input_materials (&self)->Inputs <Option <Material>>;
   
   fn displayed_storage (&self, map_state: & MachineMapState, materials_state: & MachineMaterialsState, input_patterns: & [(FlowPattern, Material)], time: Number)->Inputs <(Vector, (Number, Material))>;
   fn drawn_machine (&self, map_state: & MachineMapState)->DrawnMachine;
@@ -101,6 +102,7 @@ impl MachineTypeTrait for MachineType {
   
   fn input_locations (&self, state: &MachineMapState)->Inputs <(Vector, Facing)> {match self {$(MachineType::$Variant (value) => value.input_locations (state ),)*}}
   fn output_locations (&self, state: &MachineMapState)->Inputs <(Vector, Option<Facing>)> {match self {$(MachineType::$Variant (value) => value.output_locations (state ),)*}}
+  fn input_materials (&self)->Inputs <Option <Material>> {match self {$(MachineType::$Variant (value) => value.input_materials (),)*}}
   
   fn displayed_storage (&self, map_state: & MachineMapState, materials_state: & MachineMaterialsState, input_patterns: & [(FlowPattern, Material)], time: Number)->Inputs <(Vector, (Number, Material))> {match self {$(MachineType::$Variant (value) => value.displayed_storage (map_state, materials_state, input_patterns, time ),)*}}
   fn drawn_machine (&self, map_state: & MachineMapState)->DrawnMachine {match self {$(MachineType::$Variant (value) => value.drawn_machine (map_state),)*}}
@@ -424,6 +426,10 @@ impl MachineTypeTrait for StandardMachine {
       let (position, facing) = output.relative_location.rotate_90 (state.facing);
       (position + state.position, facing)
     }).collect()
+  }
+  
+  fn input_materials (&self)->Inputs <Option <Material>> {
+    self.inputs.iter().map (| input | input.material).collect()
   }
   
   fn displayed_storage (&self, map_state: & MachineMapState, materials_state: & MachineMaterialsState, input_patterns: & [(FlowPattern, Material)], time: Number)->Inputs <(Vector, (Number, Material))> {
