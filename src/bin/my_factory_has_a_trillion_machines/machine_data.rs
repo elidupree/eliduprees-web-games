@@ -22,13 +22,13 @@ pub type Vector = Vector2 <Number>;
 pub type Facing = u8;
 
 pub struct DrawnMachine {
-  pub icon: & 'static str,
+  pub icon: String,
   pub position: Vector,
   pub size: Vector,
   pub facing: Facing,
 }
 
-#[derive (Copy, Clone, PartialEq, Eq, Hash, Debug)]
+#[derive (Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
 #[derive (Derivative)]
 #[derivative (Default)]
 pub enum Material {
@@ -38,7 +38,7 @@ pub enum Material {
   Garbage,
 }
 /*
-#[derive (Copy, Clone, PartialEq, Eq, Hash, Debug, Default)]
+#[derive (Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Default)]
 pub struct Material {
   material_type: MaterialType,
 }*/
@@ -54,7 +54,7 @@ impl Material {
 }
 
 
-pub trait MachineTypeTrait: Clone {
+pub trait MachineTypeTrait {
   // basic information
   fn name (&self)->& str;
   fn cost (&self)->Vec<(Number, Material)>;
@@ -87,7 +87,7 @@ macro_rules! machine_type_enum {
   ($($Variant: ident,)*) => {
   
 
-#[derive (Clone, PartialEq, Eq, Hash, Debug)]
+#[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
 pub enum MachineType {
   $($Variant ($Variant),)*
 }
@@ -151,23 +151,23 @@ impl <T: Rotate90> Rotate90 for Option<T> {
 }
 
 
-#[derive (Clone, PartialEq, Eq, Hash, Debug)]
+#[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
 pub struct StandardMachineInput {
   pub material: Option <Material>,
   pub cost: Number,
   pub relative_location: (Vector, Facing),
 }
 
-#[derive (Clone, PartialEq, Eq, Hash, Debug)]
+#[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
 pub struct StandardMachineOutput {
   pub material: Option <Material>,
   pub relative_location: (Vector, Option<Facing>),
 }
 
-#[derive (Clone, PartialEq, Eq, Hash, Debug)]
+#[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
 pub struct StandardMachine {
-  pub name: & 'static str,
-  pub icon: & 'static str,
+  pub name: String,
+  pub icon: String,
   pub radius: Number,
   pub cost: Vec<(Number, Material)>,
   pub inputs: Inputs <StandardMachineInput>,
@@ -182,7 +182,7 @@ pub struct StandardMachine {
 
 pub fn conveyor()->MachineType {
   MachineType::StandardMachine (StandardMachine {
-    name: "Conveyor", icon: "conveyor",
+    name: "Conveyor".to_string(), icon: "conveyor".to_string(),
     cost: vec![(1, Material::Iron)],
     radius: 1,
     inputs: inputs! [
@@ -198,7 +198,7 @@ pub fn conveyor()->MachineType {
 
 pub fn splitter()->MachineType {
   MachineType::StandardMachine (StandardMachine {
-    name: "Splitter", icon: "splitter",
+    name: "Splitter".to_string(), icon: "splitter".to_string(),
     cost: vec![(1, Material::Iron)],
     radius: 1,
     inputs: inputs! [StandardMachineInput {cost: 2, material: None, relative_location: (Vector::new (0, 0), 0)}],
@@ -214,7 +214,7 @@ pub fn splitter()->MachineType {
 pub fn iron_smelter()->MachineType {
   MachineType::StandardMachine (StandardMachine {
     cost: vec![(5, Material::Iron)],
-    name: "Iron smelter", icon: "machine",
+    name: "Iron smelter".to_string(), icon: "machine".to_string(),
     radius: 3,
     inputs: inputs! [StandardMachineInput {cost: 1, material: Some(Material::IronOre), relative_location: (Vector::new (-2, 0), 0)}],
     outputs: inputs! [StandardMachineOutput {material: Some(Material::Iron), relative_location: (Vector::new (4, 0), Some(0))}],
@@ -225,7 +225,7 @@ pub fn iron_smelter()->MachineType {
 
 pub fn material_generator()->MachineType {
   MachineType::StandardMachine (StandardMachine {
-    name: "Iron mine", icon: "mine",
+    name: "Iron mine".to_string(), icon: "mine".to_string(),
     cost: vec![(50, Material::Iron)],
     radius: 3,
     inputs: inputs! [],
@@ -237,7 +237,7 @@ pub fn material_generator()->MachineType {
 
 pub fn consumer()->MachineType {
   MachineType::StandardMachine (StandardMachine {
-    name: "Consumer", icon: "chest",
+    name: "Consumer".to_string(), icon: "chest".to_string(),
     cost: vec![(5, Material::Iron)],
     radius: 1,
     inputs: inputs! [
@@ -251,7 +251,7 @@ pub fn consumer()->MachineType {
 
 
 
-#[derive (Clone, PartialEq, Eq, Hash, Debug)]
+#[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
 pub struct MachineMaterialsState {
   pub last_flow_change: Number,
   pub input_storage_before_last_flow_change: Inputs <(Number, Material)>,
@@ -280,7 +280,7 @@ impl MachineMaterialsState {
 }
 
 
-#[derive (Clone, PartialEq, Eq, Hash, Debug)]
+#[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
 pub struct MachineMapState {
   pub position: Vector,
   pub facing: Facing,
@@ -407,7 +407,7 @@ impl StandardMachine {
 }
 
 impl MachineTypeTrait for StandardMachine {
-  fn name (&self)->& str {self.name}
+  fn name (&self)->& str {&self.name}
   fn cost (&self)->Vec<(Number, Material)> {self.cost.clone()}
   fn num_inputs (&self)->usize {self.inputs.len()}
   fn num_outputs (&self)->usize {self.outputs.len()}
@@ -431,7 +431,7 @@ impl MachineTypeTrait for StandardMachine {
   }
   fn drawn_machine (&self, map_state: & MachineMapState)->DrawnMachine {
     DrawnMachine {
-      icon: self.icon,
+      icon: self.icon.clone(),
       position: map_state.position,
       size: Vector::new (self.radius*2, self.radius*2),
       facing: map_state.facing,
@@ -485,7 +485,7 @@ impl MachineTypeTrait for StandardMachine {
 
 
 
-#[derive (Clone, PartialEq, Eq, Hash, Debug)]
+#[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
 pub struct StatefulMachine {
   pub machine_type: MachineType,
   pub map_state: MachineMapState,
@@ -520,6 +520,7 @@ pub struct Group {
 
 */
 
+#[derive (Serialize, Deserialize)]
 pub struct Map {
   pub machines: ArrayVec <[StatefulMachine; MAX_COMPONENTS]>,
   pub last_change_time: Number,

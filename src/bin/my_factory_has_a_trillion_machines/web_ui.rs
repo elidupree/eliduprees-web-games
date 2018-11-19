@@ -54,6 +54,7 @@ struct State {
   map: Map,
   future: MapFuture,
   start_ui_time: f64,
+  start_game_time: Number,
   current_game_time: Number,
   mouse: MouseState,
 }
@@ -184,9 +185,28 @@ gl_FragColor = vec4(color_transfer, t.a);
       
   let state = Rc::new (RefCell::new (State {
     glium_display: display, glium_program: program, sprite_sheet: None,
-    map, future, start_ui_time: now(), current_game_time: 0,
+    map, future, start_ui_time: now(), start_game_time: 0, current_game_time: 0,
     mouse: Default::default(),
   }));
+  
+  let json_callback = {let state = state.clone(); move | input: String | {
+    println!("{}", &input);
+    if let Ok (map) = serde_json::from_str::<Map> (& input) {
+      let mut state = state.borrow_mut();
+      state.start_ui_time = now();
+      state.start_game_time = map.last_change_time;
+      state.current_game_time = map.last_change_time;
+      state.map = map;
+      recalculate_future(&mut state);
+    }
+  }};
+  
+  js!{
+    $("#json").click(function() {$(this).select();})
+      .on ("input", function() {@{json_callback}($(this).val())});
+  }
+  
+ 
   
   let mousedown_callback = {let state = state.clone(); move |x: f64,y: f64 | {
     mouse_move(&mut state.borrow_mut(), tile_position (Vector2::new (x,y)));
@@ -284,6 +304,10 @@ fn recalculate_future (state: &mut State) {
   let output_edges = state.map.output_edges();
   let ordering = state.map.topological_ordering_of_noncyclic_machines(& output_edges);
   state.future = state.map.future (& output_edges, & ordering);
+     
+  js!{
+    $("#json").val (@{serde_json::to_string_pretty (&state.map).unwrap()});
+  }
 }
 
 fn exact_facing (vector: Vector)->Option <Facing> {
@@ -408,7 +432,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
   
   let mut state = state.borrow_mut();
   let state = &mut *state;
-  let fractional_time = (now() - state.start_ui_time)*TIME_TO_MOVE_MATERIAL as f64*2.0;
+  let fractional_time = state.start_game_time as f64 + (now() - state.start_ui_time)*TIME_TO_MOVE_MATERIAL as f64*2.0;
   state.current_game_time = fractional_time as Number;
   //state.map.update_to (& state.future, state.current_game_time);
   
@@ -429,7 +453,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
       draw_rectangle (&mut vertices, sprite_sheet,
         canvas_position (machine.map_state.position),
         Vector2::new(tile_size()[0] * drawn.size[0] as f32/2.0, tile_size()[1] * drawn.size[1] as f32/2.0),
-        machine_color (machine), drawn.icon, drawn.facing
+        machine_color (machine), &drawn.icon, drawn.facing
       );
     }
     /*for machine in & state.map.machines {

@@ -6,7 +6,7 @@ use super::*;
 use num::Integer;
 
 
-#[derive (Copy, Clone, PartialEq, Eq, Hash, Debug, Default)]
+#[derive (Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Default)]
 pub struct FlowPattern {
   origin_time: Number, //when the first item was disbursed as part of this flow
   rate: Number, //items per max cycle length

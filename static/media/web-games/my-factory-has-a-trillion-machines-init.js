@@ -3,6 +3,8 @@
 
 window.Module = window.Module || {};
 Module.canvas = document.getElementById ("canvas");
+Module.TOTAL_STACK = 128*1024*1024;
+Module.TOTAL_MEMORY = 256*1024*1024;
 
 
 
