@@ -422,6 +422,9 @@ fn mouse_maybe_held(state: &mut State) {
     if drag.click_type == (ClickType {buttons: 2,..Default::default()}) {
       if let Some(index) = state.map.machines.iter().position(|machine| position.overlaps_machine (machine)) {
         prepare_to_change_map (state) ;
+        for (amount, material) in state.map.machines[index].machine_type.cost() {
+          *state.map.inventory_before_last_change.get_mut(&material).unwrap() += amount;
+        }
         state.map.machines.remove(index);
         recalculate_future (state) ;
       }
