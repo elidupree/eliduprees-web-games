@@ -16,7 +16,7 @@ pub const TIME_TO_MOVE_MATERIAL: Number = 60;
 pub const MAX_IMPLICIT_OUTPUT_FLOW_CHANGES: usize = 3;
 pub type Inputs<T> = ArrayVec <[T; MAX_MACHINE_INPUTS]>;
 macro_rules! inputs {
-  ($($whatever:tt)*) => {Inputs::from_iter ([$($whatever)*].iter().cloned())};
+  ($($whatever:tt)*) => {::std::iter::FromIterator::from_iter ([$($whatever)*].iter().cloned())};
 }
 pub type Vector = Vector2 <Number>;
 pub type Facing = u8;
@@ -53,34 +53,34 @@ impl Material {
   }
 }
 
-
+#[allow(unused)]
 pub trait MachineTypeTrait {
   // basic information
   fn name (&self)->& str;
-  fn cost (&self)->Vec<(Number, Material)>;
-  fn num_inputs (&self)->usize;
-  fn num_outputs (&self)->usize;
-  fn radius (&self)->Number;
+  fn cost (&self)->Vec<(Number, Material)> {vec![]}
+  fn num_inputs (&self)->usize {0}
+  fn num_outputs (&self)->usize {0}
+  fn radius (&self)->Number {1}
   
-  fn input_locations (&self, state: &MachineMapState)->Inputs <(Vector, Facing)>;
-  fn output_locations (&self, state: &MachineMapState)->Inputs <(Vector, Option<Facing>)>;
-  fn input_materials (&self)->Inputs <Option <Material>>;
+  fn input_locations (&self, state: &MachineMapState)->Inputs <(Vector, Facing)> {inputs![]}
+  fn output_locations (&self, state: &MachineMapState)->Inputs <(Vector, Option<Facing>)> {inputs![]}
+  fn input_materials (&self)->Inputs <Option <Material>> {inputs![]}
   
-  fn displayed_storage (&self, map_state: & MachineMapState, materials_state: & MachineMaterialsState, input_patterns: & [(FlowPattern, Material)], time: Number)->Inputs <(Vector, (Number, Material))>;
+  fn displayed_storage (&self, map_state: & MachineMapState, materials_state: & MachineMaterialsState, input_patterns: & [(FlowPattern, Material)], time: Number)->Inputs <(Vector, (Number, Material))> {inputs![]}
   fn drawn_machine (&self, map_state: & MachineMapState)->DrawnMachine;
   
   // used to infer group input flow rates
   // property: with valid inputs, the returned values have the same length given by num_inputs/num_outputs
   // property: these are consistent with each other
-  fn max_output_rates (&self, input_rates: & [(Number, Material)])->Inputs <(Number, Material)>;
-  fn reduced_input_rates_that_can_still_produce (&self, input_rates: & [(Number, Material)], output_rates: & [(Number, Material)])->Inputs <(Number, Material)>;
+  fn max_output_rates (&self, input_rates: & [(Number, Material)])->Inputs <(Number, Material)> {inputs![]}
+  fn reduced_input_rates_that_can_still_produce (&self, input_rates: & [(Number, Material)], output_rates: & [(Number, Material)])->Inputs <(Number, Material)> {inputs![]}
   
   // property: if inputs don't change, current_output_rates doesn't change before next_output_change_time
   // property: when there is no next output change time, current_output_rates is equivalent to max_output_rates
   // maybe some property that limits the total amount of rate changes resulting from a single change by the player?
-  fn with_inputs_changed (&self, old_state: &MachineMaterialsState, change_time: Number, old_input_patterns: & [(FlowPattern, Material)])->MachineMaterialsState;
+  fn with_inputs_changed (&self, old_state: &MachineMaterialsState, change_time: Number, old_input_patterns: & [(FlowPattern, Material)])->MachineMaterialsState {MachineMaterialsState {last_flow_change: change_time, ..old_state.clone()}}
   // property: next_change is not the same time twice in a row
-  fn future_output_patterns (&self, state: &MachineMaterialsState, input_patterns: & [(FlowPattern, Material)])->Inputs <ArrayVec<[(Number, (FlowPattern, Material)); MAX_IMPLICIT_OUTPUT_FLOW_CHANGES]>>;
+  fn future_output_patterns (&self, state: &MachineMaterialsState, input_patterns: & [(FlowPattern, Material)])->Inputs <ArrayVec<[(Number, (FlowPattern, Material)); MAX_IMPLICIT_OUTPUT_FLOW_CHANGES]>> {inputs![ArrayVec::new()]}
 
 }
 
@@ -118,7 +118,7 @@ impl MachineTypeTrait for MachineType {
 }
 
 machine_type_enum! {
-  StandardMachine,// Conveyor,
+  StandardMachine, ModuleMachine, // Conveyor,
 }
 
 pub trait Rotate90 {

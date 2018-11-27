@@ -25,8 +25,11 @@ mod misc;
 pub use misc::*;
 mod flow_pattern;
 pub use flow_pattern::*;
+#[macro_use]
 mod machine_data;
 pub use machine_data::*;
+mod modules;
+pub use modules::*;
 mod graph_algorithms;
 pub use graph_algorithms::*;
 

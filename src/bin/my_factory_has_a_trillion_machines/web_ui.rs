@@ -13,6 +13,7 @@ use stdweb::unstable::TryInto;
 use stdweb::web::ArrayBuffer;
 use siphasher::sip::SipHasher;
 use nalgebra::Vector2;
+use num::Integer;
 
 
 
@@ -87,7 +88,7 @@ struct Vertex {
 }
 implement_vertex!(Vertex, position, sprite_coordinates, color);
 
-fn machine_choices()->Vec<MachineType> { vec![conveyor(), splitter(), iron_smelter(), material_generator(), consumer()]}
+fn machine_choices()->Vec<MachineType> { vec![conveyor(), splitter(), iron_smelter(), material_generator(), consumer(), basic_module()]}
 
 fn machine_color(machine: & StatefulMachine)->[f32; 3] {
   let mut hasher = SipHasher::new() ;
@@ -298,16 +299,51 @@ fn current_mode ()->String {
   foo
 }
 
+// TODO reduce duplicate code id 394342002
+fn in_smallest_module<F: FnOnce(&ArrayVec <[StatefulMachine; MAX_COMPONENTS]>)->R, R> (machines: &ArrayVec <[StatefulMachine; MAX_COMPONENTS]>, (position, radius): (Vector, Number), callback: F)->R {
+  for machine in machines.iter() {
+    if let MachineType::ModuleMachine(module_machine) = &machine.machine_type {
+      let relative_position = position - machine.map_state.position;
+      let available_radius = module_machine.module.module_type.inner_radius - radius;
+      if relative_position[0].abs() <= available_radius && relative_position[1].abs() <= available_radius {
+        return in_smallest_module(&module_machine.module.machines, (position, radius), callback);
+      }
+    }
+  }
+  callback (machines)
+}
+// TODO reduce duplicate code id 394342002
+fn edit_in_smallest_module<F: FnOnce(&mut ArrayVec <[StatefulMachine; MAX_COMPONENTS]>)->R, R> (machines: &mut ArrayVec <[StatefulMachine; MAX_COMPONENTS]>, (position, radius): (Vector, Number), callback: F)->R {
+  for machine in machines.iter_mut() {
+    if let MachineType::ModuleMachine(module_machine) = &mut machine.machine_type {
+      let relative_position = position - machine.map_state.position;
+      let available_radius = module_machine.module.module_type.inner_radius - radius;
+      if relative_position[0].abs() <= available_radius && relative_position[1].abs() <= available_radius {
+        let mut edited: Module = (*module_machine.module).clone();
+        let result = edit_in_smallest_module(&mut edited.machines, (position, radius), callback);
+        module_machine.module = Rc::new(edited);
+        return result;
+      }
+    }
+  }
+  callback (machines)
+}
+
 fn build_machine (state: &mut State, machine_type: MachineType, map_state: MachineMapState) {
   let materials_state =MachineMaterialsState::empty (& machine_type, state.current_game_time);
-  if state.map.machines.iter().any (| machine | {
-    let radius = machine.machine_type.radius() + machine_type.radius();
-    let offset = machine.map_state.position - map_state.position;
-    offset[0].abs() < radius && offset[1].abs() < radius
+  if in_smallest_module (&state.map.machines, (map_state.position, machine_type.radius()), |machines| {
+    if machines.iter().any (| machine | {
+      let radius = machine.machine_type.radius() + machine_type.radius();
+      let offset = machine.map_state.position - map_state.position;
+      offset[0].abs() < radius && offset[1].abs() < radius
+    }) {
+      return true;
+    }
+    if machines.len() == machines.capacity() {
+      return true;
+    }
+    false
   }) {
-    return;
-  }
-  if state.map.machines.len() == state.map.machines.capacity() {
     return;
   }
   let inventory = state.map.inventory_at (& state.future, state.current_game_time);
@@ -320,11 +356,11 @@ fn build_machine (state: &mut State, machine_type: MachineType, map_state: Machi
   for (amount, material) in machine_type.cost() {
     *state.map.inventory_before_last_change.get_mut(&material).unwrap() -= amount;
   }
-  state.map.machines.push (StatefulMachine {
+  edit_in_smallest_module(&mut state.map.machines, (map_state.position, machine_type.radius()), |machines| machines.push (StatefulMachine {
     machine_type,
     map_state,
     materials_state,
-  });
+  }));
   recalculate_future (state) ;
 }
 
@@ -356,25 +392,43 @@ fn exact_facing (vector: Vector)->Option <Facing> {
   }
 }
 
+fn hovering_area (position: MousePosition)->(Vector, Number) {
+  if let Some(machine_type) = machine_choices().into_iter().find (| machine_type | machine_type.name() == current_mode()) {
+    (
+      if machine_type.radius().is_even() { position.nearest_lines } else {position.tile_center},
+      machine_type.radius(),
+    )
+  }
+  else {
+    (position.tile_center, 1)
+  }
+}
+
 fn mouse_move (state: &mut State, position: MousePosition) {
   let facing = match state.mouse.position {
     None => 0,
     Some(previous_position) => {
-    let delta = position.tile_center - previous_position.tile_center;
+    let delta = hovering_area (position).0 - hovering_area (previous_position).0;
      match exact_facing (delta) {
       Some (facing) => facing,
       _=> loop {
-        let difference = position.tile_center - state.mouse.position.unwrap().tile_center;
+        let difference = hovering_area (position).0 - hovering_area (state.mouse.position.unwrap()).0;
         if difference[0] != 0 {
-          let pos = state.mouse.position.unwrap().tile_center + Vector::new (difference[0].signum()*2, 0);
-          mouse_move (state, MousePosition {tile_center: pos, nearest_lines: pos});
+          let offs = Vector::new (difference[0].signum()*2, 0);
+          let mut pos = state.mouse.position.unwrap();
+          pos.tile_center += offs;
+          pos.nearest_lines += offs;
+          mouse_move (state, pos);
         }
-        let difference = position.tile_center - state.mouse.position.unwrap().tile_center;
+        let difference = hovering_area (position).0 - hovering_area (state.mouse.position.unwrap()).0;
         if difference[1] != 0 {
-          let pos = state.mouse.position.unwrap().tile_center + Vector::new (0, difference[1].signum()*2);
-          mouse_move (state, MousePosition {tile_center: pos, nearest_lines: pos});
+          let offs = Vector::new (0, difference[1].signum()*2);
+          let mut pos = state.mouse.position.unwrap();
+          pos.tile_center += offs;
+          pos.nearest_lines += offs;
+          mouse_move (state, pos);
         }
-        if position.tile_center == state.mouse.position.unwrap().tile_center {
+        if hovering_area (position).0 == hovering_area (state.mouse.position.unwrap()).0 {
           return;
         }
       },
@@ -388,7 +442,7 @@ fn mouse_move (state: &mut State, position: MousePosition) {
   if let Some(ref mut drag) = state.mouse.drag {
     drag.moved = true;
     if let Some(previous) = state.mouse.previous_position {
-      if drag.click_type == REGULAR_CLICK && (previous.tile_center == drag.original_position.tile_center || current_mode() == "Conveyor") {
+      if drag.click_type == REGULAR_CLICK && (hovering_area (previous).0 == hovering_area (drag.original_position).0 || current_mode() == "Conveyor") {
         if let Some(index) = state.map.machines.iter().position(|machine| previous.overlaps_machine (machine)) {
           prepare_to_change_map (state) ;
           state.map.machines[index].map_state.facing = facing;
@@ -411,21 +465,27 @@ fn mouse_down(state: &mut State, click_type: ClickType) {
 
 fn mouse_maybe_held(state: &mut State) {
   let facing = match (state.mouse.previous_position, state.mouse.position) {
-    (Some (first), Some (second)) => exact_facing (second.tile_center - first.tile_center).unwrap_or (0),
+    (Some (first), Some (second)) => exact_facing (hovering_area (second).0 - hovering_area (first).0).unwrap_or (0),
     _=> 0,
   };
   if let Some(drag) = state.mouse.drag.clone() {
     let position = state.mouse.position.unwrap();
     if drag.click_type == REGULAR_CLICK && current_mode() == "Conveyor" {
-      build_machine (state, conveyor(), MachineMapState {position: position.tile_center, facing});
+      build_machine (state, conveyor(), MachineMapState {position: hovering_area (position).0, facing});
     }
+    
     if drag.click_type == (ClickType {buttons: 2,..Default::default()}) {
-      if let Some(index) = state.map.machines.iter().position(|machine| position.overlaps_machine (machine)) {
-        prepare_to_change_map (state) ;
-        for (amount, material) in state.map.machines[index].machine_type.cost() {
+      if in_smallest_module (&state.map.machines, hovering_area(position), |machines| machines.iter().position(|machine| position.overlaps_machine (machine)).is_some()) {
+        prepare_to_change_map (state);
+        let cost = edit_in_smallest_module (&mut state.map.machines, hovering_area(position), |machines| {
+          let index = machines.iter().position(|machine| position.overlaps_machine (machine)).unwrap();
+          let cost = machines[index].machine_type.cost();
+          machines.remove(index);
+          cost
+        });
+        for (amount, material) in cost {
           *state.map.inventory_before_last_change.get_mut(&material).unwrap() += amount;
         }
-        state.map.machines.remove(index);
         recalculate_future (state) ;
       }
     }
@@ -436,7 +496,7 @@ fn mouse_up(state: &mut State) {
   if let Some(drag) = state.mouse.drag.clone() {
     if drag.click_type == REGULAR_CLICK && !drag.moved {
       if let Some(machine_type) = machine_choices().into_iter().find (| machine_type | machine_type.name() == current_mode()) {
-        build_machine (state, machine_type, MachineMapState {position: drag.original_position.tile_center, facing: 0});
+        build_machine (state, machine_type, MachineMapState {position: hovering_area (drag.original_position).0, facing: 0});
       }
     }
   }
