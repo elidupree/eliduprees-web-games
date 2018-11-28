@@ -161,6 +161,12 @@ impl MousePosition {
   }
 }
 
+fn inside_machine (position: Vector, machine: & StatefulMachine)->bool {
+  let radius = machine.machine_type.radius();
+  let offset = machine.map_state.position - position;
+  offset [0].abs() <radius && offset [1].abs() <radius
+}
+
 pub fn run_game() {
   let vertex_shader_source = r#"
 #version 100
@@ -300,41 +306,41 @@ fn current_mode ()->String {
 }
 
 // TODO reduce duplicate code id 394342002
-fn in_smallest_module<F: FnOnce(&ArrayVec <[StatefulMachine; MAX_COMPONENTS]>)->R, R> (machines: &ArrayVec <[StatefulMachine; MAX_COMPONENTS]>, (position, radius): (Vector, Number), callback: F)->R {
+fn in_smallest_module<F: FnOnce(Vector, &ArrayVec <[StatefulMachine; MAX_COMPONENTS]>)->R, R> (machines: &ArrayVec <[StatefulMachine; MAX_COMPONENTS]>, origin: Vector, (position, radius): (Vector, Number), callback: F)->R {
   for machine in machines.iter() {
     if let MachineType::ModuleMachine(module_machine) = &machine.machine_type {
       let relative_position = position - machine.map_state.position;
       let available_radius = module_machine.module.module_type.inner_radius - radius;
       if relative_position[0].abs() <= available_radius && relative_position[1].abs() <= available_radius {
-        return in_smallest_module(&module_machine.module.machines, (position, radius), callback);
+        return in_smallest_module(&module_machine.module.machines, origin + machine.map_state.position, (position, radius), callback);
       }
     }
   }
-  callback (machines)
+  callback (origin, machines)
 }
 // TODO reduce duplicate code id 394342002
-fn edit_in_smallest_module<F: FnOnce(&mut ArrayVec <[StatefulMachine; MAX_COMPONENTS]>)->R, R> (machines: &mut ArrayVec <[StatefulMachine; MAX_COMPONENTS]>, (position, radius): (Vector, Number), callback: F)->R {
+fn edit_in_smallest_module<F: FnOnce(Vector, &mut ArrayVec <[StatefulMachine; MAX_COMPONENTS]>)->R, R> (machines: &mut ArrayVec <[StatefulMachine; MAX_COMPONENTS]>, origin: Vector, (position, radius): (Vector, Number), callback: F)->R {
   for machine in machines.iter_mut() {
     if let MachineType::ModuleMachine(module_machine) = &mut machine.machine_type {
       let relative_position = position - machine.map_state.position;
       let available_radius = module_machine.module.module_type.inner_radius - radius;
       if relative_position[0].abs() <= available_radius && relative_position[1].abs() <= available_radius {
         let mut edited: Module = (*module_machine.module).clone();
-        let result = edit_in_smallest_module(&mut edited.machines, (position, radius), callback);
+        let result = edit_in_smallest_module(&mut edited.machines, origin + machine.map_state.position, (position, radius), callback);
         module_machine.module = Rc::new(edited);
         return result;
       }
     }
   }
-  callback (machines)
+  callback (origin, machines)
 }
 
 fn build_machine (state: &mut State, machine_type: MachineType, map_state: MachineMapState) {
   let materials_state =MachineMaterialsState::empty (& machine_type, state.current_game_time);
-  if in_smallest_module (&state.map.machines, (map_state.position, machine_type.radius()), |machines| {
+  if in_smallest_module (&state.map.machines, Vector::new(0,0), (map_state.position, machine_type.radius()), |origin, machines| {
     if machines.iter().any (| machine | {
       let radius = machine.machine_type.radius() + machine_type.radius();
-      let offset = machine.map_state.position - map_state.position;
+      let offset = (origin + machine.map_state.position) - map_state.position;
       offset[0].abs() < radius && offset[1].abs() < radius
     }) {
       return true;
@@ -356,9 +362,9 @@ fn build_machine (state: &mut State, machine_type: MachineType, map_state: Machi
   for (amount, material) in machine_type.cost() {
     *state.map.inventory_before_last_change.get_mut(&material).unwrap() -= amount;
   }
-  edit_in_smallest_module(&mut state.map.machines, (map_state.position, machine_type.radius()), |machines| machines.push (StatefulMachine {
+  edit_in_smallest_module(&mut state.map.machines, Vector::new(0,0), (map_state.position, machine_type.radius()), |origin, machines| machines.push (StatefulMachine {
     machine_type,
-    map_state,
+    map_state: MachineMapState{position: map_state.position - origin, ..map_state},
     materials_state,
   }));
   recalculate_future (state) ;
@@ -475,10 +481,10 @@ fn mouse_maybe_held(state: &mut State) {
     }
     
     if drag.click_type == (ClickType {buttons: 2,..Default::default()}) {
-      if in_smallest_module (&state.map.machines, hovering_area(position), |machines| machines.iter().position(|machine| position.overlaps_machine (machine)).is_some()) {
+      if in_smallest_module (&state.map.machines, Vector::new(0,0), hovering_area(position), |origin, machines| machines.iter().position(|machine| inside_machine (position.tile_center-origin, machine)).is_some()) {
         prepare_to_change_map (state);
-        let cost = edit_in_smallest_module (&mut state.map.machines, hovering_area(position), |machines| {
-          let index = machines.iter().position(|machine| position.overlaps_machine (machine)).unwrap();
+        let cost = edit_in_smallest_module (&mut state.map.machines, Vector::new(0,0), hovering_area(position), |origin, machines| {
+          let index = machines.iter().position(|machine| inside_machine (position.tile_center-origin, machine)).unwrap();
           let cost = machines[index].machine_type.cost();
           machines.remove(index);
           cost
