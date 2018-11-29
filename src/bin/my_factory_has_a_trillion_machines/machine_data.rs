@@ -4,6 +4,8 @@ use std::cmp::{min, max};
 use std::iter::{self, FromIterator};
 use std::ops::Neg;
 use std::collections::HashMap;
+use proptest::prelude::*;
+use std::ops::Mul;
 
 use nalgebra::Vector2;
 use arrayvec::ArrayVec;
@@ -20,6 +22,124 @@ macro_rules! inputs {
 }
 pub type Vector = Vector2 <Number>;
 pub type Facing = u8;
+
+#[derive (Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Derivative)]
+#[derivative (Default)]
+pub struct GridIsomorphism {
+  #[derivative (Default (value = "Vector::new(0,0)"))]
+  pub translation: Vector,
+  pub rotation: Facing,
+  pub flip: bool,
+}
+
+trait TransformedBy {
+  fn transformed_by (self, isomorphism: GridIsomorphism)->Self;
+}
+impl TransformedBy for Vector { 
+  fn transformed_by (mut self, isomorphism: GridIsomorphism)->Self {
+    if isomorphism.flip { self[0] *= -1; }
+    self = self.rotate_90 (isomorphism.rotation);
+    self + isomorphism.translation
+  }
+}
+impl TransformedBy for Facing { 
+  fn transformed_by (mut self, isomorphism: GridIsomorphism)->Self {
+    if isomorphism.flip { self = (4-self) % 4 }
+    self = self.rotate_90 (isomorphism.rotation);
+    self
+  }
+}
+impl Mul<GridIsomorphism> for GridIsomorphism {
+  type Output = GridIsomorphism; 
+  fn mul (mut self, other: GridIsomorphism)->GridIsomorphism {
+    if other.flip {
+      self.translation[0] *= -1;
+      self.rotation = (4-self.rotation) % 4;
+      self.flip = !self.flip;
+    }
+    self.translation = self.translation.rotate_90 (other.rotation);
+    self.rotation = self.rotation.rotate_90 (other.rotation);
+    self.translation += other.translation;
+    self
+  }
+}
+impl GridIsomorphism {
+  fn inverse(mut self)->GridIsomorphism {
+    self.translation = (-self.translation).rotate_90 ((4-self.rotation) % 4);
+    if self.flip {
+      self.translation[0] *= -1;
+    }
+    else {
+      self.rotation = (4-self.rotation) % 4;
+    }
+    self
+  }
+}
+
+fn arbitrary_vector() -> BoxedStrategy<Vector> {
+  (
+    -1000000i64..1000000i64,
+    -1000000i64..1000000i64
+  ).prop_map(|(x, y)| {
+    Vector::new (x,y)
+  }).boxed()
+}
+/*
+prop_compose! {
+  fn arbitrary_vector()(
+    x in -1000000i64..1000000i64,
+    y in -1000000i64..1000000i64
+  )->Vector {
+    Vector::new (x,y)
+  }
+}*/
+prop_compose! {
+  fn arbitrary_isomorphism()(
+    translation in arbitrary_vector(),
+    rotation in 0u8..4u8,
+    flip in any::<bool>()
+  )->GridIsomorphism {
+    GridIsomorphism {
+      translation, rotation, flip,
+    }
+  }
+}
+
+proptest! {
+  
+  #[test]
+  fn randomly_test_grid_isomorphism_inverse_repetition (isomorphism in arbitrary_isomorphism()) {
+    prop_assert_eq! (isomorphism, isomorphism.inverse().inverse());
+  }
+  #[test]
+  fn randomly_test_grid_isomorphism_inverse_is_inverse (isomorphism in arbitrary_isomorphism()) {
+    prop_assert_eq! (isomorphism * isomorphism.inverse(), GridIsomorphism::default());
+  }
+  #[test]
+  fn randomly_test_grid_isomorphism_inverse_vector (isomorphism in arbitrary_isomorphism(), vector in arbitrary_vector()) {
+    prop_assert_eq! (vector, vector.transformed_by(isomorphism).transformed_by(isomorphism.inverse()));
+  }
+  #[test]
+  fn randomly_test_grid_isomorphism_inverse_facing (isomorphism in arbitrary_isomorphism(), facing in 0u8..4u8) {
+    prop_assert_eq! (facing, facing.transformed_by(isomorphism).transformed_by(isomorphism.inverse()));
+  }
+  #[test]
+  fn randomly_test_grid_isomorphism_is_flip_then_rotate_then_translate (isomorphism in arbitrary_isomorphism()) {
+    prop_assert_eq! (isomorphism,
+      GridIsomorphism {flip: isomorphism.flip, ..Default::default()}
+      * GridIsomorphism {rotation: isomorphism.rotation, ..Default::default()}
+      * GridIsomorphism {translation: isomorphism.translation, ..Default::default()}
+    );
+  }
+  #[test]
+  fn randomly_test_grid_isomorphism_associative (first in arbitrary_isomorphism(), second in arbitrary_isomorphism(), third in arbitrary_isomorphism()) {
+    prop_assert_eq! ((first * second) * third, first * (second * third));
+  }
+  #[test]
+  fn randomly_test_grid_isomorphism_transforms_translation_like_vector (isomorphism in arbitrary_isomorphism(), transformed_isomorphism in arbitrary_isomorphism()) {
+    prop_assert_eq! ((transformed_isomorphism * isomorphism).translation, transformed_isomorphism.translation.transformed_by(isomorphism));
+  }
+}
 
 pub struct DrawnMachine {
   pub icon: String,
