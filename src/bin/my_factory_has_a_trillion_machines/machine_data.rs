@@ -4,8 +4,7 @@ use std::cmp::{min, max};
 use std::iter::{self, FromIterator};
 use std::ops::Neg;
 use std::collections::HashMap;
-use proptest::prelude::*;
-use std::ops::Mul;
+use std::ops::{Mul, Div};
 
 use nalgebra::Vector2;
 use arrayvec::ArrayVec;
@@ -32,7 +31,7 @@ pub struct GridIsomorphism {
   pub flip: bool,
 }
 
-trait TransformedBy {
+pub trait TransformedBy {
   fn transformed_by (self, isomorphism: GridIsomorphism)->Self;
 }
 impl TransformedBy for Vector { 
@@ -49,6 +48,16 @@ impl TransformedBy for Facing {
     self
   }
 }
+impl <T: TransformedBy, U: TransformedBy> TransformedBy for (T, U) {
+  fn transformed_by (self, isomorphism: GridIsomorphism)->Self {
+    (self.0.transformed_by(isomorphism), self.1.transformed_by(isomorphism))
+  }
+}
+impl <T: TransformedBy> TransformedBy for Option<T> {
+  fn transformed_by (self, isomorphism: GridIsomorphism)->Self {
+    self.map(|t| t.transformed_by(isomorphism))
+  }
+}
 impl Mul<GridIsomorphism> for GridIsomorphism {
   type Output = GridIsomorphism; 
   fn mul (mut self, other: GridIsomorphism)->GridIsomorphism {
@@ -63,8 +72,14 @@ impl Mul<GridIsomorphism> for GridIsomorphism {
     self
   }
 }
+impl Div<GridIsomorphism> for GridIsomorphism {
+  type Output = GridIsomorphism; 
+  fn div (self, other: GridIsomorphism)->GridIsomorphism {
+    self * other.inverse()
+  }
+}
 impl GridIsomorphism {
-  fn inverse(mut self)->GridIsomorphism {
+  pub fn inverse(mut self)->GridIsomorphism {
     self.translation = (-self.translation).rotate_90 ((4-self.rotation) % 4);
     if self.flip {
       self.translation[0] *= -1;
@@ -75,6 +90,11 @@ impl GridIsomorphism {
     self
   }
 }
+
+#[cfg(test)]
+mod tests {
+use super::*;
+use proptest::prelude::*;
 
 #[test]
 fn grid_isomorphism_unit_tests() {
@@ -160,11 +180,12 @@ proptest! {
   }
 }
 
+}
+
 pub struct DrawnMachine {
   pub icon: String,
-  pub position: Vector,
+  pub position: GridIsomorphism,
   pub size: Vector,
-  pub facing: Facing,
 }
 
 #[derive (Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
@@ -423,8 +444,7 @@ impl MachineMaterialsState {
 
 #[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
 pub struct MachineMapState {
-  pub position: Vector,
-  pub facing: Facing,
+  pub position: GridIsomorphism,
 }
 
 
@@ -556,14 +576,12 @@ impl MachineTypeTrait for StandardMachine {
   
   fn input_locations (&self, state: &MachineMapState)->Inputs <(Vector, Facing)> {
     self.inputs.iter().map (| input | {
-      let (position, facing) = input.relative_location.rotate_90 (state.facing);
-      (position + state.position, facing)
+      input.relative_location.transformed_by (state.position)
     }).collect()
   }
   fn output_locations (&self, state: &MachineMapState)->Inputs <(Vector, Option<Facing>)> {
     self.outputs.iter().map (| output | {
-      let (position, facing) = output.relative_location.rotate_90 (state.facing);
-      (position + state.position, facing)
+      output.relative_location.transformed_by (state.position)
     }).collect()
   }
   
@@ -579,7 +597,6 @@ impl MachineTypeTrait for StandardMachine {
       icon: self.icon.clone(),
       position: map_state.position,
       size: Vector::new (self.radius*2, self.radius*2),
-      facing: map_state.facing,
     }
   }
   

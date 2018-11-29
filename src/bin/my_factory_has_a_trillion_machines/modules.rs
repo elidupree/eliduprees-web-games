@@ -189,7 +189,6 @@ impl MachineTypeTrait for ModuleMachine {
       icon: self.module.module_type.icon.clone(),
       position: map_state.position,
       size: Vector::new (self.module.module_type.radius*2, self.module.module_type.radius*2),
-      facing: map_state.facing,
     }
   }
   /*

@@ -156,14 +156,14 @@ fn draw_rectangle (vertices: &mut Vec<Vertex>, sprite_sheet: & SpriteSheet, cent
 impl MousePosition {
   fn overlaps_machine (&self, machine: & StatefulMachine)->bool {
     let radius = machine.machine_type.radius();
-    let offset = machine.map_state.position - self.tile_center;
+    let offset = machine.map_state.position.translation - self.tile_center;
     offset [0].abs() <radius && offset [1].abs() <radius
   }
 }
 
 fn inside_machine (position: Vector, machine: & StatefulMachine)->bool {
   let radius = machine.machine_type.radius();
-  let offset = machine.map_state.position - position;
+  let offset = machine.map_state.position.translation - position;
   offset [0].abs() <radius && offset [1].abs() <radius
 }
 
@@ -306,41 +306,43 @@ fn current_mode ()->String {
 }
 
 // TODO reduce duplicate code id 394342002
-fn in_smallest_module<F: FnOnce(Vector, &ArrayVec <[StatefulMachine; MAX_COMPONENTS]>)->R, R> (machines: &ArrayVec <[StatefulMachine; MAX_COMPONENTS]>, origin: Vector, (position, radius): (Vector, Number), callback: F)->R {
+fn in_smallest_module<F: FnOnce(GridIsomorphism, &ArrayVec <[StatefulMachine; MAX_COMPONENTS]>)->R, R> (machines: &ArrayVec <[StatefulMachine; MAX_COMPONENTS]>, isomorphism: GridIsomorphism, (position, radius): (Vector, Number), callback: F)->R {
   for machine in machines.iter() {
     if let MachineType::ModuleMachine(module_machine) = &machine.machine_type {
-      let relative_position = position - machine.map_state.position;
+      let machine_isomorphism = machine.map_state.position*isomorphism;
+      let relative_position = position - machine_isomorphism.translation;
       let available_radius = module_machine.module.module_type.inner_radius - radius;
       if relative_position[0].abs() <= available_radius && relative_position[1].abs() <= available_radius {
-        return in_smallest_module(&module_machine.module.machines, origin + machine.map_state.position, (position, radius), callback);
+        return in_smallest_module(&module_machine.module.machines, machine_isomorphism, (position, radius), callback);
       }
     }
   }
-  callback (origin, machines)
+  callback (isomorphism, machines)
 }
 // TODO reduce duplicate code id 394342002
-fn edit_in_smallest_module<F: FnOnce(Vector, &mut ArrayVec <[StatefulMachine; MAX_COMPONENTS]>)->R, R> (machines: &mut ArrayVec <[StatefulMachine; MAX_COMPONENTS]>, origin: Vector, (position, radius): (Vector, Number), callback: F)->R {
+fn edit_in_smallest_module<F: FnOnce(GridIsomorphism, &mut ArrayVec <[StatefulMachine; MAX_COMPONENTS]>)->R, R> (machines: &mut ArrayVec <[StatefulMachine; MAX_COMPONENTS]>, isomorphism: GridIsomorphism, (position, radius): (Vector, Number), callback: F)->R {
   for machine in machines.iter_mut() {
     if let MachineType::ModuleMachine(module_machine) = &mut machine.machine_type {
-      let relative_position = position - machine.map_state.position;
+      let machine_isomorphism = machine.map_state.position*isomorphism;
+      let relative_position = position - machine_isomorphism.translation;
       let available_radius = module_machine.module.module_type.inner_radius - radius;
       if relative_position[0].abs() <= available_radius && relative_position[1].abs() <= available_radius {
         let mut edited: Module = (*module_machine.module).clone();
-        let result = edit_in_smallest_module(&mut edited.machines, origin + machine.map_state.position, (position, radius), callback);
+        let result = edit_in_smallest_module(&mut edited.machines, machine_isomorphism, (position, radius), callback);
         module_machine.module = Rc::new(edited);
         return result;
       }
     }
   }
-  callback (origin, machines)
+  callback (isomorphism, machines)
 }
 
 fn build_machine (state: &mut State, machine_type: MachineType, map_state: MachineMapState) {
   let materials_state =MachineMaterialsState::empty (& machine_type, state.current_game_time);
-  if in_smallest_module (&state.map.machines, Vector::new(0,0), (map_state.position, machine_type.radius()), |origin, machines| {
+  if in_smallest_module (&state.map.machines, Default::default(), (map_state.position.translation, machine_type.radius()), | isomorphism, machines| {
     if machines.iter().any (| machine | {
       let radius = machine.machine_type.radius() + machine_type.radius();
-      let offset = (origin + machine.map_state.position) - map_state.position;
+      let offset = (map_state.position / (isomorphism*machine.map_state.position)).translation;
       offset[0].abs() < radius && offset[1].abs() < radius
     }) {
       return true;
@@ -362,9 +364,9 @@ fn build_machine (state: &mut State, machine_type: MachineType, map_state: Machi
   for (amount, material) in machine_type.cost() {
     *state.map.inventory_before_last_change.get_mut(&material).unwrap() -= amount;
   }
-  edit_in_smallest_module(&mut state.map.machines, Vector::new(0,0), (map_state.position, machine_type.radius()), |origin, machines| machines.push (StatefulMachine {
+  edit_in_smallest_module(&mut state.map.machines, Default::default(), (map_state.position.translation, machine_type.radius()), | isomorphism, machines| machines.push (StatefulMachine {
     machine_type,
-    map_state: MachineMapState{position: map_state.position - origin, ..map_state},
+    map_state: MachineMapState{position: map_state.position/isomorphism, ..map_state},
     materials_state,
   }));
   recalculate_future (state) ;
@@ -451,7 +453,7 @@ fn mouse_move (state: &mut State, position: MousePosition) {
       if drag.click_type == REGULAR_CLICK && (hovering_area (previous).0 == hovering_area (drag.original_position).0 || current_mode() == "Conveyor") {
         if let Some(index) = state.map.machines.iter().position(|machine| previous.overlaps_machine (machine)) {
           prepare_to_change_map (state) ;
-          state.map.machines[index].map_state.facing = facing;
+          state.map.machines[index].map_state.position.rotation = facing;
           recalculate_future (state) ;
         }
       }
@@ -477,14 +479,14 @@ fn mouse_maybe_held(state: &mut State) {
   if let Some(drag) = state.mouse.drag.clone() {
     let position = state.mouse.position.unwrap();
     if drag.click_type == REGULAR_CLICK && current_mode() == "Conveyor" {
-      build_machine (state, conveyor(), MachineMapState {position: hovering_area (position).0, facing});
+      build_machine (state, conveyor(), MachineMapState {position: GridIsomorphism { translation: hovering_area (position).0, rotation: facing, ..Default::default()}});
     }
     
     if drag.click_type == (ClickType {buttons: 2,..Default::default()}) {
-      if in_smallest_module (&state.map.machines, Vector::new(0,0), hovering_area(position), |origin, machines| machines.iter().position(|machine| inside_machine (position.tile_center-origin, machine)).is_some()) {
+      if in_smallest_module (&state.map.machines, Default::default(), hovering_area(position), | isomorphism, machines| machines.iter().position(|machine| inside_machine (position.tile_center.transformed_by(isomorphism.inverse()), machine)).is_some()) {
         prepare_to_change_map (state);
-        let cost = edit_in_smallest_module (&mut state.map.machines, Vector::new(0,0), hovering_area(position), |origin, machines| {
-          let index = machines.iter().position(|machine| inside_machine (position.tile_center-origin, machine)).unwrap();
+        let cost = edit_in_smallest_module (&mut state.map.machines, Default::default(), hovering_area(position), | isomorphism, machines| {
+          let index = machines.iter().position(|machine| inside_machine (position.tile_center.transformed_by(isomorphism.inverse()), machine)).unwrap();
           let cost = machines[index].machine_type.cost();
           machines.remove(index);
           cost
@@ -502,7 +504,7 @@ fn mouse_up(state: &mut State) {
   if let Some(drag) = state.mouse.drag.clone() {
     if drag.click_type == REGULAR_CLICK && !drag.moved {
       if let Some(machine_type) = machine_choices().into_iter().find (| machine_type | machine_type.name() == current_mode()) {
-        build_machine (state, machine_type, MachineMapState {position: hovering_area (drag.original_position).0, facing: 0});
+        build_machine (state, machine_type, MachineMapState {position: GridIsomorphism { translation: hovering_area (drag.original_position).0, ..Default::default()}});
       }
     }
   }
@@ -512,33 +514,34 @@ fn mouse_up(state: &mut State) {
 
 
 
-fn draw_machines (state: & State, machines: & [StatefulMachine], origin: Vector, vertices: &mut Vec<Vertex>) {
+fn draw_machines (state: & State, machines: & [StatefulMachine], isomorphism: GridIsomorphism, vertices: &mut Vec<Vertex>) {
   let sprite_sheet = match state.sprite_sheet {Some (ref value) => value, None => return};
     for machine in machines {
       let drawn = machine.machine_type.drawn_machine(& machine.map_state);
       let size = Vector2::new(tile_size()[0] * drawn.size[0] as f32/2.0, tile_size()[1] * drawn.size[1] as f32/2.0);
+      let machine_isomorphism = machine.map_state.position*isomorphism;
       draw_rectangle (vertices, sprite_sheet,
-        canvas_position (origin + machine.map_state.position),
+        canvas_position (machine_isomorphism.translation),
         size,
-        machine_color (machine), "rounded-rectangle-transparent", drawn.facing
+        machine_color (machine), "rounded-rectangle-transparent", drawn.position.rotation
       );
       draw_rectangle (vertices, sprite_sheet,
-        canvas_position (origin + machine.map_state.position),
+        canvas_position (machine_isomorphism.translation),
         size,
-        machine_color (machine), &drawn.icon, drawn.facing
+        machine_color (machine), &drawn.icon, drawn.position.rotation.transformed_by(isomorphism)
       );
     }
     for machine in machines {
       if machine.machine_type.radius() > 1 {
         for ((input_location, input_facing), expected_material) in machine.machine_type.input_locations (& machine.map_state).into_iter().zip (machine.machine_type. input_materials()) {
           draw_rectangle (vertices, sprite_sheet,
-            canvas_position (origin + input_location),
+            canvas_position (input_location.transformed_by(isomorphism)),
             tile_size(),
-            machine_color (machine), "input", input_facing
+            machine_color (machine), "input", input_facing.transformed_by(isomorphism)
           );
           if let Some(material) = expected_material {
             draw_rectangle (vertices, sprite_sheet,
-              canvas_position (origin + input_location),
+              canvas_position (input_location.transformed_by(isomorphism)),
               tile_size()*0.8,
               machine_color (machine), material.icon(), 0
             );
@@ -551,9 +554,9 @@ fn draw_machines (state: & State, machines: & [StatefulMachine], origin: Vector,
         for (output_location, output_facing) in machine.machine_type.output_locations (& machine.map_state) {
           if let Some(output_facing) = output_facing {
           draw_rectangle (vertices, sprite_sheet,
-            canvas_position (origin + output_location - Vector::new(2, 0).rotate_90(output_facing)),
+            canvas_position ((output_location - Vector::new(2, 0).rotate_90(output_facing)).transformed_by(isomorphism)),
             tile_size(),
-            machine_color (machine), "input", output_facing.rotate_90(2)
+            machine_color (machine), "input", output_facing.rotate_90(2).transformed_by(isomorphism)
           );
           }
         }
@@ -562,7 +565,8 @@ fn draw_machines (state: & State, machines: & [StatefulMachine], origin: Vector,
     
     for machine in machines {
       if let MachineType::ModuleMachine(module_machine) = &machine.machine_type {
-        draw_machines (state, &module_machine.module.machines, origin + machine.map_state.position, vertices);
+        let machine_isomorphism = machine.map_state.position*isomorphism;
+        draw_machines (state, &module_machine.module.machines, machine_isomorphism, vertices);
       }
     }
 }
@@ -612,7 +616,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
     target.clear_color(1.0, 1.0, 1.0, 1.0);
     let mut vertices = Vec::<Vertex>::new();
     
-    draw_machines (state, &state.map.machines, Vector::new(0,0), &mut vertices);
+    draw_machines (state, &state.map.machines, Default::default(), &mut vertices);
     for (machine, future) in state.map.machines.iter().zip (&state.future.machines) {
       let materials_states = iter::once (&machine.materials_state).chain (future.changes.iter().map (| (time, state) | {
         assert!(*time == state.last_flow_change);
