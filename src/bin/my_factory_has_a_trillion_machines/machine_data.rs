@@ -76,6 +76,19 @@ impl GridIsomorphism {
   }
 }
 
+#[test]
+fn grid_isomorphism_unit_tests() {
+  let isomorphism = GridIsomorphism {
+    translation: Vector::new (5, 4),
+    rotation: 1,
+    flip: true
+  };
+  let vector = Vector::new (2, 1) ;
+  
+  assert_eq!(vector.transformed_by (isomorphism), Vector::new (4, 2));
+  
+}
+
 fn arbitrary_vector() -> BoxedStrategy<Vector> {
   (
     -1000000i64..1000000i64,
@@ -114,6 +127,12 @@ proptest! {
   #[test]
   fn randomly_test_grid_isomorphism_inverse_is_inverse (isomorphism in arbitrary_isomorphism()) {
     prop_assert_eq! (isomorphism * isomorphism.inverse(), GridIsomorphism::default());
+    prop_assert_eq! (isomorphism.inverse() * isomorphism, GridIsomorphism::default());
+  }
+  #[test]
+  fn randomly_test_grid_isomorphism_identity_is_identity (isomorphism in arbitrary_isomorphism()) {
+    prop_assert_eq! (isomorphism * GridIsomorphism::default(), isomorphism);
+    prop_assert_eq! (GridIsomorphism::default() * isomorphism, isomorphism);
   }
   #[test]
   fn randomly_test_grid_isomorphism_inverse_vector (isomorphism in arbitrary_isomorphism(), vector in arbitrary_vector()) {
