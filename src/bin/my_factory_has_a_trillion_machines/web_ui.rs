@@ -15,6 +15,12 @@ use siphasher::sip::SipHasher;
 use nalgebra::Vector2;
 use num::Integer;
 
+use geometry::{Number, Vector, Facing, GridIsomorphism, Rotate90, TransformedBy};
+use machine_data::{self, Inputs, Material, MachineType, MachineTypeTrait, MachineMapState, MachineMaterialsState, StatefulMachine, Map, MAX_COMPONENTS, TIME_TO_MOVE_MATERIAL};
+use graph_algorithms::MapFuture;
+use misc;
+use modules::{self, Module};
+
 
 
 #[derive (Deserialize)]
@@ -88,7 +94,7 @@ struct Vertex {
 }
 implement_vertex!(Vertex, position, sprite_coordinates, color);
 
-fn machine_choices()->Vec<MachineType> { vec![conveyor(), splitter(), iron_smelter(), material_generator(), consumer(), basic_module()]}
+fn machine_choices()->Vec<MachineType> { vec![machine_data::conveyor(), machine_data::splitter(), machine_data::iron_smelter(), machine_data::material_generator(), machine_data::consumer(), modules::basic_module()]}
 
 fn machine_color(machine: & StatefulMachine)->[f32; 3] {
   let mut hasher = SipHasher::new() ;
@@ -479,7 +485,7 @@ fn mouse_maybe_held(state: &mut State) {
   if let Some(drag) = state.mouse.drag.clone() {
     let position = state.mouse.position.unwrap();
     if drag.click_type == REGULAR_CLICK && current_mode() == "Conveyor" {
-      build_machine (state, conveyor(), MachineMapState {position: GridIsomorphism { translation: hovering_area (position).0, rotation: facing, ..Default::default()}});
+      build_machine (state, machine_data::conveyor(), MachineMapState {position: GridIsomorphism { translation: hovering_area (position).0, rotation: facing, ..Default::default()}});
     }
     
     if drag.click_type == (ClickType {buttons: 2,..Default::default()}) {
@@ -623,7 +629,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
         state
       }));
       let mut future_output_patterns: Inputs <Vec<_>> = (0..machine.machine_type.num_outputs()).map(|_| Vec::new()).collect();
-      for (materials, next) in with_optional_next (materials_states) {
+      for (materials, next) in misc::with_optional_next (materials_states) {
         //if state.mouse_pressed {println!(" {:?} ", (&materials, &next));}
         let end_time = match next {None => Number::max_value(), Some (state) => state.last_flow_change};
         assert!(end_time >= materials.last_flow_change, "{:?} > {:?}", materials, next) ;

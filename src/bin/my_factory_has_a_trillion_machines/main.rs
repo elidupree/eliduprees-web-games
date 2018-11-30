@@ -22,16 +22,12 @@ extern crate itertools;
 
 pub use eliduprees_web_games::*;
 mod misc;
-pub use misc::*;
 mod flow_pattern;
-pub use flow_pattern::*;
 #[macro_use]
 mod machine_data;
-pub use machine_data::*;
+mod geometry;
 mod modules;
-pub use modules::*;
 mod graph_algorithms;
-pub use graph_algorithms::*;
 
 #[cfg (target_os = "emscripten")]
 mod web_ui;

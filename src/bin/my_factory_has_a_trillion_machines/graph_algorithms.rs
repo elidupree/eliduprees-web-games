@@ -6,6 +6,10 @@ use std::collections::HashMap;
 
 use arrayvec::ArrayVec;
 
+use geometry::{Number};
+use flow_pattern::FlowPattern;
+use machine_data::{Inputs, Material, MachineTypeTrait, MachineMaterialsState, Map, MAX_COMPONENTS};
+
 pub type OutputEdges = ArrayVec<[Inputs<Option<(usize, usize)>>; MAX_COMPONENTS]>;
 pub struct MapFuture {
   pub machines: Vec<MachineFuture>,
@@ -147,7 +151,7 @@ impl Map {
           result.machines [destination_machine].inputs [destination_input] = output;
         }
         else if facing.is_none() {
-          for ((start_time, (pattern, material)), next) in with_optional_next (output.changes.iter()) {
+          for ((start_time, (pattern, material)), next) in misc::with_optional_next (output.changes.iter()) {
             result.inventory.entry(*material).or_default().flows.push (([*start_time, next.map_or_else (Number::max_value, | next | next.0)], *pattern));
           }
         }

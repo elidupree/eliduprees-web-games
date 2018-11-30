@@ -1,10 +1,11 @@
-use super::*;
-
-
 use arrayvec::ArrayVec;
-use std::collections::HashMap;
+//use std::collections::HashMap;
 use std::cmp::{min, max};
 use std::rc::Rc;
+
+use geometry::{Number, Vector, Facing};
+use flow_pattern::{FlowPattern, RATE_DIVISOR};
+use machine_data::{Inputs, MachineType, Material, MachineTypeTrait, MachineMapState, MachineMaterialsState, StatefulMachine, DrawnMachine, MAX_COMPONENTS};
 
 
 #[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]

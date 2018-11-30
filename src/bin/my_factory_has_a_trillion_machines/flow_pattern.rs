@@ -1,9 +1,9 @@
-use super::*;
-
 //use std::hash::{Hash, Hasher};
 //use std::cmp::{max};
 
 use num::Integer;
+use geometry::Number;
+pub const RATE_DIVISOR: Number = ::machine_data::TIME_TO_MOVE_MATERIAL * 2*2*2*2*2*2 * 3*3*3 * 5*5;
 
 
 #[derive (Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Default)]
