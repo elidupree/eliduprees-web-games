@@ -16,7 +16,7 @@ use nalgebra::Vector2;
 use num::Integer;
 
 use geometry::{Number, Vector, Facing, GridIsomorphism, Rotate90, TransformedBy};
-use machine_data::{self, Inputs, Material, MachineType, MachineTypeTrait, MachineMapState, MachineMaterialsState, StatefulMachine, Map, MAX_COMPONENTS, TIME_TO_MOVE_MATERIAL};
+use machine_data::{self, Inputs, Material, MachineType, MachineTypeTrait, MachineMapState, MachineMaterialsState, StatefulMachine, Map, Game, MAX_COMPONENTS, TIME_TO_MOVE_MATERIAL};
 use graph_algorithms::MapFuture;
 use misc;
 use modules::{self, Module};
@@ -78,7 +78,7 @@ struct State {
   glium_display: glium::Display,
   glium_program: glium::Program,
   sprite_sheet: Option <SpriteSheet>,
-  map: Map,
+  game: Game,
   future: MapFuture,
   start_ui_time: f64,
   start_game_time: Number,
@@ -215,26 +215,26 @@ else {
     glium::Program::from_source(&display, vertex_shader_source, fragment_shader_source, None)
       .expect("glium program generation failed");
       
-  let mut map =Map {machines: ArrayVec::new(), last_change_time: 0, inventory_before_last_change: Default::default()};
-  map.inventory_before_last_change.insert (Material::Iron, 100);
-  let output_edges = map.output_edges();
-  let ordering = map.topological_ordering_of_noncyclic_machines(& output_edges);
-  let future = map.future (& output_edges, & ordering);
+  let mut game=Game{map:Map {machines: ArrayVec::new(), last_change_time: 0, },inventory_before_last_change: Default::default()};
+  game.inventory_before_last_change.insert (Material::Iron, 100);
+  let output_edges = game.map.output_edges();
+  let ordering = game.map.topological_ordering_of_noncyclic_machines(& output_edges);
+  let future = game.map.future (& output_edges, & ordering);
       
   let state = Rc::new (RefCell::new (State {
     glium_display: display, glium_program: program, sprite_sheet: None,
-    map, future, start_ui_time: now(), start_game_time: 0, current_game_time: 0,
+    game, future, start_ui_time: now(), start_game_time: 0, current_game_time: 0,
     mouse: Default::default(),
   }));
   
   let json_callback = {let state = state.clone(); move | input: String | {
     println!("{}", &input);
-    if let Ok (map) = serde_json::from_str::<Map> (& input) {
+    if let Ok (game) = serde_json::from_str::<Game> (& input) {
       let mut state = state.borrow_mut();
       state.start_ui_time = now();
-      state.start_game_time = map.last_change_time;
-      state.current_game_time = map.last_change_time;
-      state.map = map;
+      state.start_game_time = game.map.last_change_time;
+      state.current_game_time = game.map.last_change_time;
+      state.game = game;
       recalculate_future(&mut state);
     }
   }};
@@ -319,7 +319,7 @@ fn in_smallest_module<F: FnOnce(GridIsomorphism, &ArrayVec <[StatefulMachine; MA
       let relative_position = position - machine_isomorphism.translation;
       let available_radius = module_machine.module.module_type.inner_radius - radius;
       if relative_position[0].abs() <= available_radius && relative_position[1].abs() <= available_radius {
-        return in_smallest_module(&module_machine.module.machines, machine_isomorphism, (position, radius), callback);
+        return in_smallest_module(&module_machine.module.map.machines, machine_isomorphism, (position, radius), callback);
       }
     }
   }
@@ -334,7 +334,7 @@ fn edit_in_smallest_module<F: FnOnce(GridIsomorphism, &mut ArrayVec <[StatefulMa
       let available_radius = module_machine.module.module_type.inner_radius - radius;
       if relative_position[0].abs() <= available_radius && relative_position[1].abs() <= available_radius {
         let mut edited: Module = (*module_machine.module).clone();
-        let result = edit_in_smallest_module(&mut edited.machines, machine_isomorphism, (position, radius), callback);
+        let result = edit_in_smallest_module(&mut edited.map.machines, machine_isomorphism, (position, radius), callback);
         module_machine.module = Rc::new(edited);
         return result;
       }
@@ -345,7 +345,7 @@ fn edit_in_smallest_module<F: FnOnce(GridIsomorphism, &mut ArrayVec <[StatefulMa
 
 fn build_machine (state: &mut State, machine_type: MachineType, map_state: MachineMapState) {
   let materials_state =MachineMaterialsState::empty (& machine_type, state.current_game_time);
-  if in_smallest_module (&state.map.machines, Default::default(), (map_state.position.translation, machine_type.radius()), | isomorphism, machines| {
+  if in_smallest_module (&state.game.map.machines, Default::default(), (map_state.position.translation, machine_type.radius()), | isomorphism, machines| {
     if machines.iter().any (| machine | {
       let radius = machine.machine_type.radius() + machine_type.radius();
       let offset = (map_state.position / (isomorphism*machine.map_state.position)).translation;
@@ -360,7 +360,7 @@ fn build_machine (state: &mut State, machine_type: MachineType, map_state: Machi
   }) {
     return;
   }
-  let inventory = state.map.inventory_at (& state.future, state.current_game_time);
+  let inventory = state.game.inventory_at (& state.future, state.current_game_time);
   for (amount, material) in machine_type.cost() {
     if inventory.get(&material).map_or (true, | storage | *storage <amount) {
       return;
@@ -368,9 +368,9 @@ fn build_machine (state: &mut State, machine_type: MachineType, map_state: Machi
   }
   prepare_to_change_map (state);
   for (amount, material) in machine_type.cost() {
-    *state.map.inventory_before_last_change.get_mut(&material).unwrap() -= amount;
+    *state.game.inventory_before_last_change.get_mut(&material).unwrap() -= amount;
   }
-  edit_in_smallest_module(&mut state.map.machines, Default::default(), (map_state.position.translation, machine_type.radius()), | isomorphism, machines| machines.push (StatefulMachine {
+  edit_in_smallest_module(&mut state.game.map.machines, Default::default(), (map_state.position.translation, machine_type.radius()), | isomorphism, machines| machines.push (StatefulMachine {
     machine_type,
     map_state: MachineMapState{position: map_state.position/isomorphism, ..map_state},
     materials_state,
@@ -379,20 +379,20 @@ fn build_machine (state: &mut State, machine_type: MachineType, map_state: Machi
 }
 
 fn prepare_to_change_map(state: &mut State) {
-  state.map.inventory_before_last_change = state.map.inventory_at (& state.future, state.current_game_time) ;
-  state.map.last_change_time = state.current_game_time;
-  for (machine, future) in state.map.machines.iter_mut().zip (& state.future.machines) {
+  state.game.inventory_before_last_change = state.game.inventory_at (& state.future, state.current_game_time) ;
+  state.game.map.last_change_time = state.current_game_time;
+  for (machine, future) in state.game.map.machines.iter_mut().zip (& state.future.machines) {
     machine.materials_state = machine.machine_type.with_inputs_changed(& future.materials_state_at (state.current_game_time, & machine.materials_state), state.current_game_time, &future.inputs_at(state.current_game_time));
   }
 }
 
 fn recalculate_future (state: &mut State) {
-  let output_edges = state.map.output_edges();
-  let ordering = state.map.topological_ordering_of_noncyclic_machines(& output_edges);
-  state.future = state.map.future (& output_edges, & ordering);
+  let output_edges = state.game.map.output_edges();
+  let ordering = state.game.map.topological_ordering_of_noncyclic_machines(& output_edges);
+  state.future = state.game.map.future (& output_edges, & ordering);
      
   js!{
-    $("#json").val (@{serde_json::to_string_pretty (&state.map).unwrap()});
+    $("#json").val (@{serde_json::to_string_pretty (&state.game).unwrap()});
   }
 }
 
@@ -457,9 +457,9 @@ fn mouse_move (state: &mut State, position: MousePosition) {
     drag.moved = true;
     if let Some(previous) = state.mouse.previous_position {
       if drag.click_type == REGULAR_CLICK && (hovering_area (previous).0 == hovering_area (drag.original_position).0 || current_mode() == "Conveyor") {
-        if let Some(index) = state.map.machines.iter().position(|machine| previous.overlaps_machine (machine)) {
+        if let Some(index) = state.game.map.machines.iter().position(|machine| previous.overlaps_machine (machine)) {
           prepare_to_change_map (state) ;
-          state.map.machines[index].map_state.position.rotation = facing;
+          state.game.map.machines[index].map_state.position.rotation = facing;
           recalculate_future (state) ;
         }
       }
@@ -489,16 +489,16 @@ fn mouse_maybe_held(state: &mut State) {
     }
     
     if drag.click_type == (ClickType {buttons: 2,..Default::default()}) {
-      if in_smallest_module (&state.map.machines, Default::default(), hovering_area(position), | isomorphism, machines| machines.iter().position(|machine| inside_machine (position.tile_center.transformed_by(isomorphism.inverse()), machine)).is_some()) {
+      if in_smallest_module (&state.game.map.machines, Default::default(), hovering_area(position), | isomorphism, machines| machines.iter().position(|machine| inside_machine (position.tile_center.transformed_by(isomorphism.inverse()), machine)).is_some()) {
         prepare_to_change_map (state);
-        let cost = edit_in_smallest_module (&mut state.map.machines, Default::default(), hovering_area(position), | isomorphism, machines| {
+        let cost = edit_in_smallest_module (&mut state.game.map.machines, Default::default(), hovering_area(position), | isomorphism, machines| {
           let index = machines.iter().position(|machine| inside_machine (position.tile_center.transformed_by(isomorphism.inverse()), machine)).unwrap();
           let cost = machines[index].machine_type.cost();
           machines.remove(index);
           cost
         });
         for (amount, material) in cost {
-          *state.map.inventory_before_last_change.get_mut(&material).unwrap() += amount;
+          *state.game.inventory_before_last_change.get_mut(&material).unwrap() += amount;
         }
         recalculate_future (state) ;
       }
@@ -572,7 +572,7 @@ fn draw_machines (state: & State, machines: & [StatefulMachine], isomorphism: Gr
     for machine in machines {
       if let MachineType::ModuleMachine(module_machine) = &machine.machine_type {
         let machine_isomorphism = machine.map_state.position*isomorphism;
-        draw_machines (state, &module_machine.module.machines, machine_isomorphism, vertices);
+        draw_machines (state, &module_machine.module.map.machines, machine_isomorphism, vertices);
       }
     }
 }
@@ -608,7 +608,6 @@ fn do_frame(state: & Rc<RefCell<State>>) {
   let state = &mut *state;
   let fractional_time = state.start_game_time as f64 + (now() - state.start_ui_time)*TIME_TO_MOVE_MATERIAL as f64*2.0;
   state.current_game_time = fractional_time as Number;
-  //state.map.update_to (& state.future, state.current_game_time);
   
   let sprite_sheet = match state.sprite_sheet {Some (ref value) => value, None => return};
   
@@ -622,8 +621,8 @@ fn do_frame(state: & Rc<RefCell<State>>) {
     target.clear_color(1.0, 1.0, 1.0, 1.0);
     let mut vertices = Vec::<Vertex>::new();
     
-    draw_machines (state, &state.map.machines, Default::default(), &mut vertices);
-    for (machine, future) in state.map.machines.iter().zip (&state.future.machines) {
+    draw_machines (state, &state.game.map.machines, Default::default(), &mut vertices);
+    for (machine, future) in state.game.map.machines.iter().zip (&state.future.machines) {
       let materials_states = iter::once (&machine.materials_state).chain (future.changes.iter().map (| (time, state) | {
         assert!(*time == state.last_flow_change);
         state
@@ -676,7 +675,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
         }
       }
     }
-    for (machine, future) in state.map.machines.iter().zip (&state.future.machines) {
+    for (machine, future) in state.game.map.machines.iter().zip (&state.future.machines) {
       for (storage_location, (storage_amount, storage_material)) in machine.machine_type.displayed_storage (& machine.map_state, & future.materials_state_at(state.current_game_time, & machine.materials_state),& future.inputs_at (state.current_game_time), state.current_game_time) {
         for index in 0..min (3, storage_amount) {
           let mut position = canvas_position (storage_location);
@@ -690,7 +689,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
       }
     }
     js!{ $("#inventory").empty();}
-    for (material, amount) in state.map.inventory_at (& state.future, state.current_game_time) {
+    for (material, amount) in state.game.inventory_at (& state.future, state.current_game_time) {
       js!{ $("#inventory").append(@{format!("{:?}: {}", material, amount)});}
     }
 

@@ -486,9 +486,14 @@ pub struct Group {
 
 */
 
-#[derive (Serialize, Deserialize)]
+#[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
 pub struct Map {
   pub machines: ArrayVec <[StatefulMachine; MAX_COMPONENTS]>,
-  pub last_change_time: Number,
+  pub last_change_time: Number,  
+}
+
+#[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+pub struct Game {
+  pub map: Map,
   pub inventory_before_last_change: HashMap <Material, Number>,
 }

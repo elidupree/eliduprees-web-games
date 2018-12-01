@@ -8,7 +8,7 @@ use arrayvec::ArrayVec;
 
 use geometry::{Number};
 use flow_pattern::FlowPattern;
-use machine_data::{Inputs, Material, MachineTypeTrait, MachineMaterialsState, Map, MAX_COMPONENTS};
+use machine_data::{Inputs, Material, MachineTypeTrait, MachineMaterialsState, Map, Game, MAX_COMPONENTS};
 
 pub type OutputEdges = ArrayVec<[Inputs<Option<(usize, usize)>>; MAX_COMPONENTS]>;
 pub struct MapFuture {
@@ -170,9 +170,13 @@ impl Map {
     }
   }*/
   
+  
+}
+
+impl Game {
   pub fn inventory_at (&self, future: & MapFuture, time: Number)->HashMap <Material, Number> {
     let mut inventory = self.inventory_before_last_change.clone();
-    let interval = [self.last_change_time, time];
+    let interval = [self.map.last_change_time, time];
     for (material, future) in &future.inventory {
       *inventory.entry (*material).or_default() += future.accumulation_between (interval);
     }

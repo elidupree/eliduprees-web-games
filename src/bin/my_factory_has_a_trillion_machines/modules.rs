@@ -5,7 +5,7 @@ use std::rc::Rc;
 
 use geometry::{Number, Vector, Facing};
 use flow_pattern::{FlowPattern, RATE_DIVISOR};
-use machine_data::{Inputs, MachineType, Material, MachineTypeTrait, MachineMapState, MachineMaterialsState, StatefulMachine, DrawnMachine, MAX_COMPONENTS};
+use machine_data::{Inputs, MachineType, Material, MachineTypeTrait, MachineMapState, MachineMaterialsState, StatefulMachine, Map, DrawnMachine, MAX_COMPONENTS};
 
 
 #[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
@@ -38,7 +38,7 @@ pub struct Module {
   pub cost: Vec<(Number, Material)>,
   pub inputs: Inputs <ModuleInput>,
   pub outputs: Inputs <ModuleOutput>,
-  pub machines: ArrayVec <[StatefulMachine; MAX_COMPONENTS]>,
+  pub map: Map,
 }
 
 #[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
@@ -61,7 +61,7 @@ pub fn basic_module()->MachineType {
       cost: vec![(20, Material::Iron)],
       inputs: inputs![],
       outputs: inputs![],
-      machines: ArrayVec::new(),
+      map: Map{machines: ArrayVec::new(), last_change_time: 0},
     })
   })
 }
