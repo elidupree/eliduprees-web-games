@@ -8,27 +8,29 @@ use arrayvec::ArrayVec;
 
 use geometry::{Number};
 use flow_pattern::FlowPattern;
-use machine_data::{Inputs, Material, MachineTypeTrait, MachineMaterialsState, Map, Game, MAX_COMPONENTS};
+use machine_data::{Inputs, Material, MachineTypeTrait, MachineMaterialsState};
+use map::{Map, Game, MAX_COMPONENTS};
 
 pub type OutputEdges = ArrayVec<[Inputs<Option<(usize, usize)>>; MAX_COMPONENTS]>;
+#[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Debug, Default)]
 pub struct MapFuture {
   pub machines: Vec<MachineFuture>,
   pub inventory: HashMap <Material, InventoryFuture>
 }
 
 
-#[derive (Clone, PartialEq, Eq, Hash, Debug, Default)]
+#[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Default)]
 pub struct MachineFuture {
   pub changes: Vec<(Number, MachineMaterialsState)>,
   pub inputs: Inputs <MachineInputFuture>,
 }
 
-#[derive (Clone, PartialEq, Eq, Hash, Debug, Default)]
+#[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Default)]
 pub struct MachineInputFuture {
   pub changes: Vec<(Number, (FlowPattern, Material))>,
 }
 
-#[derive (Clone, PartialEq, Eq, Hash, Debug, Default)]
+#[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Default)]
 pub struct InventoryFuture {
   pub flows: Vec<([Number; 2], FlowPattern)>,
 }

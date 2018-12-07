@@ -16,7 +16,8 @@ use nalgebra::Vector2;
 use num::Integer;
 
 use geometry::{Number, Vector, Facing, GridIsomorphism, Rotate90, TransformedBy};
-use machine_data::{self, Inputs, Material, MachineType, MachineTypeTrait, MachineMapState, MachineMaterialsState, StatefulMachine, Map, Game, MAX_COMPONENTS, TIME_TO_MOVE_MATERIAL};
+use machine_data::{self, Inputs, Material, MachineType, MachineTypeTrait, MachineMapState, MachineMaterialsState, StatefulMachine, TIME_TO_MOVE_MATERIAL};
+use map::{EditMap, MapEdit, Map, Game, MAX_COMPONENTS};
 use graph_algorithms::MapFuture;
 use misc;
 use modules::{self, Module};
@@ -79,7 +80,6 @@ struct State {
   glium_program: glium::Program,
   sprite_sheet: Option <SpriteSheet>,
   game: Game,
-  future: MapFuture,
   start_ui_time: f64,
   start_game_time: Number,
   current_game_time: Number,
@@ -98,7 +98,8 @@ fn machine_choices()->Vec<MachineType> { vec![machine_data::conveyor(), machine_
 
 fn machine_color(machine: & StatefulMachine)->[f32; 3] {
   let mut hasher = SipHasher::new() ;
-      machine.hash (&mut hasher);
+      machine.map_state.hash (&mut hasher);
+      machine.materials_state.hash (&mut hasher);
       let hash = hasher.finish();
       let mask = (1u64 << 20)-1;
       let factor = 0.8 / (mask as f32);
@@ -171,6 +172,22 @@ fn inside_machine (position: Vector, machine: & StatefulMachine)->bool {
   let radius = machine.machine_type.radius();
   let offset = machine.map_state.position.translation - position;
   offset [0].abs() <radius && offset [1].abs() <radius
+}
+
+
+impl QueryMap for State {
+  fn query_map<E: MapEdit>(&self, now: Number, query: E)-> E::Output {
+    self.game.query_map(now, query)
+  }
+}
+impl EditMap for State {
+  fn edit_map<E: MapEdit>(&mut self, now: Number, edit: E)-> E::Output {
+    let result = self.game.edit_map(now, edit);
+    js!{
+      $("#json").val (@{serde_json::to_string_pretty (&self.game).unwrap()});
+    }
+    result
+  }
 }
 
 pub fn run_game() {
@@ -311,53 +328,24 @@ fn current_mode ()->String {
   foo
 }
 
-// TODO reduce duplicate code id 394342002
-fn in_smallest_module<F: FnOnce(GridIsomorphism, &ArrayVec <[StatefulMachine; MAX_COMPONENTS]>)->R, R> (machines: &ArrayVec <[StatefulMachine; MAX_COMPONENTS]>, isomorphism: GridIsomorphism, (position, radius): (Vector, Number), callback: F)->R {
-  for machine in machines.iter() {
-    if let MachineType::ModuleMachine(module_machine) = &machine.machine_type {
-      let machine_isomorphism = machine.map_state.position*isomorphism;
-      let relative_position = position - machine_isomorphism.translation;
-      let available_radius = module_machine.module.module_type.inner_radius - radius;
-      if relative_position[0].abs() <= available_radius && relative_position[1].abs() <= available_radius {
-        return in_smallest_module(&module_machine.module.map.machines, machine_isomorphism, (position, radius), callback);
-      }
-    }
-  }
-  callback (isomorphism, machines)
-}
-// TODO reduce duplicate code id 394342002
-fn edit_in_smallest_module<F: FnOnce(GridIsomorphism, &mut ArrayVec <[StatefulMachine; MAX_COMPONENTS]>)->R, R> (machines: &mut ArrayVec <[StatefulMachine; MAX_COMPONENTS]>, isomorphism: GridIsomorphism, (position, radius): (Vector, Number), callback: F)->R {
-  for machine in machines.iter_mut() {
-    if let MachineType::ModuleMachine(module_machine) = &mut machine.machine_type {
-      let machine_isomorphism = machine.map_state.position*isomorphism;
-      let relative_position = position - machine_isomorphism.translation;
-      let available_radius = module_machine.module.module_type.inner_radius - radius;
-      if relative_position[0].abs() <= available_radius && relative_position[1].abs() <= available_radius {
-        let mut edited: Module = (*module_machine.module).clone();
-        let result = edit_in_smallest_module(&mut edited.map.machines, machine_isomorphism, (position, radius), callback);
-        module_machine.module = Rc::new(edited);
-        return result;
-      }
-    }
-  }
-  callback (isomorphism, machines)
-}
 
 fn build_machine (state: &mut State, machine_type: MachineType, map_state: MachineMapState) {
   let materials_state =MachineMaterialsState::empty (& machine_type, state.current_game_time);
-  if in_smallest_module (&state.game.map.machines, Default::default(), (map_state.position.translation, machine_type.radius()), | isomorphism, machines| {
-    if machines.iter().any (| machine | {
-      let radius = machine.machine_type.radius() + machine_type.radius();
-      let offset = (map_state.position / (isomorphism*machine.map_state.position)).translation;
-      offset[0].abs() < radius && offset[1].abs() < radius
-    }) {
-      return true;
-    }
-    if machines.len() == machines.capacity() {
-      return true;
-    }
-    false
-  }) {
+  if state.query_map(state.current_game_time, EditInSmallestModuleContainingSquare {
+    position: map_state.position.translation, radius: machine_type.radius(),
+    callback: |machines| {
+      if machines.iter().any (| machine | {
+        let radius = machine.machine_type.radius() + machine_type.radius();
+        let offset = (map_state.position / machine.map_state.position).translation;
+        offset[0].abs() < radius && offset[1].abs() < radius
+      }) {
+        return true;
+      }
+      if machines.len() == machines.capacity() {
+        return true;
+      }
+      false
+    }}) {
     return;
   }
   let inventory = state.game.inventory_at (& state.future, state.current_game_time);
@@ -366,35 +354,21 @@ fn build_machine (state: &mut State, machine_type: MachineType, map_state: Machi
       return;
     }
   }
-  prepare_to_change_map (state);
   for (amount, material) in machine_type.cost() {
     *state.game.inventory_before_last_change.get_mut(&material).unwrap() -= amount;
   }
-  edit_in_smallest_module(&mut state.game.map.machines, Default::default(), (map_state.position.translation, machine_type.radius()), | isomorphism, machines| machines.push (StatefulMachine {
-    machine_type,
-    map_state: MachineMapState{position: map_state.position/isomorphism, ..map_state},
-    materials_state,
-  }));
-  recalculate_future (state) ;
+  state.edit_map(state.current_game_time, EditInSmallestModuleContainingSquare {
+    position: map_state.position.translation, radius: machine_type.radius(),
+    callback: |machines| {
+      machines.push (StatefulMachine {
+        machine_type,
+        map_state: MachineMapState{position: map_state.position/isomorphism, ..map_state},
+        materials_state,
+      })
+    },
+  });
 }
 
-fn prepare_to_change_map(state: &mut State) {
-  state.game.inventory_before_last_change = state.game.inventory_at (& state.future, state.current_game_time) ;
-  state.game.map.last_change_time = state.current_game_time;
-  for (machine, future) in state.game.map.machines.iter_mut().zip (& state.future.machines) {
-    machine.materials_state = machine.machine_type.with_inputs_changed(& future.materials_state_at (state.current_game_time, & machine.materials_state), state.current_game_time, &future.inputs_at(state.current_game_time));
-  }
-}
-
-fn recalculate_future (state: &mut State) {
-  let output_edges = state.game.map.output_edges();
-  let ordering = state.game.map.topological_ordering_of_noncyclic_machines(& output_edges);
-  state.future = state.game.map.future (& output_edges, & ordering);
-     
-  js!{
-    $("#json").val (@{serde_json::to_string_pretty (&state.game).unwrap()});
-  }
-}
 
 fn exact_facing (vector: Vector)->Option <Facing> {
   match (vector[0].signum(), vector[1].signum()) {

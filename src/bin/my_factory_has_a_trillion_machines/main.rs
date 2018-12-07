@@ -25,6 +25,7 @@ mod misc;
 mod flow_pattern;
 #[macro_use]
 mod machine_data;
+mod map;
 mod geometry;
 mod modules;
 mod graph_algorithms;

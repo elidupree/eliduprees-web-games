@@ -1,5 +1,5 @@
 use std::ops::Neg;
-use std::ops::{Mul, Div};
+use std::ops::{Mul, Div, MulAssign, DivAssign};
 use nalgebra::Vector2;
 
 pub type Number = i64;
@@ -62,6 +62,16 @@ impl Div<GridIsomorphism> for GridIsomorphism {
   type Output = GridIsomorphism; 
   fn div (self, other: GridIsomorphism)->GridIsomorphism {
     self * other.inverse()
+  }
+}
+impl MulAssign<GridIsomorphism> for GridIsomorphism {
+  fn mul_assign (&mut self, other: GridIsomorphism) {
+    *self = *self * other
+  }
+}
+impl DivAssign<GridIsomorphism> for GridIsomorphism {
+  fn div_assign (&mut self, other: GridIsomorphism) {
+    *self = *self / other
   }
 }
 impl GridIsomorphism {

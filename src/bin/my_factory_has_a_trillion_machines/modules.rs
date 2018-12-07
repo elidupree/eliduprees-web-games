@@ -5,10 +5,12 @@ use std::rc::Rc;
 
 use geometry::{Number, Vector, Facing};
 use flow_pattern::{FlowPattern, RATE_DIVISOR};
-use machine_data::{Inputs, MachineType, Material, MachineTypeTrait, MachineMapState, MachineMaterialsState, StatefulMachine, Map, DrawnMachine, MAX_COMPONENTS};
+use machine_data::{Inputs, MachineType, Material, MachineTypeTrait, MachineMapState, MachineMaterialsState, DrawnMachine};
+use map::{Map, MapEdit, EditMap};
+use graph_algorithms::MapFuture;
 
 
-#[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
+#[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub struct ModuleType {
   pub name: String,
   pub icon: String,
@@ -32,16 +34,17 @@ pub struct ModuleOutput {
 }
 
 
-#[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
+#[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub struct Module {
   pub module_type: ModuleType,
   pub cost: Vec<(Number, Material)>,
   pub inputs: Inputs <ModuleInput>,
   pub outputs: Inputs <ModuleOutput>,
   pub map: Map,
+  pub future: MapFuture,
 }
 
-#[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
+#[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub struct ModuleMachine {
   pub module: Rc<Module>,
 }
@@ -62,8 +65,20 @@ pub fn basic_module()->MachineType {
       inputs: inputs![],
       outputs: inputs![],
       map: Map{machines: ArrayVec::new(), last_change_time: 0},
+      future: Default::default(),
     })
   })
+}
+
+
+impl EditMap for Module{
+  fn edit_map<E: MapEdit>(&mut self, now: Number, edit: E)-> E::Output {
+    let result = (&mut self.map, &self.future).edit_map(now, edit);
+    let output_edges = self.map.output_edges();
+    let ordering = self.map.topological_ordering_of_noncyclic_machines(& output_edges);
+    self.future = self.map.future (& output_edges, & ordering);
+    result
+  }
 }
 
 impl Module {

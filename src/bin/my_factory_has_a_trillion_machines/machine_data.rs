@@ -1,6 +1,5 @@
 use std::cmp::{min, max};
 use std::iter::{self, FromIterator};
-use std::collections::HashMap;
 
 use arrayvec::ArrayVec;
 
@@ -9,7 +8,6 @@ use geometry::{Number, Vector, Facing, GridIsomorphism, TransformedBy};
 use flow_pattern::{self, FlowPattern, RATE_DIVISOR};
 use modules::ModuleMachine;
 
-pub const MAX_COMPONENTS: usize = 256;
 pub const MAX_MACHINE_INPUTS: usize = 8;
 pub const TIME_TO_MOVE_MATERIAL: Number = 60;
 pub const MAX_IMPLICIT_OUTPUT_FLOW_CHANGES: usize = 3;
@@ -84,7 +82,7 @@ macro_rules! machine_type_enum {
   ($($Variant: ident,)*) => {
   
 
-#[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
+#[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub enum MachineType {
   $($Variant ($Variant),)*
 }
@@ -451,49 +449,11 @@ impl MachineTypeTrait for StandardMachine {
 
 
 
-#[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
+#[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub struct StatefulMachine {
   pub machine_type: MachineType,
   pub map_state: MachineMapState,
   pub materials_state: MachineMaterialsState,
 }
 
-/*
 
-enum SingularComponentType {
-  Conveyor,
-  Producer,
-  Consumer,
-}
-
-enum ComponentType {
-  Singular (SingularComponentType),
-  Group (u16),
-}
-
-pub struct Component {
-  position: Vector2 <Number>,
-  scale: u8,
-  facing: Facing,
-  component_type: ComponentType,
-}
-
-pub struct Group {
-  size: Position,
-  components: ArrayVec <[Component; MAX_COMPONENTS]>,
-  average_color: [f64; 3],
-}
-
-*/
-
-#[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
-pub struct Map {
-  pub machines: ArrayVec <[StatefulMachine; MAX_COMPONENTS]>,
-  pub last_change_time: Number,  
-}
-
-#[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
-pub struct Game {
-  pub map: Map,
-  pub inventory_before_last_change: HashMap <Material, Number>,
-}
