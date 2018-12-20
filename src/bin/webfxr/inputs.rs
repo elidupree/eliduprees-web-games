@@ -17,7 +17,7 @@ pub fn button_input<F: 'static + Fn()> (name: & str, callback: F)->Value {
   result
 }
 
-pub fn checkbox_input (state: &Rc<RefCell<State>>, id: & str, name: & str, getter: Getter <State, bool>)->Value {
+pub fn checkbox_input<G: 'static + GetterBase<From=State, To=bool>> (state: &Rc<RefCell<State>>, id: & str, name: & str, getter: Getter<G>)->Value {
   let current_value = getter.get (&state.borrow()).clone();
   let callback = input_callback_gotten (state, getter, | target, value: bool | *target = value);
   let result: Value = js!{
@@ -29,7 +29,7 @@ pub fn checkbox_input (state: &Rc<RefCell<State>>, id: & str, name: & str, gette
   result
 }
 
-pub fn menu_input <T: 'static + Eq + Clone> (state: &Rc<RefCell<State>>, getter: Getter <State, T>, options: & [(T, &str)])->Value {
+pub fn menu_input <T: 'static + Eq + Clone, G: 'static + GetterBase<From=State, To=T>> (state: &Rc<RefCell<State>>, getter: Getter <G>, options: & [(T, &str)])->Value {
   let current_value = getter.get (&state.borrow()).clone();
   let menu = js!{
     return ($("<select>"));
@@ -49,11 +49,11 @@ pub fn menu_input <T: 'static + Eq + Clone> (state: &Rc<RefCell<State>>, getter:
   menu
 }
 
-pub fn waveform_input (state: &Rc<RefCell<State>>, id: & str, name: & str, getter: Getter <State, Waveform>)->Value {
+pub fn waveform_input<G: 'static + GetterBase<From=State, To=Waveform>> (state: &Rc<RefCell<State>>, id: & str, name: & str, getter: Getter <G>)->Value {
   RadioInputSpecification {
     state: state, id: id, name: name,
     options: & waveforms_list(),
-    getter: getter,
+    getter: getter.dynamic(),
   }.render()
   /*let result = js!{return ($("<div>", {class: "labeled_input radio"}).append (
     $("<label>", {text:@{name} + ": "}),
@@ -71,7 +71,7 @@ pub struct RadioInputSpecification <'a, T: 'a> {
   pub id: & 'a str,
   pub name: & 'a str,
   pub options: & 'a [(T, & 'a str)],
-  pub getter: Getter <State, T>,
+  pub getter: DynamicGetter<State, T>,
 }
 
 impl <'a, T: Clone + Eq + 'static> RadioInputSpecification <'a, T>
@@ -103,7 +103,7 @@ impl <'a, T: Clone + Eq + 'static> RadioInputSpecification <'a, T>
 }
 
 
-pub fn numerical_input <T: UserNumberType> (state: &Rc<RefCell<State>>, id: & str, name: & str, getter: Getter <State, UserNumber <T>>, slider_range: [f64; 2])->Value {
+pub fn numerical_input <T: UserNumberType, G: 'static + GetterBase<From=State, To=UserNumber<T>>> (state: &Rc<RefCell<State>>, id: & str, name: & str, getter: Getter <G>, slider_range: [f64; 2])->Value {
   let current_value = getter.get (&state.borrow()).clone();
   NumericalInputSpecification {
     state: state, id: id, name: name,
@@ -223,7 +223,7 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
     element
   }
 
-  pub fn numeric_input <U: UserNumberType> (&self, id: & str, name: & str, slider_range: [f64; 2], slider_step: f64, getter: Getter <State, UserNumber <U>>)->Value {
+  pub fn numeric_input <U: UserNumberType, G: 'static + GetterBase<From=State, To=UserNumber<U>>> (&self, id: & str, name: & str, slider_range: [f64; 2], slider_step: f64, getter: Getter <G>)->Value {
     let current_value = getter.get (&self.state.borrow()).clone();
     self.assign_row(NumericalInputSpecification {
       state: self.state,
@@ -236,28 +236,28 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
     }.render())
   }
 
-  pub fn time_input (&self, id: & str, name: & str, getter: Getter <State, UserTime>)->Value {
+  pub fn time_input<G: 'static + GetterBase<From=State, To=UserTime>> (&self, id: & str, name: & str, getter: Getter <G>)->Value {
     self.numeric_input (id, name, [0.0, 3.0], 0.0, getter)
   }
   
-  pub fn value_input (&self, id: & str, name: & str, getter: Getter <State, UserNumber <Identity::NumberType>>)->Value {
+  pub fn value_input<G: 'static + GetterBase<From=State, To=UserNumber <Identity::NumberType>>> (&self, id: & str, name: & str, getter: Getter <G>)->Value {
     let info = Identity::info();
     self.numeric_input (id, name, info.slider_range, info.slider_step, getter)
   }
   
-  pub fn difference_input (&self, id: & str, name: & str, getter: Getter <State, UserNumber <<Identity::NumberType as UserNumberType>::DifferenceType>>)->Value {
+  pub fn difference_input<G: 'static + GetterBase<From=State, To=UserNumber <<Identity::NumberType as UserNumberType>::DifferenceType>>> (&self, id: & str, name: & str, getter: Getter <G>)->Value {
     let info = Identity::info();
     self.numeric_input (id, name, [-info.difference_slider_range, info.difference_slider_range], 0.0, getter)
   }
   
-  pub fn frequency_input (&self, id: & str, name: & str, getter: Getter <State, UserFrequency>)->Value {
+  pub fn frequency_input<G: 'static + GetterBase<From=State, To=UserFrequency>> (&self, id: & str, name: & str, getter: Getter <G>)->Value {
     self.numeric_input (id, name, [1.0f64.log2(), 20f64.log2()], 0.0, getter)
   }
   
-  pub fn checkbox_input (&self, id: & str, name: & str, getter: Getter <State, bool>)->Value {
+  pub fn checkbox_input<G: 'static + GetterBase<From=State, To=bool>> (&self, id: & str, name: & str, getter: Getter <G>)->Value {
     self.assign_row(checkbox_input (self.state, id, name, getter))
   }
-  pub fn waveform_input (&self, id: & str, name: & str, getter: Getter <State, Waveform>)->Value {
+  pub fn waveform_input<G: 'static + GetterBase<From=State, To=Waveform>> (&self, id: & str, name: & str, getter: Getter <G>)->Value {
     self.assign_row(waveform_input (self.state, id, name, getter))
   }
 
@@ -266,7 +266,7 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
       let guard = self.state.borrow();
       let sound = & guard.sound;
       let signals_getter = Identity::definition_getter();
-      let uh: Getter <State, Signals> = getter! (state => state.sound.signals);
+      let uh = getter! (state: State => Signals {state.sound.signals});
       let state_getter = uh + signals_getter.clone();
       let info = Identity::info();
     let signal = signals_getter.get (& guard.sound.signals);
@@ -283,7 +283,7 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
     let initial_value_input = self.value_input (
       & format! ("{}_initial", & info.id),
       info.name,
-      state_getter.clone() + getter! (signal => signal.initial_value)
+      state_getter.clone() + getter! {self@        <[NumberType: UserNumberType]>{_marker: PhantomData<NumberType> = PhantomData,} => signal: Signal<NumberType> => UserNumber<NumberType> {signal.initial_value}}
     );
     js!{@{& container}.append (@{&initial_value_input})}
     //let input_height = js!{ return @{&initial_value_input}.outerHeight()};
@@ -297,7 +297,7 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
     let toggle = self.checkbox_input (
       & format! ("{}_enabled", & info.id),
       info.name,
-      state_getter.clone() + getter! (signal => signal.enabled)
+      state_getter.clone() + getter! (self@ <[NumberType: UserNumberType]>{_marker: PhantomData<NumberType> = PhantomData,} => signal: Signal<NumberType> => bool {signal.enabled})
     );
     js!{@{&toggle}.appendTo(@{& container}).addClass("signal_toggle")}
     label = self.assign_row(js!{ return @{toggle}.children("label");});
@@ -338,7 +338,7 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
     js!{ @{& container}.append (@{buttons}); }
   }
   
-  let mut rendered_canvas = make_rendered_canvas(self.state, getter! (rendering: RenderingState => rendering.signals) + Identity::rendering_getter() + getter! (rendered: SignalRenderingState => rendered.rendered_after), 32);
+  let mut rendered_canvas = make_rendered_canvas(self.state, getter! (rendering: RenderingState => SignalsRenderingState {rendering.signals}) + Identity::rendering_getter() + getter! (rendered: SignalRenderingState => RenderedSamples {rendered.rendered_after}), 32);
   
   js!{@{& container}.append (@{self.assign_row (js!{ return @{rendered_canvas.canvas.canvas.clone()}.parent()})});}
   self.redraw.render_progress_functions.push (Box::new (move | state | rendered_canvas.update (state)));
@@ -349,7 +349,7 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
     let toggle = self.checkbox_input (
       "odd_harmonics",
       "Odd harmonics only",
-      getter! (state => state.sound.odd_harmonics)
+      getter! (state: State => bool {state.sound.odd_harmonics})
     );
     js!{@{&toggle}.appendTo(@{& container}).addClass("odd_harmonics_toggle")}
     self.redraw.rows += 1;
@@ -378,7 +378,7 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
   }
     
   if effects_shown {for (index, effect) in signal.effects.iter().enumerate() {
-    let effect_getter = state_getter.clone() + getter!(signal => signal.effects [index]);
+    let effect_getter = state_getter.clone() + getter!(self@ <[NumberType: UserNumberType]>{_marker: PhantomData<NumberType> = PhantomData, index: usize = index,} => signal: Signal<NumberType> => SignalEffect<NumberType> {signal.effects [self.index]});
     let delete_button = button_input ("Delete",
       input_callback_gotten_nullary (self.state, state_getter.clone(), move | signal | {signal.effects.remove (index);})
     );
@@ -387,7 +387,7 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
         $([
           $Variant: ident, $variant_name: expr,
             $((
-              $field: ident, $name: expr, $input_method: ident
+              $field: ident, $name: expr, $input_method: ident, $getter: expr
             ))*
         ])*) => {
         match *effect {
@@ -399,7 +399,7 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
               js!{@{& container}.append (@{self.$input_method(
                 & format! ("{}_{}_{}", & info.id, index, stringify! ($field)),
                 $name,
-                effect_getter.clone() + variant_field_getter! (SignalEffect::$Variant => $field)
+                effect_getter.clone() + $getter
               )}.addClass("signal_effect input"))}
               self.redraw.rows += 1;
             )*
@@ -410,20 +410,20 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
     }
     effect_editors! {
       [Jump, "Jump",
-        (time, "Time", time_input)
-        (size, "Size", difference_input)
+        (time, "Time", time_input, variant_field_getter! (<[NumberType: UserNumberType]>SignalEffect<NumberType> =>::Jump => time: UserTime))
+        (size, "Size", difference_input, variant_field_getter! (<[NumberType: UserNumberType]>SignalEffect<NumberType> =>::Jump => size: UserNumber<NumberType::DifferenceType>))
       ]
       [Slide, "Slide",
-        (start, "Start", time_input)
-        (duration, "Duration", time_input)
-        (size, "Size", difference_input)
-        (smooth_start, "Smooth start", checkbox_input)
-        (smooth_stop, "Smooth stop", checkbox_input)
+        (start, "Start", time_input, variant_field_getter! (<[NumberType: UserNumberType]>SignalEffect<NumberType> =>::Slide => start: UserTime))
+        (duration, "Duration", time_input, variant_field_getter! (<[NumberType: UserNumberType]>SignalEffect<NumberType> =>::Slide => duration: UserTime))
+        (size, "Size", difference_input, variant_field_getter! (<[NumberType: UserNumberType]>SignalEffect<NumberType> =>::Slide => size: UserNumber<NumberType::DifferenceType>))
+        (smooth_start, "Smooth start", checkbox_input, variant_field_getter! (<[NumberType: UserNumberType]>SignalEffect<NumberType> =>::Slide => smooth_start: bool))
+        (smooth_stop, "Smooth stop", checkbox_input, variant_field_getter! (<[NumberType: UserNumberType]>SignalEffect<NumberType> =>::Slide => smooth_stop: bool))
       ]
       [Oscillation, "Oscillation",
-        (size, "Size", difference_input)
-        (frequency, "Frequency", frequency_input)
-        (waveform, "Waveform", waveform_input)
+        (size, "Size", difference_input, variant_field_getter! (<[NumberType: UserNumberType]>SignalEffect<NumberType> =>::Oscillation => size: UserNumber<NumberType::DifferenceType>))
+        (frequency, "Frequency", frequency_input, variant_field_getter! (<[NumberType: UserNumberType]>SignalEffect<NumberType> =>::Oscillation => frequency: UserFrequency))
+        (waveform, "Waveform", waveform_input, variant_field_getter! (<[NumberType: UserNumberType]>SignalEffect<NumberType> =>::Oscillation => waveform: Waveform))
       ]
     }
   }}
@@ -433,7 +433,7 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
       //let samples = display_samples (sample_rate, max (sound.duration(), signal.draw_through_time()), | time | 0.0/*signal.sample (time, false)*/);
       //let canvas = canvas_of_samples (& samples, sample_rate, , info.slider_range, sound.duration());
       
-      let mut signal_canvas = IllustrationCanvas::new(self.state.clone(), getter! (rendering: RenderingState => rendering.signals) + Identity::rendering_getter() + getter! (rendered: SignalRenderingState => rendered.illustration));
+      let mut signal_canvas = IllustrationCanvas::new(self.state.clone(), (getter! (rendering: RenderingState => SignalsRenderingState {rendering.signals}) + Identity::rendering_getter() + getter! (rendered: SignalRenderingState => Illustration {rendered.illustration})).dynamic());
       
       js!{@{& signal_canvas.canvas.canvas} [0].height = @{if effects_shown {100.0} else {32.0}}}
       js!{ @{& container}.append (@{& signal_canvas.canvas.canvas}.parent().css("grid-row", @{first_row + 1}+" / "+@{self.redraw.rows})); }

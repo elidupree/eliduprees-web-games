@@ -62,7 +62,7 @@ impl PlaybackTime {
 #[derive (Clone)]
 pub struct Playback {
   time: PlaybackTime,
-  samples_getter: Getter <RenderingState, RenderedSamples>,
+  samples_getter: DynamicGetter <RenderingState, RenderedSamples>,
 }
 
 pub struct State {
@@ -82,7 +82,7 @@ pub struct State {
 fn update_for_changed_sound (state: & Rc<RefCell<State>>) {
   restart_rendering (state);
   redraw_app (state);
-  play (&mut state.borrow_mut(), getter! (state => state.final_samples));
+  play (&mut state.borrow_mut(), getter! (state: RenderingState => RenderedSamples {state.final_samples}));
 }
 
 fn restart_rendering (state: & Rc<RefCell<State>>) {
@@ -133,19 +133,19 @@ fn redraw_app(state: & Rc<RefCell<State>>) {
   redraw = RedrawState {rows: 1, main_grid: grid_element.clone(), render_progress_functions: Vec::new()};
   
 
-  let mut main_canvas = make_rendered_canvas (state, getter! (state => state.final_samples), 100);
+  let mut main_canvas = make_rendered_canvas (state, getter! (state: RenderingState => RenderedSamples {state.final_samples}), 100);
   js!{@{left_column}.append (@{& main_canvas.canvas.canvas}.parent());}
   redraw.render_progress_functions.push (Box::new (move | state | main_canvas.update(state)));
   //redraw.rows += 1;
       
   let play_button = assign_row (redraw.rows, button_input ("Play",
     { let state = state.clone(); move || {
-      play (&mut state.borrow_mut(), getter! (state => state.final_samples));
+      play (&mut state.borrow_mut(), getter! (state: RenderingState => RenderedSamples {state.final_samples}));
     }}
   ));
   js!{@{left_column}.append (@{play_button});}
   
-  let loop_button = assign_row (redraw.rows, checkbox_input (state, "loop", "Loop", getter! (state => state.loop_playback)));
+  let loop_button = assign_row (redraw.rows, checkbox_input (state, "loop", "Loop", getter! (state: State => bool{ state.loop_playback})));
   js!{@{left_column}.append (@{loop_button});}
   
   let undo_button = assign_row (redraw.rows, button_input ("Undo (z)",
@@ -211,7 +211,7 @@ fn redraw_app(state: & Rc<RefCell<State>>) {
       state,
       stringify! ($variable),
       $name, 
-      getter! (state => state.sound.envelope.$variable),
+      getter! (state: State => UserTime {state.sound.envelope.$variable}),
       $range
     ));
     
@@ -252,7 +252,7 @@ fn redraw_app(state: & Rc<RefCell<State>>) {
   
   
   let waveform_start = redraw.rows;
-  let waveform_input = assign_row (redraw.rows, waveform_input (state, "waveform", "Waveform", getter! (state => state.sound.waveform)));
+  let waveform_input = assign_row (redraw.rows, waveform_input (state, "waveform", "Waveform", getter! (state:State => Waveform{state.sound.waveform})));
   let label = assign_row(redraw.rows, js!{ return @{&waveform_input}.children("label").first();});
   js!{@{&label}.addClass("toplevel_input_label")}
   
@@ -280,7 +280,7 @@ fn redraw_app(state: & Rc<RefCell<State>>) {
   visit_signals (&mut Visitor (state, &mut redraw));
   
   let clipping_input = assign_row (redraw.rows, RadioInputSpecification {
-    state: state, id: "clipping", name: "Clipping behavior", getter: getter! (state => state.sound.soft_clipping),
+    state: state, id: "clipping", name: "Clipping behavior", getter: getter! (state:State  => bool{state.sound.soft_clipping}).dynamic(),
     options: &[
       (false, "Hard clipping"),
       (true, "Soft clipping"),
@@ -294,7 +294,7 @@ fn redraw_app(state: & Rc<RefCell<State>>) {
   
   
   let sample_rate_input = assign_row (redraw.rows, RadioInputSpecification {
-    state: state, id: "sample_rate", name: "Output sample rate", getter: getter! (state => state.sound.output_sample_rate),
+    state: state, id: "sample_rate", name: "Output sample rate", getter: getter! (state:State  => u32{ state.sound.output_sample_rate}).dynamic(),
     options: &[
       (44100, "44100"),
       (48000, "48000"),
@@ -477,7 +477,7 @@ fn render_loop (state: Rc<RefCell<State>>) {
   web::window().request_animation_frame (move | _time | render_loop (state));
 }
 
-fn play (state: &mut State, getter: Getter <RenderingState, RenderedSamples>) {
+fn play<G:'static + GetterBase<From=RenderingState, To=RenderedSamples>> (state: &mut State, getter: Getter <G>) {
   let samples = getter.get (&state.rendering_state);
   /*if let Some(ref playback) = state.playback_state {
     let old_samples = playback.samples_getter.get (&state.rendering_state);
@@ -489,7 +489,7 @@ fn play (state: &mut State, getter: Getter <RenderingState, RenderedSamples>) {
   //let now: f64 = js!{return audio.currentTime;}.try_into().unwrap();
   state.playback_state = Some(Playback {
     time: PlaybackTime::WaitingAtOffset (0.0),
-    samples_getter: getter,
+    samples_getter: getter.dynamic(),
   });
   /*js! {
     play_buffer (@{&samples.audio_buffer});

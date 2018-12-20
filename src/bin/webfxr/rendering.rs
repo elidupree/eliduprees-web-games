@@ -481,7 +481,7 @@ impl RenderingState {
     sample *= self.sample_signal::<Volume> (sound, true).exp2();
     self.signals.volume.rendered_after.push (sample, &self.constants);
     
-    let mut previous_getter = Volume::rendering_getter();
+    let mut previous_getter = Volume::rendering_getter().dynamic();
     
     if sound.enabled::<Chorus>() {
       let voices = min(100.0, self.sample_signal::<Chorus> (sound, true));
@@ -499,7 +499,7 @@ impl RenderingState {
         sample /= voices + 1.0;
       }
       self.signals.chorus.rendered_after.push (sample, &self.constants);
-      previous_getter = Chorus::rendering_getter();
+      previous_getter = Chorus::rendering_getter().dynamic();
     }
     
     if sound.enabled::<LogFlangerFrequency>() {

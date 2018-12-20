@@ -72,17 +72,15 @@ pub fn input_callback_nullary<F> (state: &Rc<RefCell<State>>, callback: F)->impl
   }
 }
 
-pub fn input_callback_gotten<T, U, F> (state: &Rc<RefCell<State>>, getter: Getter <State, T>, callback: F)->impl (Fn (U))
+pub fn input_callback_gotten<T, U, F, G:GetterBase<From=State, To=T>> (state: &Rc<RefCell<State>>, getter: Getter <G>, callback: F)->impl (Fn (U))
   where
     F: Fn(&mut T, U) {
-  let getter = getter.clone();
   input_callback (state, move | state, arg | (callback)(getter.get_mut (state), arg))
 }
 
-pub fn input_callback_gotten_nullary<T, F> (state: &Rc<RefCell<State>>, getter: Getter <State, T>, callback: F)->impl (Fn ())
+pub fn input_callback_gotten_nullary<T, F, G:GetterBase<From=State, To=T>> (state: &Rc<RefCell<State>>, getter: Getter <G>, callback: F)->impl (Fn ())
   where
     F: Fn(&mut T) {
-  let getter = getter.clone();
   input_callback_nullary (state, move | state | (callback)(getter.get_mut (state)))
 }
 
@@ -103,7 +101,7 @@ pub struct IllustrationCanvas {
   //pub kind: SamplesCanvasKind,
   pub lines_drawn: usize,
   pub state: Rc<RefCell<State>>,
-  pub getter: Getter <RenderingState, Illustration>,
+  pub getter: DynamicGetter<RenderingState, Illustration>,
 }
 
 impl Default for Canvas {
@@ -115,7 +113,7 @@ impl Default for Canvas {
 }
 
 impl IllustrationCanvas {
-  pub fn new (state: Rc<RefCell<State>>, getter: Getter <RenderingState, Illustration>)->IllustrationCanvas {
+  pub fn new (state: Rc<RefCell<State>>, getter: DynamicGetter<RenderingState, Illustration>)->IllustrationCanvas {
     IllustrationCanvas {
       canvas: Default::default(),
       lines_drawn: 0,
@@ -264,8 +262,8 @@ pub fn draw_samples (canvas: Value, samples: & [f64], sample_rate: f64, canvas_h
   }
 }*/
 
-pub fn make_rendered_canvas (state: &Rc<RefCell<State>>, rendered_getter: Getter <RenderingState, RenderedSamples>, height: i32)->IllustrationCanvas {
-  let mut result = IllustrationCanvas::new (state.clone(), rendered_getter.clone() + getter! (samples: RenderedSamples => samples.illustration));
+pub fn make_rendered_canvas<G: Clone + 'static + GetterBase<From=RenderingState, To=RenderedSamples>> (state: &Rc<RefCell<State>>, rendered_getter: Getter <G>, height: i32)->IllustrationCanvas {
+  let mut result = IllustrationCanvas::new (state.clone(), (rendered_getter.clone() + getter! (samples: RenderedSamples => Illustration {samples.illustration})).dynamic());
   //let guard = state.borrow();
   //let rendered = rendered_getter.get (& guard.rendering_state);
   js!{

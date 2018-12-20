@@ -234,8 +234,10 @@ pub struct Envelope {
 
 pub trait SignalIdentityGetters {
   type NumberType: UserNumberType;
-  fn definition_getter()->Getter <Signals, Signal <Self::NumberType>>;
-  fn rendering_getter()->Getter <SignalsRenderingState, SignalRenderingState>;
+  type DefinitionGetterBase: Clone + 'static + GetterBase<From=Signals, To=Signal <Self::NumberType>>;
+  type RenderingGetterBase: Clone + 'static + GetterBase<From=SignalsRenderingState, To=SignalRenderingState>;
+  fn definition_getter()->Getter <Self::DefinitionGetterBase>;
+  fn rendering_getter()->Getter <Self::RenderingGetterBase>;
 }
 pub trait SignalIdentity: SignalIdentityGetters {
   fn info()->SignalInfo;
@@ -284,15 +286,40 @@ impl Default for Signals {
   }
 }
 
+pub mod impls {
+  $(pub mod $field {
+    #[derive (Clone)]
+    pub struct DefinitionGetterBase;
+    #[derive (Clone)]
+    pub struct RenderingGetterBase;
+    use super::super::*;
+    
+    impl GetterBase for DefinitionGetterBase {
+      type From = Signals;
+      type To = Signal <$NumberType>;
+      fn get<'a, 'b> (&'a self, value: &'b Self::From)->&'b Self::To where Self::To: 'b { &value.$field }
+      fn get_mut<'a, 'b> (&'a self, value: &'b mut Self::From)->&'b mut Self::To where Self::To: 'b { &mut value.$field }
+    }
+    impl GetterBase for RenderingGetterBase {
+      type From = SignalsRenderingState;
+      type To = SignalRenderingState;
+      fn get<'a, 'b> (&'a self, value: &'b Self::From)->&'b Self::To where Self::To: 'b { &value.$field }
+      fn get_mut<'a, 'b> (&'a self, value: &'b mut Self::From)->&'b mut Self::To where Self::To: 'b { &mut value.$field }
+    }
+  })*
+}
+
 $(
   pub struct $Identity (!);
   impl SignalIdentityGetters for $Identity {
     type NumberType = $NumberType;
-    fn definition_getter()->Getter <Signals, Signal <Self::NumberType>> {
-      getter! (sound => sound.$field)
+    type DefinitionGetterBase = self::impls::$field::DefinitionGetterBase;
+    type RenderingGetterBase = self::impls::$field::RenderingGetterBase;
+    fn definition_getter()->Getter <Self::DefinitionGetterBase> {
+      Getter(self::impls::$field::DefinitionGetterBase)
     }
-    fn rendering_getter()->Getter <SignalsRenderingState, SignalRenderingState> {
-      getter! (rendering => rendering.$field)
+    fn rendering_getter()->Getter <Self::RenderingGetterBase> {
+      Getter(self::impls::$field::RenderingGetterBase)
     }
   }
 )*

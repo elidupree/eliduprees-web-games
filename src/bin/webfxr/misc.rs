@@ -1,6 +1,7 @@
 use std::rc::Rc;
 use std::cell::Cell;
 use stdweb::unstable::TryInto;
+use std::marker::PhantomData;
 
 //use super::*;
 
@@ -28,61 +29,138 @@ impl Default for SerialNumber {
   }
 }
 
+pub trait GetterBase {
+  type From;
+  type To;
+  fn get<'a, 'b> (&'a self, value: &'b Self::From)->&'b Self::To where Self::To: 'b;
+  fn get_mut<'a, 'b> (&'a self, value: &'b mut Self::From)->&'b mut Self::To where Self::To: 'b;
+}
+
+
+#[derive (Clone)]
+pub struct Getter <T>(pub T);
+impl <T: GetterBase> GetterBase for Getter <T> {
+  type From = T::From;
+  type To = T::To;
+  fn get<'a, 'b> (&'a self, value: &'b Self::From)->&'b Self::To where Self::To: 'b { self.0.get(value) }
+  fn get_mut<'a, 'b> (&'a self, value: &'b mut Self::From)->&'b mut Self::To where Self::To: 'b { self.0.get_mut(value) }
+}
+
 
 #[derive (Derivative)]
-#[derivative (Clone (bound =""))]
-pub struct Getter <T, U> {
-  pub get: Rc <Fn(&T)->&U>,
-  pub get_mut: Rc <Fn(&mut T)->&mut U>,
+#[derivative (Clone (bound=""))]
+pub struct DynamicGetterInner<From, To>(Rc<dyn GetterBase<From=From,To=To>>);
+impl <From, To> GetterBase for DynamicGetterInner<From, To> {
+  type From = From;
+  type To = To;
+  fn get<'a, 'b> (&'a self, value: &'b Self::From)->&'b Self::To where Self::To: 'b { self.0.get(value) }
+  fn get_mut<'a, 'b> (&'a self, value: &'b mut Self::From)->&'b mut Self::To where Self::To: 'b { self.0.get_mut(value) }
 }
-impl <T, U> Getter <T, U> {
-  pub fn get<'a, 'b> (&'a self, value: &'b T)->&'b U {
-    (self.get) (value)
-  }
-  pub fn get_mut<'a, 'b> (&'a self, value: &'b mut T)->&'b mut U {
-    (self.get_mut) (value)
+
+pub type DynamicGetter<From,To> = Getter<DynamicGetterInner<From,To>>;
+
+
+#[derive (Clone)]
+pub struct GetterCompose <T, U> (pub T, pub U);
+
+impl <T: GetterBase + Clone, U: GetterBase<From=T::To> + Clone> ::std::ops::Add<Getter <U>> for Getter <T> {
+  type Output = Getter<GetterCompose <T, U>>;
+  fn add (self, other: Getter <U>)->Self::Output {
+    Getter(GetterCompose(self.0, other.0))
   }
 }
 
-impl <T: 'static,U: 'static,V: 'static> ::std::ops::Add<Getter <U, V>> for Getter <T, U> {
-  type Output = Getter <T, V>;
-  fn add (self, other: Getter <U, V>)->Self::Output {
-    let my_get = self.get;
-    let my_get_mut = self.get_mut;
-    let other_get = other.get;
-    let other_get_mut = other.get_mut;
-    Getter {
-      get: Rc::new (move | value | (other_get) ((my_get) (value))),
-      get_mut: Rc::new (move | value | (other_get_mut) ((my_get_mut) (value))),
-    }
+impl <T: 'static + GetterBase> Getter <T> {
+  pub fn dynamic(self)->DynamicGetter<T::From, T::To> {
+    Getter(DynamicGetterInner(Rc::new(self.0)))
   }
+}
+
+// Note: the condition of the middle type should theoretically be possible to weaken from 'static, but I couldn't figure out how to tell the compiler that
+impl <T: GetterBase, U: GetterBase<From=T::To>> GetterBase for GetterCompose <T, U> where T::To: 'static {
+  type From = T::From;
+  type To = U::To;
+  fn get<'a, 'b> (&'a self, value: &'b Self::From)->&'b Self::To where Self::To: 'b { self.1.get(self.0.get(value)) }
+  fn get_mut<'a, 'b> (&'a self, value: &'b mut Self::From)->&'b mut Self::To where Self::To: 'b { self.1.get_mut(self.0.get_mut(value)) }
+}
+
+#[derive (Clone)]
+pub struct GetterClosures <From, To, T, U> (pub T, pub U, pub PhantomData<*const(From, To)>);
+
+
+impl <From, To, T: Fn(&From)->&To + Clone, U: Fn(&mut From)->&mut To + Clone> GetterBase for GetterClosures <From, To, T, U> {
+  type From = From;
+  type To = To;
+  fn get<'a, 'b> (&'a self, value: &'b Self::From)->&'b Self::To where Self::To: 'b { (self.0)(value) }
+  fn get_mut<'a, 'b> (&'a self, value: &'b mut Self::From)->&'b mut Self::To where Self::To: 'b { (self.1)(value) }
 }
 
 macro_rules! getter {
-  ($value: ident => $($path:tt)*) => {
-    Getter {
-      get    : Rc::new (move | $value | &    $($path)*),
-      get_mut: Rc::new (move | $value | &mut $($path)*),
+  /*($value: ident => $($path:tt)*) => {
+    Getter(GetterClosures (
+      move | $value | &    $($path)*,
+      move | $value | &mut $($path)*,
+      PhantomData,
+    ))
+  };*/
+  ($value: ident: $Type: ty => $To: ty { $($path:tt)* }) => {
+    {
+      #[derive(Clone)]
+      struct LocalGetter;
+      impl GetterBase for LocalGetter {
+        type From = $Type;
+        type To = $To;
+        fn get<'a, 'b> (&'a self, $value: &'b Self::From)->&'b Self::To where Self::To: 'b { &    $($path)* }
+        fn get_mut<'a, 'b> (&'a self, $value: &'b mut Self::From)->&'b mut Self::To where Self::To: 'b { &mut $($path)* }
+      }
+      Getter(LocalGetter)
     }
   };
-  ($value: ident: $Type: ty => $($path:tt)*) => {
-    Getter {
-      get    : Rc::new (move | $value: &    $Type | &    $($path)*),
-      get_mut: Rc::new (move | $value: &mut $Type | &mut $($path)*),
+  ($self_hack: ident@ {$($varname:ident: $vartype: ty = $varval: expr,)*} => $value: ident: $Type: ty => $To: ty { $($path:tt)* }) => {
+    {
+      #[derive(Clone)]
+      struct LocalGetter {$($varname: $vartype,)*}
+      impl GetterBase for LocalGetter {
+        type From = $Type;
+        type To = $To;
+        fn get<'a, 'b> (&'a $self_hack, $value: &'b Self::From)->&'b Self::To where Self::To: 'b { &    $($path)* }
+        fn get_mut<'a, 'b> (&'a $self_hack, $value: &'b mut Self::From)->&'b mut Self::To where Self::To: 'b { &mut $($path)* }
+      }
+      Getter(LocalGetter{$($varname: $varval,)*})
+    }
+  };
+  ($self_hack: ident@ <$([$Generic:ident $($Bounds:tt)*])*>{$($varname:ident: $vartype: ty = $varval: expr,)*} => $value: ident: $Type: ty => $To: ty { $($path:tt)* }) => {
+    {
+      #[derive(Clone)]
+      struct LocalGetter<$($Generic $($Bounds)*,)*> {$($varname: $vartype,)*}
+      impl<$($Generic $($Bounds)*,)*> GetterBase for LocalGetter<$($Generic,)*> {
+        type From = $Type;
+        type To = $To;
+        fn get<'a, 'b> (&'a $self_hack, $value: &'b Self::From)->&'b Self::To where Self::To: 'b { &    $($path)* }
+        fn get_mut<'a, 'b> (&'a $self_hack, $value: &'b mut Self::From)->&'b mut Self::To where Self::To: 'b { &mut $($path)* }
+      }
+      Getter(LocalGetter{$($varname: $varval,)*})
     }
   };
 }
 macro_rules! variant_field_getter {
-  ($Enum: ident::$Variant: ident => $field: ident) => {
-    Getter {
-      get    : Rc::new (| value | match value {
+  (<$([$Generic:ident $($Bounds:tt)*])*> $Enum: ident <$EnumArg:ident> =>::$Variant: ident => $field: ident: $Field: ty) => {
+    {
+      #[derive(Clone)]
+      struct LocalGetter<$($Generic $($Bounds)*,)*>(PhantomData<*const ($($Generic,)*)>);
+      impl<$($Generic $($Bounds)*,)*> GetterBase for LocalGetter<$($Generic,)*> {
+        type From = $Enum<$EnumArg>;
+        type To = $Field;
+        fn get<'a, 'b> (&'a self, value: &'b Self::From)->&'b Self::To where Self::To: 'b { match value {
         &    $Enum::$Variant {ref     $field,..} => $field,
         _ => panic!("Variant field getter used with the incorrect variant"),
-      }),
-      get_mut: Rc::new (| value | match value {
+      }}
+        fn get_mut<'a, 'b> (&'a self, value: &'b mut Self::From)->&'b mut Self::To where Self::To: 'b { match value {
         &mut $Enum::$Variant {ref mut $field,..} => $field,
         _ => panic!("Variant field getter used with the incorrect variant"),
-      }),
+      } }
+      }
+      Getter(LocalGetter(PhantomData))
     }
   }
 }

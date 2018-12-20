@@ -23,3 +23,6 @@ itertools = "0.7.3"
 
 [dev-dependencies]
 proptest = "0.8.7"
+
+[target.debug]
+opt-level = 3
