@@ -415,6 +415,10 @@ fn render_loop (state: Rc<RefCell<State>>) {
       }
     }
     
+    if state.rendering_state.finished() && !already_finished {
+      println!("Rendering took {} ms", ((now() - state.rendering_state.constants.started_rendering_at)*1000.0).round());
+    }
+    
     if !already_finished {
       let mut functions = mem::replace (&mut state.render_progress_functions, Default::default());
       for function in &mut functions {(function)(state);}
