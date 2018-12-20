@@ -108,7 +108,7 @@ pub struct IllustrationCanvas {
 
 impl Default for Canvas {
   fn default()->Canvas {
-    let canvas = js!{ return $(new_canvas ()); };
+    let canvas = js!{ return ($(new_canvas ())); };
     let context = js!{ return @{&canvas}[0].getContext ("2d"); };
     Canvas {canvas, context}
   }
@@ -187,7 +187,7 @@ pub fn display_samples <F: FnMut(f64)->f64> (sample_rate: f64, duration: f64, mu
 }
 
 pub fn canvas_of_samples (samples: & [f64], sample_rate: f64, canvas_height: f64, default_range: [f64; 2], target_duration: f64)->Value {
-  let canvas = js!{ return $(new_canvas ());};
+  let canvas = js!{ return ($(new_canvas ()));};
   draw_samples (canvas.clone(), samples, sample_rate, canvas_height, default_range, target_duration);
   canvas
 }

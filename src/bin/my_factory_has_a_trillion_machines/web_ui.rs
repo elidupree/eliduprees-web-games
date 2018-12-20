@@ -307,7 +307,7 @@ else {
 }
 
 fn current_mode ()->String {
-  let foo = js!{ return $("input:radio[name=machine_choice]:checked").val(); }.try_into().unwrap();
+  let foo = js!{ return ($("input:radio[name=machine_choice]:checked").val()); }.try_into().unwrap();
   foo
 }
 

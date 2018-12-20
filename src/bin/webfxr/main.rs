@@ -120,14 +120,14 @@ fn redraw_app(state: & Rc<RefCell<State>>) {
   //let envelope_samples = display_samples (sample_rate, sound.duration(), | time | sound.envelope.sample (time));
       
   js!{clear_callbacks();}  
-  let app_element = js!{ return $("<div>", {id: "app"});};
+  let app_element = js!{ return ($("<div>", {id: "app"}));};
   let app_element = & app_element;
   let left_column = js!{
-    return $("<div>", {id: "left_column", class: "left_column"}).appendTo (@{app_element});
+    return ($("<div>", {id: "left_column", class: "left_column"}).appendTo (@{app_element}));
   };
   let left_column = & left_column;
   let grid_element = js!{
-    return $("<div>", {id: "main_grid", class: "main_grid"}).appendTo (@{app_element});
+    return ($("<div>", {id: "main_grid", class: "main_grid"}).appendTo (@{app_element}));
   };
   let grid_element = &grid_element;
   redraw = RedrawState {rows: 1, main_grid: grid_element.clone(), render_progress_functions: Vec::new()};

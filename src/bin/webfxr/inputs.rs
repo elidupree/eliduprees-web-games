@@ -21,10 +21,10 @@ pub fn checkbox_input (state: &Rc<RefCell<State>>, id: & str, name: & str, gette
   let current_value = getter.get (&state.borrow()).clone();
   let callback = input_callback_gotten (state, getter, | target, value: bool | *target = value);
   let result: Value = js!{
-    return $("<div>", {class: "labeled_input checkbox"}).append (
+    return ($("<div>", {class: "labeled_input checkbox"}).append (
       on ($("<input>", {type: "checkbox", id: @{id}, checked:@{current_value}}), "click", function(event) {@{callback}($(event.target).prop ("checked"));}),
       $("<label>", {"for": @{id}, text: @{name}})
-    );
+    ));
   };
   result
 }
@@ -32,7 +32,7 @@ pub fn checkbox_input (state: &Rc<RefCell<State>>, id: & str, name: & str, gette
 pub fn menu_input <T: 'static + Eq + Clone> (state: &Rc<RefCell<State>>, getter: Getter <State, T>, options: & [(T, &str)])->Value {
   let current_value = getter.get (&state.borrow()).clone();
   let menu = js!{
-    return $("<select>");
+    return ($("<select>"));
   };
   let mut values = Vec::with_capacity (options.len());
   for & (ref value, name) in options.iter() {
@@ -55,10 +55,10 @@ pub fn waveform_input (state: &Rc<RefCell<State>>, id: & str, name: & str, gette
     options: & waveforms_list(),
     getter: getter,
   }.render()
-  /*let result = js!{return $("<div>", {class: "labeled_input radio"}).append (
+  /*let result = js!{return ($("<div>", {class: "labeled_input radio"}).append (
     $("<label>", {text:@{name} + ": "}),
     @{menu_input (state, getter, &waveforms_list())}
-  );};
+  ));};
   result*/
 }
 
@@ -82,9 +82,9 @@ impl <'a, T: Clone + Eq + 'static> RadioInputSpecification <'a, T>
     <Value as TryInto<T>>::Error: ::std::fmt::Debug {
   pub fn render (self)->Value {
     let current_value = self.getter.get (& self.state.borrow()).clone();
-    let result = js!{return $("<div>", {class: "labeled_input radio"}).append (
+    let result = js!{return ($("<div>", {class: "labeled_input radio"}).append (
       $("<label>", {text:@{self.name} + ":"})
-    );};
+    ));};
     
     let update = js!{
       return function (value) {@{input_callback_gotten (self.state, self.getter, | target, value: T | *target = value)}(value)}
@@ -141,14 +141,14 @@ impl <'a, F: 'static + Fn (UserNumber <T>), T: UserNumberType> NumericalInputSpe
           }
           else {std::f64::NAN}
         }};
-    let update = js!{return _.debounce(function(value) {
+    let update = js!{return (_.debounce(function(value) {
         var success = @{update_callback} (value);
         if (!success) {
           // TODO display some sort of error message
         }
-      }, 200);};
-    let range_input = js!{return $("<input>", {type: "range", id: @{self.id}+"_numerical_range", value:@{self.current_value.rendered}, min:@{self.slider_range [0]}, max:@{self.slider_range [1]}, step:@{slider_step} });};
-    let number_input = js!{return $("<input>", {type: "number", id: @{self.id}+"_numerical_number", value:@{displayed_value}});};
+      }, 200));};
+    let range_input = js!{return ($("<input>", {type: "range", id: @{self.id}+"_numerical_range", value:@{self.current_value.rendered}, min:@{self.slider_range [0]}, max:@{self.slider_range [1]}, step:@{slider_step} }));};
+    let number_input = js!{return ($("<input>", {type: "number", id: @{self.id}+"_numerical_number", value:@{displayed_value}}));};
     
     let range_overrides = js!{return function (parent) {
         var value = parent.children ("input[type=range]")[0].valueAsNumber;
@@ -289,7 +289,7 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
     //let input_height = js!{ return @{&initial_value_input}.outerHeight()};
     self.assign_row(js!{ return @{initial_value_input}.children("label");})
   } else {
-    self.assign_row(js!{ return $("<span>").text (@{info.name});})
+    self.assign_row(js!{ return ($("<span>").text (@{info.name}));})
   };
   
   if applicable && info.can_disable {
@@ -305,7 +305,7 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
   js!{@{label}.append(":").appendTo(@{& container}).addClass("toplevel_input_label")}
   
   if !applicable {
-    self.assign_row(js!{ return $("<span>", {class: "signal_not_applicable"}).text ("Not applicable for the current waveform").appendTo(@{& container});});
+    self.assign_row(js!{ return ($("<span>", {class: "signal_not_applicable"}).text ("Not applicable for the current waveform").appendTo(@{& container}));});
   }
   
   if enabled {
