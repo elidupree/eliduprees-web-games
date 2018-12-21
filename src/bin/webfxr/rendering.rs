@@ -388,7 +388,7 @@ impl RenderingState {
       fn visit <Identity: SignalIdentity> (&mut self) {
         // create the generator outside the if so the later generators are
         // still consistent regardless of whether this signal is enabled
-        let mut generator = Generator::from_rng (&mut self.1.generator).unwrap();
+        let mut generator = Generator::from_seed (self.1.generator.gen());
         if self.0.enabled::<Identity>() {
           let signal = Identity::definition_getter().get (& self.0.signals);
           let rendering = Identity::rendering_getter().get_mut (&mut self.1.signals);
@@ -403,7 +403,7 @@ impl RenderingState {
           for _effect in signal.effects.iter() {
             rendering.effects.push (SignalEffectRenderingState {
               waveform: WaveformRenderingState {
-                generator: Generator::from_rng (&mut generator).unwrap(),
+                generator: Generator::from_seed (generator.gen()),
                 .. Default::default()
               },
             });
