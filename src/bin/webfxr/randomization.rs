@@ -147,8 +147,11 @@ pub fn random_sound <G: Rng>(generator: &mut G)->SoundDefinition {
   for attempt in 0..max_attempts {
     let last = attempt == max_attempts - 1;
     let volume_range = sound.signals.volume.range();
-    if volume_range[1] > -1.0 || volume_range[1] <= -2.0 {
-      sound.signals.volume = random_signal (generator, sound.envelope.duration(), & Volume::info());
+    let volume_mid = (volume_range[1] + volume_range[0])/2.0;
+    let target_mid = min(-1.0, 0.0 - (volume_range[1] - volume_mid));
+    let increase = target_mid - volume_mid;
+    if increase.abs() > 0.001 {
+      sound.signals.volume.initial_value = UserNumber::from_rendered (sound.signals.volume.initial_value.rendered + increase);
     }
     let waveform_skew_range = sound.signals.waveform_skew.range();
     if max (waveform_skew_range [1].abs(), waveform_skew_range [0].abs()) >5.0 {
