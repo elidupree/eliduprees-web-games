@@ -147,17 +147,20 @@ fn redraw_app(state: & Rc<RefCell<State>>) {
   
   let save_button = assign_row (redraw.rows, button_input ("Save",
     { let state = state.clone(); move || {
+      let state = state.borrow();
+      if state.rendering_state.finished() {
       js! {
         var date = new Date ();
         var date_string = date.getFullYear () + "-" + (date.getMonth () + 1) + "-" + date.getDate () + "-" + date.getHours ()  + "-" + date.getMinutes ()  + "-" + date.getSeconds () ;
         var filename ="webfxr-sound-" + date_string + ".wav";
-        var wav = audioBufferToWav(@{&state.borrow().rendering_state.final_samples.audio_buffer});
+        var wav = audioBufferToWav(@{&state.rendering_state.final_samples.audio_buffer});
         var blob = new window.Blob([ new DataView(wav) ], { type: "audio/wav" });
         download (blob, filename, "audio/wav");
       }
+      }
     }}
   ));
-  js!{@{left_column}.append (@{save_button});}
+  js!{@{left_column}.append (@{save_button}.attr("id", "save_button"));}
   
   let loop_button = assign_row (redraw.rows, checkbox_input (state, "loop", "Loop", getter! (state: State => bool{ state.loop_playback})));
   js!{@{left_column}.append (@{loop_button});}
@@ -431,6 +434,10 @@ fn render_loop (state: Rc<RefCell<State>>) {
     
     if state.rendering_state.finished() && !already_finished {
       println!("Rendering took {} ms", ((now() - state.rendering_state.constants.started_rendering_at)*1000.0).round());
+    }
+    
+    js! {
+      $("#save_button").prop("disabled", @{!state.rendering_state.finished()}); 
     }
     
     if !already_finished {
