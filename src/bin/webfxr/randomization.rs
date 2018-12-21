@@ -320,9 +320,9 @@ impl <'a, G: 'a + Rng> SoundMutator <'a, G> {
     let old_volume_range = sound.signals.volume.range();
     let old_volume_mid = (old_volume_range[1] + old_volume_range[0])/2.0;
     let old_target_mid = -1.0;
-    let old_lowpass_badness = if sound.enabled::<LogFrequency>() && sound.enabled::<LogLowpassFilterCutoff>() { max(0.0, sound.signals.log_frequency.range() [1] - sound.signals.log_lowpass_filter_cutoff.range() [0]) } else {0.0};
-    let old_highpass_badness = if sound.enabled::<LogFrequency>() && sound.enabled::<LogHighpassFilterCutoff>() { max(0.0, sound.signals.log_highpass_filter_cutoff.range() [1] - sound.signals.log_frequency.range() [0]) } else {0.0};
-    let old_bitcrush_badness = if sound.enabled::<LogFrequency>() && sound.enabled::<LogBitcrushFrequency>() { max(0.0, sound.signals.log_frequency.range() [1] - sound.signals.log_bitcrush_frequency.range() [0]) } else {0.0};
+    let old_lowpass_badness = if sound.enabled::<LogLowpassFilterCutoff>() { max(0.0, sound.signals.log_frequency.range() [1] - sound.signals.log_lowpass_filter_cutoff.range() [0]) } else {0.0};
+    let old_highpass_badness = if sound.enabled::<LogHighpassFilterCutoff>() { max(0.0, sound.signals.log_highpass_filter_cutoff.range() [1] - sound.signals.log_frequency.range() [0]) } else {0.0};
+    let old_bitcrush_badness = if sound.enabled::<LogBitcrushFrequency>() { max(0.0, sound.signals.log_frequency.range() [1] - sound.signals.log_bitcrush_frequency.range() [0]) } else {0.0};
     while *sound == old_sound {
     self.mutate_number_logarithmic (&mut sound.envelope.attack, ATTACK_RANGE);
     self.mutate_number_logarithmic (&mut sound.envelope.sustain, SUSTAIN_RANGE);
@@ -357,21 +357,23 @@ impl <'a, G: 'a + Rng> SoundMutator <'a, G> {
     let target_change = target_mid - old_target_mid;
     let new_mid = old_volume_mid + target_change;
     let increase = new_mid - volume_mid;
-    if increase.abs() > 0.001 {
+    if increase.abs() > 0.01 {
       sound.signals.volume.initial_value = UserNumber::from_rendered (sound.signals.volume.initial_value.rendered + increase);
     }
     
-    let lowpass_badness = if sound.enabled::<LogFrequency>() && sound.enabled::<LogLowpassFilterCutoff>() { max(0.0, sound.signals.log_frequency.range() [1] - sound.signals.log_lowpass_filter_cutoff.range() [0]) } else {0.0};
-    let highpass_badness = if sound.enabled::<LogFrequency>() && sound.enabled::<LogHighpassFilterCutoff>() { max(0.0, sound.signals.log_highpass_filter_cutoff.range() [1] - sound.signals.log_frequency.range() [0]) } else {0.0};
-    let bitcrush_badness = if sound.enabled::<LogFrequency>() && sound.enabled::<LogBitcrushFrequency>() { max(0.0, sound.signals.log_frequency.range() [1] - sound.signals.log_bitcrush_frequency.range() [0]) } else {0.0};
+    let lowpass_badness = if sound.enabled::<LogLowpassFilterCutoff>() { max(0.0, sound.signals.log_frequency.range() [1] - sound.signals.log_lowpass_filter_cutoff.range() [0]) } else {0.0};
+    let highpass_badness = if sound.enabled::<LogHighpassFilterCutoff>() { max(0.0, sound.signals.log_highpass_filter_cutoff.range() [1] - sound.signals.log_frequency.range() [0]) } else {0.0};
+    let bitcrush_badness = if sound.enabled::<LogBitcrushFrequency>() { max(0.0, sound.signals.log_frequency.range() [1] - sound.signals.log_bitcrush_frequency.range() [0]) } else {0.0};
     
-    if old_lowpass_badness < 0.001 && lowpass_badness > 0.0 {
+    println!("{:?}", ((old_lowpass_badness, lowpass_badness),(old_highpass_badness, highpass_badness),(old_bitcrush_badness, bitcrush_badness)));
+    
+    if old_lowpass_badness < 0.01 && lowpass_badness > 0.0 {
       sound.signals.log_lowpass_filter_cutoff.initial_value = UserNumber::from_rendered (sound.signals.log_lowpass_filter_cutoff.initial_value.rendered + lowpass_badness);
     }
-    if old_highpass_badness < 0.001 && highpass_badness > 0.0 {
+    if old_highpass_badness < 0.01 && highpass_badness > 0.0 {
       sound.signals.log_highpass_filter_cutoff.initial_value = UserNumber::from_rendered (sound.signals.log_highpass_filter_cutoff.initial_value.rendered - highpass_badness);
     }
-    if old_bitcrush_badness < 0.001 && bitcrush_badness > 0.0 {
+    if old_bitcrush_badness < 0.01 && bitcrush_badness > 0.0 {
       sound.signals.log_bitcrush_frequency.initial_value = UserNumber::from_rendered (sound.signals.log_bitcrush_frequency.initial_value.rendered + bitcrush_badness);
     }
   }
