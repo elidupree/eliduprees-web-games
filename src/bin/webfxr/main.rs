@@ -15,6 +15,7 @@ extern crate nalgebra;
 extern crate rand;
 extern crate ordered_float;
 extern crate array_ext;
+extern crate rand_xoshiro;
 
 use std::rc::Rc;
 use std::cell::RefCell;

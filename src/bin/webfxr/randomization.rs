@@ -1,6 +1,7 @@
 use super::*;
 use rand::{Rng};
 use rand::distributions::{self, Distribution};
+use rand::seq::SliceRandom;
 
 pub const ATTACK_RANGE: [f64; 2] = [0.01, 1.0];
 pub const SUSTAIN_RANGE: [f64; 2] = [0.01, 1.0];
@@ -28,20 +29,20 @@ pub fn random_number_logarithmic <G: Rng, T: UserNumberType>(generator: &mut G, 
 
 pub fn random_waveform <G: Rng>(generator: &mut G)->Waveform {
   match generator.gen_range (0, 4) {
-    0...2 => generator.choose(&[
+    0...2 => [
       Waveform::Sine,
       Waveform::Square,
       Waveform::Triangle,
       Waveform::Sawtooth,
-    ]).unwrap().clone(),
-    _ => generator.choose(&[
+    ].choose(generator).unwrap().clone(),
+    _ => [
       Waveform::WhiteNoise,
       Waveform::PinkNoise,
       Waveform::BrownNoise,
       Waveform::PitchedWhite,
       Waveform::PitchedPink,
       Waveform::Experimental,
-    ]).unwrap().clone(),
+    ].choose(generator).unwrap().clone(),
   }
 }
 pub fn random_envelope <G: Rng>(generator: &mut G)->Envelope {
@@ -55,7 +56,7 @@ pub fn random_signal <G: Rng, T: UserNumberType>(generator: &mut G, duration: f6
   let enabled = generator.gen() && info.can_disable;
   let mut effects = Vec::new() ;
   if enabled || !info.can_disable {
-    let num_effects = distributions::poisson::Poisson::new(info.average_effects).sample (generator);
+    let num_effects = distributions::Poisson::new(info.average_effects).sample (generator);
     for _ in 0..num_effects {
       effects.push (random_signal_effect (generator, duration, info));
     }
@@ -79,7 +80,7 @@ pub fn random_difference <G: Rng, T: UserNumberType>(generator: &mut G, info: & 
       (7, 4), (7, 5), (7, 6), (7, 8), (7, 10), (7, 12),
       (9, 8), (15, 16),
     ];
-    let (first, second) = generator.choose (&intervals).unwrap().clone();
+    let (first, second) = intervals.choose(generator).unwrap().clone();
     let ratio = if generator.gen() {first as f64/second as f64} else {second as f64/first as f64};
     static_downcast (UserNumber::new (IntervalType::Ratio, format_number (ratio, 5)).unwrap())
   }

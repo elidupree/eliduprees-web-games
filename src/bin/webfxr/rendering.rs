@@ -2,8 +2,9 @@ use super::*;
 use std::collections::BTreeSet;
 use ordered_float::OrderedFloat;
 
-use rand::{Rng, IsaacRng, SeedableRng};
-type Generator = IsaacRng;
+use rand::{Rng, SeedableRng};
+use rand_xoshiro::Xoshiro256StarStar;
+type Generator = Xoshiro256StarStar;
 
 pub fn logistic_curve (input: f64)->f64 {
   0.5+0.5*(input*0.5).tanh()
@@ -385,6 +386,8 @@ impl RenderingState {
     struct Visitor <'a> (& 'a SoundDefinition, & 'a mut RenderingState);
     impl<'a> SignalVisitor for Visitor<'a> {
       fn visit <Identity: SignalIdentity> (&mut self) {
+        // create the generator outside the if so the later generators are
+        // still consistent regardless of whether this signal is enabled
         let mut generator = Generator::from_rng (&mut self.1.generator).unwrap();
         if self.0.enabled::<Identity>() {
           let signal = Identity::definition_getter().get (& self.0.signals);
