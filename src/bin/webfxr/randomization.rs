@@ -365,7 +365,7 @@ impl <'a, G: 'a + Rng> SoundMutator <'a, G> {
     let highpass_badness = if sound.enabled::<LogHighpassFilterCutoff>() { max(0.0, sound.signals.log_highpass_filter_cutoff.range() [1] - sound.signals.log_frequency.range() [0]) } else {0.0};
     let bitcrush_badness = if sound.enabled::<LogBitcrushFrequency>() { max(0.0, sound.signals.log_frequency.range() [1] - sound.signals.log_bitcrush_frequency.range() [0]) } else {0.0};
     
-    println!("{:?}", ((old_lowpass_badness, lowpass_badness),(old_highpass_badness, highpass_badness),(old_bitcrush_badness, bitcrush_badness)));
+    //println!("{:?}", ((old_lowpass_badness, lowpass_badness),(old_highpass_badness, highpass_badness),(old_bitcrush_badness, bitcrush_badness)));
     
     if old_lowpass_badness < 0.01 && lowpass_badness > 0.0 {
       sound.signals.log_lowpass_filter_cutoff.initial_value = UserNumber::from_rendered (sound.signals.log_lowpass_filter_cutoff.initial_value.rendered + lowpass_badness);
