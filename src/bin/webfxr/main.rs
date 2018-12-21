@@ -198,8 +198,8 @@ fn redraw_app(state: & Rc<RefCell<State>>) {
       SoundMutator {
         generator: &mut rand::thread_rng(),
         duration: Default::default(),
-        flop_chance: 0.05,
-        tweak_chance: 0.05,
+        flop_chance: 0.1,
+        tweak_chance: 0.1,
         tweak_size: 1.0,
       }.mutate_sound (&mut state.sound);
     })

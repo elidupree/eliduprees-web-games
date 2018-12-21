@@ -312,6 +312,8 @@ impl <'a, G: 'a + Rng> SoundMutator <'a, G> {
     }
   }
   pub fn mutate_sound (&mut self, sound: &mut SoundDefinition) {
+    let old_sound = sound.clone();
+    while *sound == old_sound {
     self.mutate_number_logarithmic (&mut sound.envelope.attack, ATTACK_RANGE);
     self.mutate_number_logarithmic (&mut sound.envelope.sustain, SUSTAIN_RANGE);
     self.mutate_number_logarithmic (&mut sound.envelope.decay, DECAY_RANGE);
@@ -333,6 +335,7 @@ impl <'a, G: 'a + Rng> SoundMutator <'a, G> {
     self.mutate_bool (&mut sound.soft_clipping);
     if self.generator.gen::<f64>() < self.flop_chance*0.5 {
       sound.waveform = random_waveform(self.generator);
+    }
     }
   }
 }
