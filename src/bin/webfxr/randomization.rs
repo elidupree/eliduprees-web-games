@@ -149,7 +149,7 @@ pub fn random_sound <G: Rng>(generator: &mut G)->SoundDefinition {
     let last = attempt == max_attempts - 1;
     let volume_range = sound.signals.volume.range();
     let volume_mid = (volume_range[1] + volume_range[0])/2.0;
-    let target_mid = min(-1.0, 0.0 - (volume_range[1] - volume_range[0])/2.0);
+    let target_mid = -1.0;
     let increase = target_mid - volume_mid;
     if increase.abs() > 0.001 {
       sound.signals.volume.initial_value = UserNumber::from_rendered (sound.signals.volume.initial_value.rendered + increase);
@@ -319,7 +319,7 @@ impl <'a, G: 'a + Rng> SoundMutator <'a, G> {
     let old_sound = sound.clone();
     let old_volume_range = sound.signals.volume.range();
     let old_volume_mid = (old_volume_range[1] + old_volume_range[0])/2.0;
-    let old_target_mid = min(-1.0, 0.0 - (old_volume_range[1] - old_volume_range[0])/2.0);
+    let old_target_mid = -1.0;
     let old_lowpass_badness = if sound.enabled::<LogFrequency>() && sound.enabled::<LogLowpassFilterCutoff>() { max(0.0, sound.signals.log_frequency.range() [1] - sound.signals.log_lowpass_filter_cutoff.range() [0]) } else {0.0};
     let old_highpass_badness = if sound.enabled::<LogFrequency>() && sound.enabled::<LogHighpassFilterCutoff>() { max(0.0, sound.signals.log_highpass_filter_cutoff.range() [1] - sound.signals.log_frequency.range() [0]) } else {0.0};
     let old_bitcrush_badness = if sound.enabled::<LogFrequency>() && sound.enabled::<LogBitcrushFrequency>() { max(0.0, sound.signals.log_frequency.range() [1] - sound.signals.log_bitcrush_frequency.range() [0]) } else {0.0};
@@ -352,7 +352,7 @@ impl <'a, G: 'a + Rng> SoundMutator <'a, G> {
     
     let volume_range = sound.signals.volume.range();
     let volume_mid = (volume_range[1] + volume_range[0])/2.0;
-    let target_mid = min(-1.0, 0.0 - (volume_range[1] - volume_range[0])/2.0);
+    let target_mid = -1.0;
     
     let target_change = target_mid - old_target_mid;
     let new_mid = old_volume_mid + target_change;
