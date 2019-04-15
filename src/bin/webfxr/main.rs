@@ -46,6 +46,8 @@ pub use ui::*;
 pub use inputs::*;
 pub use randomization::*;
 
+type SoundId = u64;
+
 
 #[derive (Clone)]
 pub enum PlaybackTime {
@@ -70,6 +72,10 @@ pub struct State {
   pub sound: SoundDefinition,
   pub undo_history: VecDeque <SoundDefinition>,
   pub undo_position: usize,
+  /*pub sounds: Vec <(SoundId, Option<SoundDefinition>)>,
+  pub selected_sound: SoundId,
+  pub undo_history: VecDeque <(SoundId, Option <SoundDefinition>)>,
+  pub redo_stack: Vec<(SoundId, Option <SoundDefinition>)>,*/
   pub rendering_state: RenderingState,
   pub playback_state: Option <Playback>,
   pub loop_playback: bool,
@@ -523,7 +529,7 @@ fn play<G:'static + GetterBase<From=RenderingState, To=RenderedSamples>> (state:
 }
 
 
-//#[cfg (target_os = "emscripten")]
+#[cfg (target_os = "emscripten")]
 fn main() {
   stdweb::initialize();
   
@@ -562,8 +568,18 @@ fn main() {
   stdweb::event_loop();
 }
 
+#[inline(never)]
+fn hack2()-> impl FnOnce() {
+|| { js!{clear_callbacks();}}
+}
+#[inline(never)]
+fn hack()-> impl FnOnce() {
+let foo = hack2();
+move || {foo() }
+}
 
-/*#[cfg (not(target_os = "emscripten"))]
+#[cfg (not(target_os = "emscripten"))]
 fn main() {
   println!("There's not currently a way to compile this natively");
-}*/
+  hack();
+}

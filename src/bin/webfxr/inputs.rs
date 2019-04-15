@@ -2,64 +2,59 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use stdweb::unstable::{TryInto, TryFrom};
 use stdweb::{JsSerialize, Value};
-//use ordered_float::OrderedFloat;
+use typed_html::{html, text};
+use typed_html::elements::FlowContent;
 
 use super::*;
 
+type Element = Box<dyn FlowContent<String>>;
 
-pub fn button_input<F: 'static + Fn()> (name: & str, callback: F)->Value {
-  let result: Value = js!{
-    return on ($("<input>", {
-      type: "button",
-      value: @{name}
-    }), "click", function() {@{callback}();});
-  };
-  result
+fn get<G: 'static + GetterBase<From=State, To=T>, T>(getter: &Getter<G>)->T {
+  with_state(|state| getter.get(state).clone());
+}
+fn set<G: 'static + GetterBase<From=State, To=T>, T>(getter: &Getter<G>, value: T) {
+  with_state_mut(|state| *getter.get_mut(state) = value);
 }
 
-pub fn checkbox_input<G: 'static + GetterBase<From=State, To=bool>> (state: &Rc<RefCell<State>>, id: & str, name: & str, getter: Getter<G>)->Value {
-  let current_value = getter.get (&state.borrow()).clone();
-  let callback = input_callback_gotten (state, getter, | target, value: bool | *target = value);
-  let result: Value = js!{
-    return ($("<div>", {class: "labeled_input checkbox"}).append (
-      on ($("<input>", {type: "checkbox", id: @{id}, checked:@{current_value}}), "click", function(event) {@{callback}($(event.target).prop ("checked"));}),
-      $("<label>", {"for": @{id}, text: @{name}})
-    ));
-  };
-  result
+pub fn checkbox_input<G: 'static + GetterBase<From=State, To=bool>> (id: & str, name: & str, getter: Getter<G>)->(Element, Element, impl FnOnce (&mut Thingy)) {
+  let current_value = get(getter);
+  (
+    html!{ <input type="checkbox" id=id checked=current_value /> },
+    html!{ <label for=id text=name /> },
+    move |thingy| { thingy.add_event_listener(id, move | _: ClickEvent | {
+      set(&getter, js_unwrap!{$("#"+@{id}).prop ("checked"))});
+    })}
+  )
 }
 
-pub fn menu_input <T: 'static + Eq + Clone, G: 'static + GetterBase<From=State, To=T>> (state: &Rc<RefCell<State>>, getter: Getter <G>, options: & [(T, &str)])->Value {
-  let current_value = getter.get (&state.borrow()).clone();
-  let menu = js!{
-    return ($("<select>"));
-  };
-  let mut values = Vec::with_capacity (options.len());
-  for & (ref value, name) in options.iter() {
-    values.push (value.clone());
-    js!{@{& menu}.append ($("<option>", {selected:@{*value == current_value}}).text(@{name}));}
-  }
-  js!{ on (@{& menu}, "change", function(event) {
-    @{input_callback_gotten (state, getter, move | target, index: i32 | {
+pub fn menu_input <T: 'static + Eq + Clone, G: 'static + GetterBase<From=State, To=T>> (id: & str, getter: Getter <G>, options: & [(T, &str)])->(Element, impl FnOnce (&mut Thingy)) {
+  let current_value = get(getter);
+  let mut values = options.iter().map(|(a,_)| a.clone()).collect()
+  (
+    html!{
+      <select id=id>
+        {options.iter().map(|(value, name)| html!{
+          <option selected={*value == current_value}>
+            text!(name)
+          </option> 
+        })}
+      </select>
+    },
+    move |thingy| { thingy.add_event_listener(id, move | _: ChangeEvent | {
+      let index = js_unwrap!{$("#"+@{id}).prop ("selectedIndex"))};
       if let Some(value) = values.get (index as usize) {
-        *target = value.clone();
+        set(&getter, value.clone());
       }
-    })}(event.target.selectedIndex)
-  })};
-  menu
+    })}
+  )
 }
 
-pub fn waveform_input<G: 'static + GetterBase<From=State, To=Waveform>> (state: &Rc<RefCell<State>>, id: & str, name: & str, getter: Getter <G>)->Value {
+pub fn waveform_input<G: 'static + GetterBase<From=State, To=Waveform>> (id: & str, name: & str, getter: Getter <G>)->(Element, impl FnOnce (&mut Thingy)) {
   RadioInputSpecification {
     state: state, id: id, name: name,
     options: & waveforms_list(),
     getter: getter.dynamic(),
   }.render()
-  /*let result = js!{return ($("<div>", {class: "labeled_input radio"}).append (
-    $("<label>", {text:@{name} + ": "}),
-    @{menu_input (state, getter, &waveforms_list())}
-  ));};
-  result*/
 }
 
 
@@ -67,46 +62,44 @@ pub fn waveform_input<G: 'static + GetterBase<From=State, To=Waveform>> (state: 
 //fn round_step (input: f64, step: f64)->f64 {(input*step).round()/step}
 
 pub struct RadioInputSpecification <'a, T: 'a> {
-  pub state: & 'a Rc<RefCell<State>>,
   pub id: & 'a str,
   pub name: & 'a str,
   pub options: & 'a [(T, & 'a str)],
   pub getter: DynamicGetter<State, T>,
 }
 
-impl <'a, T: Clone + Eq + 'static> RadioInputSpecification <'a, T>
-  where
-    T: JsSerialize,
-    T: TryFrom<Value>,
-    Value: TryInto<T>,
-    <Value as TryInto<T>>::Error: ::std::fmt::Debug {
-  pub fn render (self)->Value {
-    let current_value = self.getter.get (& self.state.borrow()).clone();
-    let result = js!{return ($("<div>", {class: "labeled_input radio"}).append (
-      $("<label>", {text:@{self.name} + ":"})
-    ));};
-    
-    let update = js!{
-      return function (value) {@{input_callback_gotten (self.state, self.getter, | target, value: T | *target = value)}(value)}
-    };
-    
-    for &(ref value, name) in self.options.iter() {
-      let input = js!{ return on ($("<input>", {type: "button", id: @{self.id}+"_radios_" + @{&value}, value: @{name}}), "click", function() {@{& update} (@{&value})});};
-      if *value == current_value {
-        js!{ @{&input}.addClass("down"); }
+impl <'a, T: Clone + Eq + JsSerialize + 'static> RadioInputSpecification <'a, T> {
+  fn value_id(&self, value: &T)->String {
+    js_unwrap!{@{self.id}+"_radios_"+@{value}}
+  }
+  pub fn render (self)->(Element, Element, impl FnOnce (&mut Thingy)) {
+    let current_value = get(getter);   
+    (
+      html!{
+        <div class="radio">
+          {self.options.iter().map (| (value, name) | html!{
+            <input type="button" id=self.value_id(value) value=name class={if *value == current_value {"down"} else {""}}/>
+          })}
+        </div>
+      },
+      html!{ <label for=id text=name> },
+      move |thingy| for (value, name) in self.options {
+        let id = self.value_id(value);
+        let value = value.clone();
+        let getter = getter.clone();
+        thingy.add_event_listener(&id, move | _: ClickEvent | {
+          set(getter, value.clone());
+        });
       }
-      js!{ @{&result}.append (@{input}); }
-    }
-    
-    result
+    )
   }
 }
 
 
-pub fn numerical_input <T: UserNumberType, G: 'static + GetterBase<From=State, To=UserNumber<T>>> (state: &Rc<RefCell<State>>, id: & str, name: & str, getter: Getter <G>, slider_range: [f64; 2])->Value {
+pub fn numerical_input <T: UserNumberType, G: 'static + GetterBase<From=State, To=UserNumber<T>>> (id: & str, name: & str, getter: Getter <G>, slider_range: [f64; 2])->Value {
   let current_value = getter.get (&state.borrow()).clone();
   NumericalInputSpecification {
-    state: state, id: id, name: name,
+    id: id, name: name,
     slider_range: slider_range,
     slider_step: 0.0,
     current_value: current_value,
@@ -115,7 +108,6 @@ pub fn numerical_input <T: UserNumberType, G: 'static + GetterBase<From=State, T
 }
 
 pub struct NumericalInputSpecification <'a, T: UserNumberType, F> {
-  pub state: & 'a Rc<RefCell<State>>,
   pub id: & 'a str,
   pub name: & 'a str,
   pub slider_range: [f64; 2],
@@ -124,62 +116,60 @@ pub struct NumericalInputSpecification <'a, T: UserNumberType, F> {
   pub input_callback: F,
 }
 
-impl <'a, F: 'static + Fn (UserNumber <T>), T: UserNumberType> NumericalInputSpecification<'a, T, F> {
-  pub fn render (self)->Value {
-    let value_type = T::currently_used (&self.state.borrow());
+impl <'a, F: 'static + Fn (UserNumber <T>) + Copy, T: UserNumberType> NumericalInputSpecification<'a, T, F> {
+  pub fn render (self)->(Element, Element, impl FnOnce (&mut Thingy)) {
+    let value_type = with_state(T::currently_used);
     let displayed_value = if value_type == self.current_value.value_type {self.current_value.source.clone()} else {value_type.approximate_from_rendered (self.current_value.rendered)};
     let slider_step = if self.slider_step != 0.0 { self.slider_step } else {(self.slider_range [1] - self.slider_range [0])/1000.0};
+    
+    let number_id = format!("{}_numerical_number", self.id);
+    let range_id = format!("{}_numerical_range", self.id);
+    
+    
     let input_callback = self.input_callback;
-    let update_callback = { let value_type = value_type.clone(); move | value: String |{
+    let update = move | value: String |
           if let Some(value) = UserNumber::new (value_type.clone(), value) {
             (input_callback)(value);
           }
-        }};
-    let to_rendered_callback = { let value_type = value_type.clone(); move | value: String |{
-          if let Some(value) = UserNumber::new (value_type.clone(), value) {
-            value.rendered
-          }
-          else {std::f64::NAN}
-        }};
-    let update = js!{return (_.debounce(function(value) {
-        var success = @{update_callback} (value);
-        if (!success) {
-          // TODO display some sort of error message
-        }
-      }, 200));};
-    let range_input = js!{return ($("<input>", {type: "range", id: @{self.id}+"_numerical_range", value:@{self.current_value.rendered}, min:@{self.slider_range [0]}, max:@{self.slider_range [1]}, step:@{slider_step} }));};
-    let number_input = js!{return ($("<input>", {type: "number", id: @{self.id}+"_numerical_number", value:@{displayed_value}}));};
+        };
     
-    let range_overrides = js!{return function (parent) {
-        var value = parent.children ("input[type=range]")[0].valueAsNumber;
-        var source = @{{let value_type = value_type.clone(); move | value: f64 | value_type.approximate_from_rendered (value)}} (value);
-        // immediately update the number input with the range input, even though the actual data editing is debounced.
-        parent.children ("input[type=number]").val(source);
-        @{&update}(source);
-      }
-;};
-    let number_overrides = js!{return function (parent) {
-        @{&update}(parent.children ("input[type=number]").val());
-      }
-;};
-    
-    
-    let result: Value = js!{
-      var result = $("<div>", {id: @{self.id}, class: "labeled_input numeric"}).append (
-        on (@{&number_input}, "input", function (event) {@{&number_overrides} ($("#"+@{self.id}))}),
-        on (@{&range_input}, "input", function (event) {@{&range_overrides} ($("#"+@{self.id}))}),
-        $("<label>", {"for": @{self.id}+"_numerical_number", text:@{
-          format! ("{} ({})", self.name, value_type.unit_name())
-        }})
-      );
-      
-      @{&range_input}.val(@{self.current_value.rendered});
-      
-      return result;
+    let range_overrides = move || {
+        let value = js_unwrap! {$("#"+@{range_id})[0].valueAsNumber};
+        let source = value_type.approximate_from_rendered (value);
+        (update)(source);
     };
-    js! {
-      on (@{&result}, "wheel", function (event) {
+    let number_overrides = move || {
+        (update)(js_unwrap! {$("#"+@{number_id}).val()});
+    };
+
+    let label = format!("{} ({})", self.name, value_type.unit_name());
+    
+    (
+      html!{
+        <div id="{self.id}" class="labeled_input numeric">
+          <input type="number" id={number_id} value={displayed_value} min={self.slider_range [0]}, max={self.slider_range [1]} step={slider_step} />
+          <input type="range" id={range_id} value={self.current_value.rendered} />
+        </div>
+      },
+      html!{
+        <label for={number_id} text={label} />
+      },
+      move |thingy| {
+        let id = self.value_id(value);
+        let value = value.clone();
+        
+        thingy.add_event_listener(&number_id, move | _: ChangeEvent | {
+          (number_overrides)();
+        });
+        thingy.add_event_listener(&range_id, move | _: ChangeEvent | {
+          let value = js_unwrap! {$("#"+@{range_id})[0].valueAsNumber};
+          let source = value_type.approximate_from_rendered (value);
+          (update)(source);
+        });
+        thingy.add_event_listener_by_name(&range_id, "wheel", move | event: Value | {
+          js! {
         if (window.webfxr_scrolling) {return;}
+        var event = @{event};
         var parent = $("#"+@{self.id});
         var number_input = parent.children ("input[type=number]");
         var value = @{to_rendered_callback} (number_input.val());
@@ -204,36 +194,23 @@ impl <'a, F: 'static + Fn (UserNumber <T>), T: UserNumberType> NumericalInputSpe
         @{& number_overrides}(parent);
         event.preventDefault();
         event.stopPropagation();
-      });
     };
-    result
+        });
+      }
+    )
   }
 }
 
 
 pub struct SignalEditorSpecification <'a, Identity: SignalIdentity> {
-  pub state: & 'a Rc<RefCell<State>>,
   pub redraw: &'a mut RedrawState,
   pub _marker: PhantomData <Identity>,
 }
 
 impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
-  pub fn assign_row (&self, element: Value)->Value {
+  pub fn assign_row (&self, element: Element)->Element {
     js!{@{&element}.css("grid-row", @{self.redraw.rows}+" / span 1")};
     element
-  }
-
-  pub fn numeric_input <U: UserNumberType, G: 'static + GetterBase<From=State, To=UserNumber<U>>> (&self, id: & str, name: & str, slider_range: [f64; 2], slider_step: f64, getter: Getter <G>)->Value {
-    let current_value = getter.get (&self.state.borrow()).clone();
-    self.assign_row(NumericalInputSpecification {
-      state: self.state,
-      id: id,
-      name: name, 
-      slider_range: slider_range,
-      slider_step: slider_step,
-      current_value: current_value,
-      input_callback: input_callback (self.state, move | state, value: UserNumber <U> | *getter.get_mut (state) = value),
-    }.render())
   }
 
   pub fn time_input<G: 'static + GetterBase<From=State, To=UserTime>> (&self, id: & str, name: & str, getter: Getter <G>)->Value {
@@ -262,14 +239,14 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
   }
 
 
-  pub fn render (self) {
-      let guard = self.state.borrow();
-      let sound = & guard.sound;
+  pub fn render (self)->(Vec<Element>, impl FnOnce (&mut Thingy)) {
+    with_state(|state| {
+      let sound = & state.sound;
       let signals_getter = Identity::definition_getter();
       let uh = getter! (state: State => Signals {state.sound.signals});
       let state_getter = uh + signals_getter.clone();
       let info = Identity::info();
-    let signal = signals_getter.get (& guard.sound.signals);
+    let signal = signals_getter.get (& sound.signals);
     let first_row = self.redraw.rows;
       
   let container = &self.redraw.main_grid;
@@ -279,33 +256,40 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
   
   //js!{@{& container}.append (@{info.name} + ": ");}
   
-  let mut label = if enabled {
-    let initial_value_input = self.value_input (
+  let mut elements = Vec::new();
+  let mut build_functions = Vec::new();
+  
+  let signal_class = format!("{}", info.id);
+  let effects_class = format!("{}_effects", info.id);
+  
+  let mut signal_label = if enabled {
+    let (input, label, build) = self.value_input (
       & format! ("{}_initial", & info.id),
       info.name,
       state_getter.clone() + getter! {self@        <[NumberType: UserNumberType]>{_marker: PhantomData<NumberType> = PhantomData,} => signal: Signal<NumberType> => UserNumber<NumberType> {signal.initial_value}}
     );
-    js!{@{& container}.append (@{&initial_value_input})}
-    //let input_height = js!{ return @{&initial_value_input}.outerHeight()};
-    self.assign_row(js!{ return @{initial_value_input}.children("label");})
+    elements.append (html!{ <div class=[&signal_class, "signal_numerical"]>{input}</div> });
+    build_functions.append (Box::new(build));
+    label
   } else {
-    self.assign_row(js!{ return ($("<span>").text (@{info.name}));})
+    html!{ <span>{info.name}</span> }
   };
   
   if applicable && info.can_disable {
-    js!{@{label}.remove();}
-    let toggle = self.checkbox_input (
+    let (toggle, label, build) = self.checkbox_input (
       & format! ("{}_enabled", & info.id),
       info.name,
       state_getter.clone() + getter! (self@ <[NumberType: UserNumberType]>{_marker: PhantomData<NumberType> = PhantomData,} => signal: Signal<NumberType> => bool {signal.enabled})
     );
-    js!{@{&toggle}.appendTo(@{& container}).addClass("signal_toggle")}
-    label = self.assign_row(js!{ return @{toggle}.children("label");});
+    elements.append (html!{ <div class=[&signal_class, "signal_toggle"]>{toggle}</div> });
+    build_functions.append (build);
+    signal_label = label;
   }
-  js!{@{label}.append(":").appendTo(@{& container}).addClass("toplevel_input_label")}
+  
+  elements.insert(0, html!{ <div class=[&signal_class, "signal_label"]>{signal_label}</div> });
   
   if !applicable {
-    self.assign_row(js!{ return ($("<span>", {class: "signal_not_applicable"}).text ("Not applicable for the current waveform").appendTo(@{& container}));});
+    elements.append (html!{ <div class=[&signal_class, "signal_not_applicable"]>"Not applicable for the current waveform"</div> });
   }
   
   if enabled {
@@ -313,37 +297,39 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
     let info = info.clone();
     let duration = sound.envelope.duration();
     let getter = state_getter.clone();
-    let buttons = self.assign_row(js!{
-      var menu = $("<select>", {class: "add_effect_buttons"}).append (
-        $("<option>", {selected: true}).text("Add effect..."),
-        $("<option>").text(@{info.name}+" jump"),
-        $("<option>").text(@{info.name}+" slide"),
-        $("<option>").text(@{info.name}+" oscillation")
-      );
-      on(menu, "change", function(event) {
-        @{input_callback (self.state, move | state, index: i32 | {
-          state.effects_shown.insert (info.id);
+    let select_id = format!("{}_add_effect", info.id);
+    
+    elements.append (html!{
+      <select id=select_id class=[&signal_class, "add_effect_buttons"]>
+        <option selected=true>"Add effect..."</option>
+        <option>{text!("{} jump", info.name)}</option>
+        <option>{text!("{} slide", info.name)}</option>
+        <option>{text!("{} oscillation", info.name)}</option>
+      </select>
+    });
+    build_functions.append (Box::new(move |thingy| {
+      thingy.add_event_listener(&select_id, move | _: ChangeEvent | {
+        let index = js_unwrap! {$("#"+@{select_id})[0].selectedIndex};
+        with_state_mut(|state| {
           let signal = getter.get_mut (state);
           match index {
             1 => signal.effects.push (random_jump_effect (&mut rand::thread_rng(), duration, &info)),
             2 => signal.effects.push (random_slide_effect (&mut rand::thread_rng(), duration, &info)),
             3 => signal.effects.push (random_oscillation_effect (&mut rand::thread_rng(), duration, &info)),
-            _ => return,
+            _ => (),
           }
-        })}(event.target.selectedIndex)
+        });
       });
-      return menu;
-    });
-    
-    js!{ @{& container}.append (@{buttons}); }
+    ));
   }
   
-  let mut rendered_canvas = make_rendered_canvas(self.state, getter! (rendering: RenderingState => SignalsRenderingState {rendering.signals}) + Identity::rendering_getter() + getter! (rendered: SignalRenderingState => RenderedSamples {rendered.rendered_after}), 32);
+  let samples_getter = getter! (rendering: RenderingState => SignalsRenderingState {rendering.signals}) + Identity::rendering_getter() + getter! (rendered: SignalRenderingState => RenderedSamples {rendered.rendered_after});
   
-  js!{@{& container}.append (@{self.assign_row (js!{ return @{rendered_canvas.canvas.canvas.clone()}.parent()})});}
-  self.redraw.render_progress_functions.push (Box::new (move | state | rendered_canvas.update (state)));
+  let (rendered_canvas, rendered_canvas_builder) = make_rendered_canvas(self.state, samples_getter, 32);
+  elements.append(html!{ <div class=[&signal_class, "rendered_canvas"]>{rendered_canvas}</div> });
   
-  } self.redraw.rows += 1; if enabled {
+  TODO move to canvas code: self.redraw.render_progress_functions.push (Box::new (move | state | rendered_canvas.update (state)));
+  
   
   if info.id == "harmonics" {
     let toggle = self.checkbox_input (
@@ -355,7 +341,7 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
     self.redraw.rows += 1;
   }
   
-  let effects_shown = guard.effects_shown.contains (info.id);
+  let effects_shown = state.effects_shown.contains (info.id);
   
   if signal.effects.len() > 0 {
     let id = info.id.clone();
@@ -437,11 +423,13 @@ impl <'a, Identity: SignalIdentity> SignalEditorSpecification <'a, Identity> {
       
       js!{@{& signal_canvas.canvas.canvas} [0].height = @{if effects_shown {100.0} else {32.0}}}
       js!{ @{& container}.append (@{& signal_canvas.canvas.canvas}.parent().css("grid-row", @{first_row + 1}+" / "+@{self.redraw.rows})); }
-      signal_canvas.reset(); signal_canvas.update(& guard);
+      signal_canvas.reset(); signal_canvas.update(state);
       self.redraw.render_progress_functions.push (Box::new (move | state | signal_canvas.update (state)));
     }
   }
     js!{ @{& container}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{first_row}+" / "+@{self.redraw.rows})); }
+    
+    })
   }
 }
 
