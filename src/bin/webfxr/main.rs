@@ -81,7 +81,7 @@ pub struct State {
   pub loop_playback: bool,
   pub waveform_canvas: Canvas,
   pub effects_shown: HashSet<&'static str>,
-  pub render_progress_functions: Vec<Box<dyn FnMut(&State)>>,
+  pub render_progress_functions: Vec<Box<dyn FnMut()>>,
 }
 
 fn update_for_changed_sound(state: &Rc<RefCell<State>>) {
@@ -105,74 +105,108 @@ pub struct RedrawState {
   pub render_progress_functions: Vec<Box<dyn FnMut(&State)>>,
 }
 
-fn redraw_app(state: &Rc<RefCell<State>>) {
-  let mut redraw;
-  {
-    let mut guard = state.borrow_mut();
-    let state = &mut *guard;
+pub trait UIBuilder {
+  #[inline(always)]
+  fn css (&mut self, _css: & str) {}
+  #[inline(always)]
+  fn next_grid_row_class (&mut self, _classname: & str) {}
+  #[inline(always)]
+  fn last_n_grid_rows_class (&mut self, _classname: & str, _n: i32) {}
+  #[inline(always)]
+  fn add_event_listener <: ConcreteEvent> (&mut self, _id: & str, _listener:) {}
+  #[inline(always)]
+  fn after_morphdom<Callback: FnOnce()> (&mut self, _callback: Callback) {}
+  #[inline(always)]
+  fn on_render_progress<Callback: FnMut()> (&mut self, _callback: Callback) {}
+}
 
-    state.waveform_canvas = Canvas::default();
-  }
-  {
-    let guard = state.borrow();
-    let sound = &guard.sound;
+pub fn envelope_input<Builder: UIBuilder, G: 'static + GetterBase<From = State, To = UserTime>>(builder: &mut Builder, id: &str, name: &str, range: [f64; 2], getter: Getter<G>) -> Vec<Element; 2> {
+  let (input, label) = numerical_input(
+      builder,
+      id, name, getter, range,
 
-    pub fn assign_row(rows: u32, element: Value) -> Value {
-      js! {@{&element}.css("grid-row", @{rows}+" / span 1")};
-      element
+    );
+  
+  builder.next_grid_row_class(id);
+    
+  [
+    html! {
+      <div class=[id, "grid_row_label"]>{label}</div>
+    },
+    html! {
+      <div class=[id, "grid_numerical"]>{input}</div>
+    }
+  ]
+}
+
+fn app<Builder: UIBuilder>(builder: &mut Builder) -> Element {
+  with_state(|state| {
+  let (loop_input, loop_label) = checkbox_input (
+        builder,
+        "loop",
+        "Loop",
+        getter! (state: State => bool{ state.loop_playback}),
+      );
+  let mut envelope_inputs = Vec::new();
+  envelope_inputs.extend(envelope_input(builder, "attack", "Attack", [0.0, 1.0], getter! (state: State => UserTime {state.sound.envelope.attack})));
+  envelope_inputs.extend(envelope_input(builder, "sustain", "Sustain", [0.0, 3.0], getter! (state: State => UserTime {state.sound.envelope.sustain})));
+  envelope_inputs.extend(envelope_input(builder, "decay", "Decay", [0.0, 3.0], getter! (state: State => UserTime {state.sound.envelope.decay})));
+  
+  builder.last_n_grid_rows_class("envelope", 3);
+  
+  builder.next_grid_row_class("waveform");
+  let (main_waveform_input, waveform_label) = waveform_input (builder, "waveform", "Waveform", getter! (state: State => Waveform {state.sound.waveform}));
+  
+  let mut signal_elements = Vec::with_capacity (16);
+
+    struct Visitor<'a>(&'a mut Builder);
+    impl<'a> SignalVisitor for Visitor<'a> {
+      fn visit<Identity: SignalIdentity>(&mut self) {
+        let specification: SignalEditorSpecification<Identity> = SignalEditorSpecification {
+          builder: self.0,
+          _marker: PhantomData,
+        };
+        signal_elements.extend (specification.render());
+      }
     }
 
-    let sample_rate = 500.0;
-    //let envelope_samples = display_samples (sample_rate, sound.duration(), | time | sound.envelope.sample (time));
+    visit_signals(&mut Visitor(state, &mut builder));
 
-    js! {clear_callbacks();}
-    let app_element = js! { return ($("<div>", {id: "app"}));};
-    let app_element = &app_element;
-    let left_column = js! {
-      return ($("<div>", {id: "left_column", class: "left_column"}).appendTo (@{app_element}));
-    };
-    let left_column = &left_column;
-    let grid_element = js! {
-      return ($("<div>", {id: "main_grid", class: "main_grid"}).appendTo (@{app_element}));
-    };
-    let grid_element = &grid_element;
-    redraw = RedrawState {
-      rows: 1,
-      main_grid: grid_element.clone(),
-      render_progress_functions: Vec::new(),
-    };
-
-    let mut main_canvas = make_rendered_canvas(
-      state,
-      getter! (state: RenderingState => RenderedSamples {state.final_samples}),
-      100,
-    );
-    js! {@{left_column}.append (@{& main_canvas.canvas.canvas}.parent());}
-    redraw
-      .render_progress_functions
-      .push(Box::new(move |state| main_canvas.update(state)));
-    //redraw.rows += 1;
-
-    let play_button = assign_row(
+  builder.next_grid_row_class("clipping");
+  builder.next_grid_row_class("sample_rate");
+  
+    let (clipping_input, clipping_label) = RadioInputSpecification {
+        builder: builder,
+        id: "clipping",
+        name: "Clipping behavior",
+        getter: getter! (state:State  => bool{state.sound.soft_clipping}).dynamic(),
+        options: &[(false, "Hard clipping"), (true, "Soft clipping")],
+      }
+      .render();
+      
+    let label = assign_row(
       redraw.rows,
-      button_input("Play", {
-        let state = state.clone();
-        move || {
-          play(
-            &mut state.borrow_mut(),
-            getter! (state: RenderingState => RenderedSamples {state.final_samples}),
-          );
-        }
-      }),
+      js! { return @{& clipping_input}.children("label").first();},
     );
-    js! {@{left_column}.append (@{play_button});}
+    js! {@{&label}.addClass("toplevel_input_label")}
+    js! { @{grid_element}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{redraw.rows}+" / span 1")); }
+    js! {@{grid_element}.append (@{label},@{clipping_input}.addClass("sound_radio_input"));}
+    redraw.rows += 1;
 
-    let save_button = assign_row(
-      redraw.rows,
-      button_input("Save", {
-        let state = state.clone();
-        move || {
-          let state = state.borrow();
+    let (sample_rate_input, sample_rate_label) = RadioInputSpecification {
+        state: state,
+        id: "sample_rate",
+        name: "Output sample rate",
+        getter: getter! (state:State  => u32{ state.sound.output_sample_rate}).dynamic(),
+        options: &[(44100, "44100"), (48000, "48000")],
+      }
+      .render();
+
+  builder.add_event_listener("play_button", |_:ClickEvent| {
+    play(getter! (state: RenderingState => RenderedSamples {state.final_samples}));
+  });
+  builder.add_event_listener("save_button", |_:ClickEvent| {
+    with_state(|state| {
           if state.rendering_state.finished() {
             js! {
               var date = new Date ();
@@ -183,39 +217,88 @@ fn redraw_app(state: &Rc<RefCell<State>>) {
               download (blob, filename, "audio/wav");
             }
           }
-        }
-      }),
-    );
-    js! {@{left_column}.append (@{save_button}.attr("id", "save_button"));}
+    });
+  });
+  builder.add_event_listener("undo_button", |_:ClickEvent| {
+    undo();
+  });
+  builder.add_event_listener("redo_button", |_:ClickEvent| {
+    redo();
+  });
+  
+  html! {
+    <div class="app">
+      <div class="left_column">
+        {main_canvas}
+        <input type="button" id="play_button" value="Play" />
+        <div class="labeled_input">
+          {loop_input}
+          {loop_label}
+        </div>
+        <input type="button" id="save_button" value="Save" />
+        <input type="button" id="undo_button" value="Undo (z)" />
+        <input type="button" id="redo_button" value="Redo (shift-Z)" />
+        <input type="button" id="randomize_button" value="Randomize" />
+        <input type="button" id="mutate_everything_button" value="Randomize everything a little" />
+        <input type="button" id="mutate_onething_button" value="Randomize a few things a lot" />
+        <textarea id="json_area">
+          text!(serde_json::to_string_pretty (&state.sound).unwrap())
+        </textarea>
+      </div>
+      <div class="main_grid">
+        {envelope_inputs}
+        <div class=["envelope", "envelope_canvas"]>{envelope_canvas}</div>
+        <div class=["envelope", "input_region"]></div>
+        <div class=["waveform", "grid_row_label"]>{waveform_label}</div>
+        <div class=["waveform", "waveform_input"]>{main_waveform_input}</div>
+        <div class=["waveform", "waveform_canvas"]>{waveform_canvas}</div>
+        <div class=["waveform", "input_region"]></div>
+        {signal_elements}
+        <div class=["clipping", "grid_row_label"]>{clipping_label}</div>
+        <div class=["clipping", "grid_main_input"]>{clipping_input}</div>
+        <div class=["clipping", "input_region"]></div>
+        <div class=["sample_rate", "grid_row_label"]>{sample_rate_label}</div>
+        <div class=["sample_rate", "grid_main_input"]>{sample_rate_input}</div>
+        <div class=["sample_rate", "input_region"]></div>
+      </div>
+    </div>
+  }
+  
+  }
+}
 
-    let loop_button = assign_row(
-      redraw.rows,
-      checkbox_input(
-        state,
-        "loop",
-        "Loop",
-        getter! (state: State => bool{ state.loop_playback}),
-      ),
-    );
-    js! {@{left_column}.append (@{loop_button});}
+fn redraw_app() {
+  let mut builder = ClientSideUIBuilder::new();
+  let app_element = app(&mut builder);
+  
+  js! {morphdom($("#app")[0], @{app_element.vnode()});}
+  for f in builder.after_morphdom_functions { (f)(); }
+  
+  with_state_mut (move | state | {
+    state.render_progress_functions = builder.render_progress_functions;
+    state.event_listeners = builder.event_listeners;
+  });
+}
 
-    let undo_button = assign_row(
-      redraw.rows,
-      button_input("Undo (z)", {
-        let state = state.clone();
-        move || undo(&state)
-      }),
-    );
-    js! {@{left_column}.append (@{undo_button});}
 
-    let redo_button = assign_row(
-      redraw.rows,
-      button_input("Redo (shift-Z)", {
-        let state = state.clone();
-        move || redo(&state)
-      }),
+
+    state.waveform_canvas = Canvas::default();
+
+
+    let sample_rate = 500.0;
+    //let envelope_samples = display_samples (sample_rate, sound.duration(), | time | sound.envelope.sample (time));
+    
+    
+    let mut main_canvas = make_rendered_canvas(
+      state,
+      getter! (state: RenderingState => RenderedSamples {state.final_samples}),
+      100,
     );
-    js! {@{left_column}.append (@{redo_button});}
+    redraw
+      .render_progress_functions
+      .push(Box::new(move |state| main_canvas.update(state)));
+    //redraw.rows += 1;
+
 
     let randomize_button = assign_row(
       redraw.rows,
