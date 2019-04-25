@@ -38,6 +38,7 @@ mod inputs;
 mod randomization;
 mod rendering;
 mod ui;
+mod generate_static_files;
 pub use data::*;
 pub use inputs::*;
 pub use misc::*;
@@ -113,7 +114,9 @@ pub trait UIBuilder {
   #[inline(always)]
   fn last_n_grid_rows_class (&mut self, _classname: & str, _n: i32) {}
   #[inline(always)]
-  fn add_event_listener <: ConcreteEvent> (&mut self, _id: & str, _listener:) {}
+  fn add_event_listener <Event: ConcreteEvent, Callback: FnMut(Event)> (&mut self, _id: String, _listener: Callback) {}
+  #[inline(always)]
+  fn add_event_listener_erased <Callback: FnMut(Value)> (&mut self, _id: String, _event_type: &'static str, _listener: Callback) {}
   #[inline(always)]
   fn after_morphdom<Callback: FnOnce()> (&mut self, _callback: Callback) {}
   #[inline(always)]
@@ -170,7 +173,7 @@ fn app<Builder: UIBuilder>(builder: &mut Builder) -> Element {
       }
     }
 
-    visit_signals(&mut Visitor(state, &mut builder));
+    visit_signals(&mut Visitor(&mut builder));
 
   builder.next_grid_row_class("clipping");
   builder.next_grid_row_class("sample_rate");
@@ -194,7 +197,7 @@ fn app<Builder: UIBuilder>(builder: &mut Builder) -> Element {
     redraw.rows += 1;
 
     let (sample_rate_input, sample_rate_label) = RadioInputSpecification {
-        state: state,
+        builder: builder,
         id: "sample_rate",
         name: "Output sample rate",
         getter: getter! (state:State  => u32{ state.sound.output_sample_rate}).dynamic(),
@@ -224,6 +227,52 @@ fn app<Builder: UIBuilder>(builder: &mut Builder) -> Element {
   });
   builder.add_event_listener("redo_button", |_:ClickEvent| {
     redo();
+  });
+  builder.add_event_listener("randomize_button", |_:ClickEvent| {
+    with_state_mut(|state| {
+      state.sound = random_sound(&mut rand::thread_rng());
+    });
+  });
+  builder.add_event_listener("mutate_everything_button", |_:ClickEvent| {
+    with_state_mut(|state| {
+      SoundMutator {
+            generator: &mut rand::thread_rng(),
+            duration: Default::default(),
+            flop_chance: 0.0,
+            tweak_chance: 1.0,
+            tweak_size: 0.05,
+          }
+          .mutate_sound(&mut state.sound);
+    });
+  });
+  builder.add_event_listener("mutate_onething_button", |_:ClickEvent| {
+    with_state_mut(|state| {
+      SoundMutator {
+            generator: &mut rand::thread_rng(),
+            duration: Default::default(),
+            flop_chance: 0.1,
+            tweak_chance: 0.1,
+            tweak_size: 1.0,
+          }
+          .mutate_sound(&mut state.sound);
+    });
+  });
+  let load_callback = || {
+    let loading = js_unwrap!{$("#json_area").val()};
+    if let Ok(sound) = serde_json::from_str(&loading) {
+      with_state_mut(|state| state.sound = sound);
+    }
+  });
+  builder.add_event_listener("json_area", |_:ClickEvent| {
+    js!{
+      $("#json_area").select();
+    }
+  });
+  builder.add_event_listener("json_area", |_:InputEvent| {
+    let loading = js_unwrap!{$("#json_area").val()};
+    if let Ok(sound) = serde_json::from_str(&loading) {
+      with_state_mut(|state| state.sound = sound);
+    }
   });
   
   html! {
@@ -264,11 +313,36 @@ fn app<Builder: UIBuilder>(builder: &mut Builder) -> Element {
     </div>
   }
   
+  });
+}
+
+
+#[derive (Default)]
+struct ClientSideUIBuilder {
+  pub after_morphdom_functions: Vec<Box<dyn FnOnce()>>,
+  pub render_progress_functions: Vec<Box<dyn FnMut()>>,
+  pub event_listeners: HashMap <(String, & 'static str), Box <dyn FnMut (Value)>>,
+}
+
+impl UIBuilder for ClientSideUIBuilder {
+  fn add_event_listener <Event: ConcreteEvent, Callback: FnMut(Event)> (&mut self, id: String, listener: Callback) {
+    self.add_event_listener_erased (id, Event::EVENT_TYPE, move | event | (listener)(event.try_into().unwrap()));
+  }
+  fn add_event_listener_erased <Callback: FnMut(Value)> (&mut self, id: String, event_type: &'static str, listener: Callback) {
+    self.event_listeners.insert ((id, event_type), Box::new (listener));
+  }
+  fn after_morphdom<Callback: FnOnce()> (&mut self, callback: Callback) {
+    self.after_morphdom_functions.push (Box::new (callback));
+  }
+  fn on_render_progress<Callback: FnMut()> (&mut self, callback: Callback) {
+    self.render_progress_functions.push (Box::new (callback));
   }
 }
 
+
+
 fn redraw_app() {
-  let mut builder = ClientSideUIBuilder::new();
+  let mut builder = ClientSideUIBuilder::default();
   let app_element = app(&mut builder);
   
   js! {morphdom($("#app")[0], @{app_element.vnode()});}
@@ -297,84 +371,7 @@ fn redraw_app() {
     redraw
       .render_progress_functions
       .push(Box::new(move |state| main_canvas.update(state)));
-    //redraw.rows += 1;
 
-
-    let randomize_button = assign_row(
-      redraw.rows,
-      button_input(
-        "Randomize",
-        input_callback_nullary(state, move |state| {
-          state.sound = random_sound(&mut rand::thread_rng());
-        }),
-      ),
-    );
-    js! {@{left_column}.append (@{randomize_button});}
-    let randomize2_button = assign_row(
-      redraw.rows,
-      button_input(
-        "Randomize everything a little",
-        input_callback_nullary(state, move |state| {
-          SoundMutator {
-            generator: &mut rand::thread_rng(),
-            duration: Default::default(),
-            flop_chance: 0.0,
-            tweak_chance: 1.0,
-            tweak_size: 0.05,
-          }
-          .mutate_sound(&mut state.sound);
-        }),
-      ),
-    );
-    js! {@{left_column}.append (@{randomize2_button});}
-    let randomize3_button = assign_row(
-      redraw.rows,
-      button_input(
-        "Randomize a few things a lot",
-        input_callback_nullary(state, move |state| {
-          SoundMutator {
-            generator: &mut rand::thread_rng(),
-            duration: Default::default(),
-            flop_chance: 0.1,
-            tweak_chance: 0.1,
-            tweak_size: 1.0,
-          }
-          .mutate_sound(&mut state.sound);
-        }),
-      ),
-    );
-    js! {@{left_column}.append (@{randomize3_button});}
-    let load_callback = input_callback(state, |state, value: String| {
-      if let Ok(sound) = serde_json::from_str(&value) {
-        state.sound = sound;
-      }
-    });
-    js! {
-    on (on (
-      $("<textarea>").text (@{serde_json::to_string_pretty (sound).unwrap()}).appendTo (@{left_column}),
-      "click",
-      function (event) {event.target.select() ;}
-    ),
-      "input",
-      function(event) {@{load_callback} (event.target.value);}
-    );}
-
-    macro_rules! add_envelope_input {
-  ($variable: ident, $name: expr, $range: expr) => {
-    let input = assign_row(redraw.rows, numerical_input (
-      state,
-      stringify! ($variable),
-      $name,
-      getter! (state: State => UserTime {state.sound.envelope.$variable}),
-      $range
-    ));
-
-    let label = assign_row(redraw.rows, js!{ return @{&input}.children("label");});
-    js!{@{&label}.append(":").addClass("toplevel_input_label")}
-    js!{@{grid_element}.append (@{label},@{input});}
-    redraw.rows += 1;
-    }
-  }
 
     let envelope_canvas = Canvas::default();
     js! {
@@ -398,105 +395,19 @@ fn redraw_app() {
       @{& envelope_canvas.canvas}.parent()
       .css("grid-row", @{redraw.rows}+" / span 3")
     );}
-    js! { @{grid_element}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{redraw.rows}+" / span 3")); }
-    add_envelope_input!(attack, "Attack", [0.0, 1.0]);
-    add_envelope_input!(sustain, "Sustain", [0.0, 3.0]);
-    add_envelope_input!(decay, "Decay", [0.0, 3.0]);
-
-    let waveform_start = redraw.rows;
-    let waveform_input = assign_row(
-      redraw.rows,
-      waveform_input(
-        state,
-        "waveform",
-        "Waveform",
-        getter! (state:State => Waveform{state.sound.waveform}),
-      ),
-    );
-    let label = assign_row(
-      redraw.rows,
-      js! { return @{&waveform_input}.children("label").first();},
-    );
-    js! {@{&label}.addClass("toplevel_input_label")}
 
     js! {@{grid_element}.append (@{assign_row(redraw.rows, js!{ return @{&guard.waveform_canvas.canvas}.parent()})});}
     redraw_waveform_canvas(&guard);
-    js! {@{grid_element}.append (@{label},@{waveform_input}.addClass("sound_radio_input"));}
-    redraw.rows += 1;
 
-    js! { @{grid_element}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{waveform_start}+" / "+@{redraw.rows})); }
-
-    struct Visitor<'a>(&'a Rc<RefCell<State>>, &'a mut RedrawState);
-    impl<'a> SignalVisitor for Visitor<'a> {
-      fn visit<Identity: SignalIdentity>(&mut self) {
-        let specification: SignalEditorSpecification<Identity> = SignalEditorSpecification {
-          state: self.0,
-          redraw: self.1,
-          _marker: PhantomData,
-        };
-        specification.render();
-      }
-    }
-
-    visit_signals(&mut Visitor(state, &mut redraw));
-
-    let clipping_input = assign_row(
-      redraw.rows,
-      RadioInputSpecification {
-        state: state,
-        id: "clipping",
-        name: "Clipping behavior",
-        getter: getter! (state:State  => bool{state.sound.soft_clipping}).dynamic(),
-        options: &[(false, "Hard clipping"), (true, "Soft clipping")],
-      }
-      .render(),
-    );
-    let label = assign_row(
-      redraw.rows,
-      js! { return @{& clipping_input}.children("label").first();},
-    );
-    js! {@{&label}.addClass("toplevel_input_label")}
-    js! { @{grid_element}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{redraw.rows}+" / span 1")); }
-    js! {@{grid_element}.append (@{label},@{clipping_input}.addClass("sound_radio_input"));}
-    redraw.rows += 1;
-
-    let sample_rate_input = assign_row(
-      redraw.rows,
-      RadioInputSpecification {
-        state: state,
-        id: "sample_rate",
-        name: "Output sample rate",
-        getter: getter! (state:State  => u32{ state.sound.output_sample_rate}).dynamic(),
-        options: &[(44100, "44100"), (48000, "48000")],
-      }
-      .render(),
-    );
-    let label = assign_row(
-      redraw.rows,
-      js! { return @{& sample_rate_input}.children("label").first();},
-    );
-    js! {@{&label}.addClass("toplevel_input_label")}
-    js! { @{grid_element}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{redraw.rows}+" / span 1")); }
-    js! {@{grid_element}.append (@{label},@{sample_rate_input}.addClass("sound_radio_input"));}
-    redraw.rows += 1;
 
     //js! {window.before_render = Date.now();}
     //let rendered: TypedArray <f64> = sound.render (44100).as_slice().into();
 
     //js! {console.log("rendering took this many milliseconds: " + (Date.now() - window.before_render));}
-
-    js! {morphdom($("#app")[0], @{app_element}[0]);}
-
-    // hack – suppress warning from incrementing rows unnecessarily at the end
-    //#[allow (unused_variables)] let whatever = redraw.rows;
-  }
-  {
-    let mut guard = state.borrow_mut();
-    let state = &mut *guard;
-
-    state.render_progress_functions = redraw.render_progress_functions;
-  }
 }
+
+
+
 
 fn redraw_waveform_canvas(state: &State) {
   //let sample_rate = 500.0;
@@ -745,20 +656,7 @@ fn main() {
   stdweb::event_loop();
 }
 
-#[inline(never)]
-fn hack2() -> impl FnOnce() {
-  || {
-    js! {clear_callbacks();}
-  }
-}
-#[inline(never)]
-fn hack() -> impl FnOnce() {
-  let foo = hack2();
-  move || foo()
-}
-
 #[cfg(not(target_os = "emscripten"))]
 fn main() {
-  println!("There's not currently a way to compile this natively");
-  hack();
+  self::generate_static_files::generate_static_files();
 }

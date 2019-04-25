@@ -4,8 +4,6 @@
 window.Module = window.Module || {};
 Module.TOTAL_MEMORY = 1 << 28;
 
-var panels = $("#panels");
-
 var audio = window.audio = new AudioContext();
 var audio_source;
 var sample_rate = 44100;
