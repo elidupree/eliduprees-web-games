@@ -80,7 +80,6 @@ pub struct State {
   pub rendering_state: RenderingState,
   pub playback_state: Option<Playback>,
   pub loop_playback: bool,
-  pub waveform_canvas: Canvas,
   pub effects_shown: HashSet<&'static str>,
   pub render_progress_functions: Vec<Box<dyn FnMut()>>,
 }
@@ -275,10 +274,31 @@ fn app<Builder: UIBuilder>(builder: &mut Builder) -> Element {
     }
   });
   
+  builder.after_morphdom(|| {
+    js! {
+      var canvas = document.getElementById ("envelope_canvas");
+      var context = canvas.getContext ("2d");
+      canvas.height = 90;
+      context.beginPath();
+      var horizontal = 0;
+      context.moveTo (0, canvas.height);
+      horizontal += @{sound.envelope.attack.rendered*DISPLAY_SAMPLE_RATE};
+      context.lineTo (horizontal, 0);
+      horizontal += @{sound.envelope.sustain.rendered*DISPLAY_SAMPLE_RATE};
+      context.lineTo (horizontal, 0);
+      horizontal += @{sound.envelope.decay.rendered*DISPLAY_SAMPLE_RATE};
+      context.lineTo (horizontal, canvas.height);
+      context.strokeStyle = "rgb(0,0,0)";
+      context.stroke();
+    }
+    
+    redraw_waveform_canvas();
+  });
+  
   html! {
     <div class="app">
       <div class="left_column">
-        {main_canvas}
+        {make_rendered_canvas(builder, "main_canvas", getter!(state: RenderingState => RenderedSamples {state.final_samples}), 100)}
         <input type="button" id="play_button" value="Play" />
         <div class="labeled_input">
           {loop_input}
@@ -296,11 +316,11 @@ fn app<Builder: UIBuilder>(builder: &mut Builder) -> Element {
       </div>
       <div class="main_grid">
         {envelope_inputs}
-        <div class=["envelope", "envelope_canvas"]>{envelope_canvas}</div>
+        <div class=["envelope", "envelope_canvas"]><canvas id="envelope_canvas" width=MAX_RENDER_LENGTH*DISPLAY_SAMPLE_RATE height=90 /></div>
         <div class=["envelope", "input_region"]></div>
         <div class=["waveform", "grid_row_label"]>{waveform_label}</div>
         <div class=["waveform", "waveform_input"]>{main_waveform_input}</div>
-        <div class=["waveform", "waveform_canvas"]>{waveform_canvas}</div>
+        <div class=["waveform", "waveform_canvas"]><canvas id="waveform_canvas" width=MAX_RENDER_LENGTH*DISPLAY_SAMPLE_RATE height=32 /></div>
         <div class=["waveform", "input_region"]></div>
         {signal_elements}
         <div class=["clipping", "grid_row_label"]>{clipping_label}</div>
@@ -329,7 +349,27 @@ impl UIBuilder for ClientSideUIBuilder {
     self.add_event_listener_erased (id, Event::EVENT_TYPE, move | event | (listener)(event.try_into().unwrap()));
   }
   fn add_event_listener_erased <Callback: FnMut(Value)> (&mut self, id: String, event_type: &'static str, listener: Callback) {
-    self.event_listeners.insert ((id, event_type), Box::new (listener));
+    self.event_listeners.insert ((id, event_type), Box::new (move |event| {
+    
+    let mut sound_changed = false;
+    (listener)(event);
+    with_state_mut(|state| {
+      if state.sound != state.undo_history[state.undo_position] {
+        sound_changed = true;
+        state.undo_history.split_off(state.undo_position + 1);
+        state.undo_history.push_back(state.sound.clone());
+        if state.undo_history.len() <= 1000 {
+          state.undo_position += 1;
+        } else {
+          state.undo_history.pop_front();
+        }
+      }
+    });
+    if sound_changed {
+      update_for_changed_sound(&state);
+    }
+
+    }));
   }
   fn after_morphdom<Callback: FnOnce()> (&mut self, callback: Callback) {
     self.after_morphdom_functions.push (Box::new (callback));
@@ -346,9 +386,39 @@ fn redraw_app() {
   let app_element = app(&mut builder);
   
   js! {morphdom($("#app")[0], @{app_element.vnode()});}
+  js! {
+    document.getElementsByTagName("canvas").forEach(function(canvas) {
+      var context = canvas.getContext ("2d");
+      context.clearRect (0, 0, canvas.width, canvas.height);
+    });
+  }
   for f in builder.after_morphdom_functions { (f)(); }
   
   with_state_mut (move | state | {
+    for ((_, event_type),_) in & builder.event_listeners {
+      let event_type = event_type.to_string();
+      if state.event_types_initialized.insert (event_type.clone()) {
+        let global_listener = move |event: Value, mut target: Element| {
+          loop {
+            if let Some(id) = target.get_attribute (id) {
+              if let Some(specific_listener) = state.event_listeners.get ((id, event_type.clone()) {
+                (specific_listener) (event);
+                break
+              }
+            }
+            match target.parent_element() {
+              Some (parent) => target = parent,
+              None => break
+            }
+          }
+        };
+        js! {
+          $(document).on (event_type, function (event) {
+            @{global_listener} (event, event.target);
+          });
+        }
+      }
+    }
     state.render_progress_functions = builder.render_progress_functions;
     state.event_listeners = builder.event_listeners;
   });
@@ -356,71 +426,31 @@ fn redraw_app() {
 
 
 
-    state.waveform_canvas = Canvas::default();
-
-
-    let sample_rate = 500.0;
-    //let envelope_samples = display_samples (sample_rate, sound.duration(), | time | sound.envelope.sample (time));
-    
-    
-    let mut main_canvas = make_rendered_canvas(
-      state,
-      getter! (state: RenderingState => RenderedSamples {state.final_samples}),
-      100,
-    );
     redraw
       .render_progress_functions
       .push(Box::new(move |state| main_canvas.update(state)));
 
 
-    let envelope_canvas = Canvas::default();
-    js! {
-      var canvas =@{&envelope_canvas.canvas}[0];
-      var context =@{&envelope_canvas.context};
-      canvas.height = 90;
-      context.beginPath();
-      var horizontal = 0;
-      context.moveTo (0, canvas.height);
-      horizontal += @{sound.envelope.attack.rendered*DISPLAY_SAMPLE_RATE};
-      context.lineTo (horizontal, 0);
-      horizontal += @{sound.envelope.sustain.rendered*DISPLAY_SAMPLE_RATE};
-      context.lineTo (horizontal, 0);
-      horizontal += @{sound.envelope.decay.rendered*DISPLAY_SAMPLE_RATE};
-      context.lineTo (horizontal, canvas.height);
-      context.strokeStyle = "rgb(0,0,0)";
-      context.stroke();
-    }
-
-    js! {@{grid_element}.append (
-      @{& envelope_canvas.canvas}.parent()
-      .css("grid-row", @{redraw.rows}+" / span 3")
-    );}
-
-    js! {@{grid_element}.append (@{assign_row(redraw.rows, js!{ return @{&guard.waveform_canvas.canvas}.parent()})});}
-    redraw_waveform_canvas(&guard);
-
-
-    //js! {window.before_render = Date.now();}
-    //let rendered: TypedArray <f64> = sound.render (44100).as_slice().into();
-
-    //js! {console.log("rendering took this many milliseconds: " + (Date.now() - window.before_render));}
 }
 
 
 
 
-fn redraw_waveform_canvas(state: &State) {
+fn redraw_waveform_canvas() {
+with_state(|state| {
   //let sample_rate = 500.0;
   //let waveform_samples = display_samples (sample_rate, 3.0, | phase | state.sound.sample_waveform (time, phase));
 
   //draw_samples (state.waveform_canvas.clone(), &waveform_samples, sample_rate, 40.0, [-1.0, 1.0], 3.0);
+  
+  let canvas = js!{return document.getElementById ("waveform_canvas");};
+  let context = js!{return @{&canvas}.getContext ("2d");};
 
   js! {
-    var canvas =@{&state.waveform_canvas.canvas}[0];
-    var context =@{&state.waveform_canvas.context};
+    var canvas = @{&canvas};
     //canvas.width = 100;
     //canvas.height = 200;
-    context.clearRect (0, 0, canvas.width, canvas.height);
+    @{&context}.clearRect (0, 0, canvas.width, canvas.height);
   }
 
   let rendering = &state.rendering_state;
@@ -456,10 +486,7 @@ fn redraw_waveform_canvas(state: &State) {
   //eprintln!("{:?}", (rendered_duration, wavelength, start_time));
   if rendered_duration >= start_time + duration {
     js! {
-      var canvas =@{&state.waveform_canvas.canvas}[0];
-      var context =@{&state.waveform_canvas.context};
-
-      context.beginPath();
+      @{&context}.beginPath();
     }
     let num_samples = 500;
     for index in 0..num_samples {
@@ -468,8 +495,8 @@ fn redraw_waveform_canvas(state: &State) {
       let value = samples.resample(time, &rendering.constants);
       //eprintln!("{:?}", (time, value));
       js! {
-        var canvas =@{&state.waveform_canvas.canvas}[0];
-        var context =@{&state.waveform_canvas.context};
+        var canvas = @{&canvas};
+        var context = @{&context};
         var first =@{fraction}*canvas.width;
         var second =(0.5 - @{value}*0.5)*canvas.height;
 
@@ -482,14 +509,13 @@ fn redraw_waveform_canvas(state: &State) {
       }
     }
     js! {
-      var canvas =@{&state.waveform_canvas.canvas}[0];
-      var context =@{&state.waveform_canvas.context};
+      var context = @{&context};
 
       context.strokeStyle = "rgb(0,0,0)";
       context.stroke();
     }
   }
-}
+}}
 
 const SWITCH_PLAYBACK_DELAY: f64 = 0.15;
 
