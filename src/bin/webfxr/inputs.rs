@@ -14,13 +14,15 @@ fn get<G: 'static + GetterBase<From = State, To = T>, T>(getter: &Getter<G>) -> 
 }
 fn set<G: 'static + GetterBase<From = State, To = T>, T>(getter: &Getter<G>, value: T) {
   with_state_mut(|state| *getter.get_mut(state) = value);
-}
+} 
 
-pub fn checkbox_input<G: 'static + GetterBase<From = State, To = bool>>(
+
+pub fn checkbox_input<Builder: UIBuilder, G: 'static + GetterBase<From = State, To = bool>>(
+  builder: &mut Builder,
   id: &str,
   name: &str,
   getter: Getter<G>,
-) -> (Element, Element, impl FnOnce(&mut Thingy)) {
+) -> (Element, Element) {
   let current_value = get(getter);
   (
     html! { <input type="checkbox" id=id checked=current_value /> },
@@ -33,11 +35,12 @@ pub fn checkbox_input<G: 'static + GetterBase<From = State, To = bool>>(
   )
 }
 
-pub fn menu_input<T: 'static + Eq + Clone, G: 'static + GetterBase<From = State, To = T>>(
+pub fn menu_input<Builder: UIBuilder, T: 'static + Eq + Clone, G: 'static + GetterBase<From = State, To = T>>(
+  builder: &mut Builder,
   id: &str,
   getter: Getter<G>,
   options: &[(T, &str)],
-) -> (Element, impl FnOnce(&mut Thingy)) {
+) -> Element {
   let current_value = get(getter);
   let mut values = options.iter().map(|(a, _)| a.clone()).collect();
   (
@@ -61,11 +64,12 @@ pub fn menu_input<T: 'static + Eq + Clone, G: 'static + GetterBase<From = State,
   )
 }
 
-pub fn waveform_input<G: 'static + GetterBase<From = State, To = Waveform>>(
+pub fn waveform_input<Builder: UIBuilder, G: 'static + GetterBase<From = State, To = Waveform>>(
+  builder: &mut Builder,
   id: &str,
   name: &str,
   getter: Getter<G>,
-) -> (Element, impl FnOnce(&mut Thingy)) {
+) -> Element {
   RadioInputSpecification {
     state: state,
     id: id,
@@ -79,17 +83,18 @@ pub fn waveform_input<G: 'static + GetterBase<From = State, To = Waveform>>(
 //fn round_step (input: f64, step: f64)->f64 {(input*step).round()/step}
 
 pub struct RadioInputSpecification<'a, T: 'a> {
+  pub builder: &'a mut Builder,
   pub id: &'a str,
   pub name: &'a str,
   pub options: &'a [(T, &'a str)],
   pub getter: DynamicGetter<State, T>,
 }
 
-impl<'a, T: Clone + Eq + JsSerialize + 'static> RadioInputSpecification<'a, T> {
+impl<'a, Builder: UIBuilder, T: Clone + Eq + JsSerialize + 'static> RadioInputSpecification<'a, T> {
   fn value_id(&self, value: &T) -> String {
     js_unwrap! {@{self.id}+"_radios_"+@{value}}
   }
-  pub fn render(self) -> (Element, Element, impl FnOnce(&mut Thingy)) {
+  pub fn render(self) -> (Element, Element) {
     let current_value = get(getter);
     (
       html! {
@@ -115,21 +120,24 @@ impl<'a, T: Clone + Eq + JsSerialize + 'static> RadioInputSpecification<'a, T> {
 }
 
 pub fn numerical_input<
+  Builder: UIBuilder,
   T: UserNumberType,
   G: 'static + GetterBase<From = State, To = UserNumber<T>>,
 >(
+  builder: &mut Builder,
   id: &str,
   name: &str,
   getter: Getter<G>,
   slider_range: [f64; 2],
+  slider_step: f64,
 ) -> Value {
   let current_value = getter.get(&state.borrow()).clone();
   NumericalInputSpecification {
-    id: id,
-    name: name,
-    slider_range: slider_range,
-    slider_step: 0.0,
-    current_value: current_value,
+    id,
+    name,
+    slider_range,
+    slider_step,
+    current_value,
     input_callback: input_callback_gotten(state, getter, |target, value: UserNumber<T>| {
       *target = value
     }),
@@ -137,7 +145,8 @@ pub fn numerical_input<
   .render()
 }
 
-pub struct NumericalInputSpecification<'a, T: UserNumberType, F> {
+pub struct NumericalInputSpecification<'a, Builder: UIBuilder, T: UserNumberType, F> {
+  pub builder: &'a mut Builder,
   pub id: &'a str,
   pub name: &'a str,
   pub slider_range: [f64; 2],
@@ -149,7 +158,7 @@ pub struct NumericalInputSpecification<'a, T: UserNumberType, F> {
 impl<'a, F: 'static + Fn(UserNumber<T>) + Copy, T: UserNumberType>
   NumericalInputSpecification<'a, T, F>
 {
-  pub fn render(self) -> (Element, Element, impl FnOnce(&mut Thingy)) {
+  pub fn render(self) -> (Element, Element) {
     let value_type = with_state(T::currently_used);
     let displayed_value = if value_type == self.current_value.value_type {
       self.current_value.source.clone()
@@ -182,30 +191,18 @@ impl<'a, F: 'static + Fn(UserNumber<T>) + Copy, T: UserNumberType>
     };
 
     let label = format!("{} ({})", self.name, value_type.unit_name());
-
-    (
-      html! {
-        <div id="{self.id}" class="labeled_input numeric">
-          <input type="number" id={number_id} value={displayed_value} min={self.slider_range [0]}, max={self.slider_range [1]} step={slider_step} />
-          <input type="range" id={range_id} value={self.current_value.rendered} />
-        </div>
-      },
-      html! {
-        <label for={number_id} text={label} />
-      },
-      move |thingy| {
-        let id = self.value_id(value);
-        let value = value.clone();
-
-        thingy.add_event_listener(&number_id, move |_: ChangeEvent| {
-          (number_overrides)();
-        });
-        thingy.add_event_listener(&range_id, move |_: ChangeEvent| {
+    
+    self.builder.add_event_listener(&number_id, move |_: ChangeEvent| {
+      (number_overrides)();
+    });
+    
+    self.builder.add_event_listener(&range_id, move |_: ChangeEvent| {
           let value = js_unwrap! {$("#"+@{range_id})[0].valueAsNumber};
           let source = value_type.approximate_from_rendered(value);
           (update)(source);
         });
-        thingy.add_event_listener_by_name(&range_id, "wheel", move | event: Value | {
+    
+    self.builder.add_event_listener_by_name(&range_id, "wheel", move | event: Value | {
           js! {
         if (window.webfxr_scrolling) {return;}
         var event = @{event};
@@ -235,17 +232,29 @@ impl<'a, F: 'static + Fn(UserNumber<T>) + Copy, T: UserNumberType>
         event.stopPropagation();
     };
         });
+    
+
+    (
+      html! {
+        <div id="{self.id}" class="labeled_input numeric">
+          <input type="number" id={number_id} value={displayed_value} min={self.slider_range [0]}, max={self.slider_range [1]} step={slider_step} />
+          <input type="range" id={range_id} value={self.current_value.rendered} />
+        </div>
+      },
+      html! {
+        <label for={number_id} text={label} />
       },
     )
   }
 }
 
-pub struct SignalEditorSpecification<'a, Identity: SignalIdentity> {
+pub struct SignalEditorSpecification<'a, Builder: UIBuilder, Identity: SignalIdentity> {
+  pub builder: &'a mut Builder,
   pub redraw: &'a mut RedrawState,
   pub _marker: PhantomData<Identity>,
 }
 
-impl<'a, Identity: SignalIdentity> SignalEditorSpecification<'a, Identity> {
+impl<'a, Builder: UIBuilder, Identity: SignalIdentity> SignalEditorSpecification<'a, Builder, Identity> {
   pub fn assign_row(&self, element: Element) -> Element {
     js! {@{&element}.css("grid-row", @{self.redraw.rows}+" / span 1")};
     element
@@ -256,8 +265,8 @@ impl<'a, Identity: SignalIdentity> SignalEditorSpecification<'a, Identity> {
     id: &str,
     name: &str,
     getter: Getter<G>,
-  ) -> Value {
-    self.numeric_input(id, name, [0.0, 3.0], 0.0, getter)
+  ) -> Element {
+    numeric_input(self.builder, id, name, [0.0, 3.0], 0.0, getter)
   }
 
   pub fn value_input<
@@ -269,7 +278,7 @@ impl<'a, Identity: SignalIdentity> SignalEditorSpecification<'a, Identity> {
     getter: Getter<G>,
   ) -> Value {
     let info = Identity::info();
-    self.numeric_input(id, name, info.slider_range, info.slider_step, getter)
+    numeric_input(self.builder, id, name, info.slider_range, info.slider_step, getter)
   }
 
   pub fn difference_input<
@@ -285,7 +294,8 @@ impl<'a, Identity: SignalIdentity> SignalEditorSpecification<'a, Identity> {
     getter: Getter<G>,
   ) -> Value {
     let info = Identity::info();
-    self.numeric_input(
+    numeric_input(
+      self.builder,
       id,
       name,
       [-info.difference_slider_range, info.difference_slider_range],
@@ -300,7 +310,7 @@ impl<'a, Identity: SignalIdentity> SignalEditorSpecification<'a, Identity> {
     name: &str,
     getter: Getter<G>,
   ) -> Value {
-    self.numeric_input(id, name, [1.0f64.log2(), 20f64.log2()], 0.0, getter)
+    numeric_input(self.builder, id, name, [1.0f64.log2(), 20f64.log2()], 0.0, getter)
   }
 
   pub fn checkbox_input<G: 'static + GetterBase<From = State, To = bool>>(
@@ -309,7 +319,7 @@ impl<'a, Identity: SignalIdentity> SignalEditorSpecification<'a, Identity> {
     name: &str,
     getter: Getter<G>,
   ) -> Value {
-    self.assign_row(checkbox_input(self.state, id, name, getter))
+    self.assign_row(checkbox_input(self.builder, id, name, getter))
   }
   pub fn waveform_input<G: 'static + GetterBase<From = State, To = Waveform>>(
     &self,
@@ -317,10 +327,10 @@ impl<'a, Identity: SignalIdentity> SignalEditorSpecification<'a, Identity> {
     name: &str,
     getter: Getter<G>,
   ) -> Value {
-    self.assign_row(waveform_input(self.state, id, name, getter))
+    self.assign_row(waveform_input(self.builder, id, name, getter))
   }
 
-  pub fn render(self) -> (Vec<Element>, impl FnOnce(&mut Thingy)) {
+  pub fn render(self) -> Vec<Element> {
     with_state(|state| {
       let sound = &state.sound;
       let signals_getter = Identity::definition_getter();

@@ -5,34 +5,31 @@ use stdweb::Value;
 use super::*;
 
 
-pub fn undo(state: &Rc<RefCell<State>>) {
-  let mut sound_changed = false;
-  {
-    let mut guard = state.borrow_mut();
-    let state = &mut *guard;
+pub fn undo() {
+  let sound_changed = with_state_mut(|state| {
     if state.undo_position > 0 {
       state.undo_position -= 1;
       state.sound = state.undo_history[state.undo_position].clone();
-      sound_changed = true;
+      true
     }
-  }
+    else {
+      false
+    }
+  });
   if sound_changed {
-    update_for_changed_sound(&state);
+    update_for_changed_sound();
   }
 }
-pub fn redo(state: &Rc<RefCell<State>>) {
-  let mut sound_changed = false;
-  {
-    let mut guard = state.borrow_mut();
-    let state = &mut *guard;
+pub fn redo() {
+  let sound_changed = with_state_mut(|state| {
     if state.undo_position + 1 < state.undo_history.len() {
       state.undo_position += 1;
       state.sound = state.undo_history[state.undo_position].clone();
       sound_changed = true;
     }
-  }
+  });
   if sound_changed {
-    update_for_changed_sound(&state);
+    update_for_changed_sound();
   }
 }
 
