@@ -7,8 +7,6 @@ use typed_html::{html, text};
 
 use super::*;
 
-type Element = Box<dyn FlowContent<String>>;
-
 fn get<G: 'static + GetterBase<From = State, To = T>, T>(getter: &Getter<G>) -> T {
   with_state(|state| getter.get(state).clone());
 }

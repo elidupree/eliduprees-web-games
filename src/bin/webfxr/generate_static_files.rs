@@ -1,5 +1,6 @@
 use crate::UIBuilder;
 use std::fs;
+use super::*;
 
 struct StaticFilesUIBuilder {
   pub css: String,

@@ -29,6 +29,7 @@ pub use array_ext::Array;
 pub use eliduprees_web_games::*;
 use ordered_float::OrderedFloat;
 use stdweb::web::{self, TypedArray};
+use stdweb::web::event::{ConcreteEvent, ClickEvent};
 
 #[macro_use]
 mod misc;
@@ -47,6 +48,7 @@ pub use rendering::*;
 pub use ui::*;
 
 type SoundId = u64;
+type Element = Box<dyn FlowContent<String>>;
 
 #[derive(Clone)]
 pub enum PlaybackTime {

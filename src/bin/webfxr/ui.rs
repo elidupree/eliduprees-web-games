@@ -25,7 +25,10 @@ pub fn redo() {
     if state.undo_position + 1 < state.undo_history.len() {
       state.undo_position += 1;
       state.sound = state.undo_history[state.undo_position].clone();
-      sound_changed = true;
+      true
+    }
+    else {
+      false
     }
   });
   if sound_changed {
