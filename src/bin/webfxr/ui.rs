@@ -168,6 +168,6 @@ pub fn make_rendered_canvas<
   });
   
   html!{
-    <canvas id=id width=MAX_RENDER_LENGTH*DISPLAY_SAMPLE_RATE height=height />
+    <canvas id=id width={MAX_RENDER_LENGTH*DISPLAY_SAMPLE_RATE} height=height />
   }
 }

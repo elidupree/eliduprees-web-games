@@ -46,7 +46,7 @@ pub fn menu_input<Builder: UIBuilder, T: 'static + Eq + Clone, G: 'static + Gett
       <select id=id>
         {options.iter().map(|(value, name)| html!{
           <option selected={*value == current_value}>
-            text!(name)
+            {text!(name)}
           </option>
         })}
       </select>
@@ -93,7 +93,8 @@ impl<'a, Builder: UIBuilder, T: Clone + Eq + JsSerialize + 'static> RadioInputSp
     js_unwrap! {@{self.id}+"_radios_"+@{value}}
   }
   pub fn render(self) -> (Element, Element) {
-    let current_value = get(getter);
+  with_state(|state| {
+    let current_value = self.getter.get(state);
     (
       html! {
         <div class="radio">
@@ -102,7 +103,7 @@ impl<'a, Builder: UIBuilder, T: Clone + Eq + JsSerialize + 'static> RadioInputSp
           })}
         </div>
       },
-      html! { <label for=id text=name> },
+      html! { <label for=id text=name /> },
       move |thingy| {
         for (value, name) in self.options {
           let id = self.value_id(value);
@@ -114,7 +115,7 @@ impl<'a, Builder: UIBuilder, T: Clone + Eq + JsSerialize + 'static> RadioInputSp
         }
       },
     )
-  }
+  })}
 }
 
 pub fn numerical_input<
@@ -234,13 +235,13 @@ impl<'a, F: 'static + Fn(UserNumber<T>) + Copy, T: UserNumberType>
 
     (
       html! {
-        <div id="{self.id}" class="labeled_input numeric">
-          <input type="number" id={number_id} value={displayed_value} min={self.slider_range [0]}, max={self.slider_range [1]} step={slider_step} />
-          <input type="range" id={range_id} value={self.current_value.rendered} />
+        <div id=self.id class="labeled_input numeric">
+          <input type="number" id=number_id value=displayed_value min={self.slider_range [0]} max={self.slider_range [1]} step=slider_step />
+          <input type="range" id=range_id value=self.current_value.rendered />
         </div>
       },
       html! {
-        <label for={number_id} text={label} />
+        <label for=number_id text=label />
       },
     )
   }
@@ -264,7 +265,7 @@ impl<'a, Builder: UIBuilder, Identity: SignalIdentity> SignalEditorSpecification
     name: &str,
     getter: Getter<G>,
   ) -> Element {
-    numeric_input(self.builder, id, name, [0.0, 3.0], 0.0, getter)
+    numerical_input(self.builder, id, name, [0.0, 3.0], 0.0, getter)
   }
 
   pub fn value_input<
@@ -276,7 +277,7 @@ impl<'a, Builder: UIBuilder, Identity: SignalIdentity> SignalEditorSpecification
     getter: Getter<G>,
   ) -> Value {
     let info = Identity::info();
-    numeric_input(self.builder, id, name, info.slider_range, info.slider_step, getter)
+    numerical_input(self.builder, id, name, info.slider_range, info.slider_step, getter)
   }
 
   pub fn difference_input<
@@ -292,7 +293,7 @@ impl<'a, Builder: UIBuilder, Identity: SignalIdentity> SignalEditorSpecification
     getter: Getter<G>,
   ) -> Value {
     let info = Identity::info();
-    numeric_input(
+    numerical_input(
       self.builder,
       id,
       name,
@@ -308,7 +309,7 @@ impl<'a, Builder: UIBuilder, Identity: SignalIdentity> SignalEditorSpecification
     name: &str,
     getter: Getter<G>,
   ) -> Value {
-    numeric_input(self.builder, id, name, [1.0f64.log2(), 20f64.log2()], 0.0, getter)
+    numerical_input(self.builder, id, name, [1.0f64.log2(), 20f64.log2()], 0.0, getter)
   }
 
   pub fn checkbox_input<G: 'static + GetterBase<From = State, To = bool>>(
@@ -394,7 +395,7 @@ impl<'a, Builder: UIBuilder, Identity: SignalIdentity> SignalEditorSpecification
           elements.append(html! {
             <select id=select_id class=[&signal_class, "add_effect_buttons"]>
               <option selected=true>"Add effect..."</option>
-              <option>{text!("{} jump", info.name)}</option>
+              <option>{text!("{} jump", {info.name})}</option>
               <option>{text!("{} slide", info.name)}</option>
               <option>{text!("{} oscillation", info.name)}</option>
             </select>

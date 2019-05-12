@@ -1,10 +1,12 @@
 #![feature(never_type, nll)]
-#![recursion_limit = "256"]
+#![recursion_limit = "512"]
 
 extern crate eliduprees_web_games;
 
 #[macro_use]
 extern crate stdweb;
+#[macro_use]
+extern crate typed_html;
 extern crate serde;
 extern crate serde_json;
 #[macro_use]
@@ -163,18 +165,18 @@ fn app<Builder: UIBuilder>(builder: &mut Builder) -> Element {
   
   let mut signal_elements = Vec::with_capacity (16);
 
-    struct Visitor<'a>(&'a mut Builder);
-    impl<'a> SignalVisitor for Visitor<'a> {
+    struct Visitor<'a, Builder: UIBuilder>(&'a mut Builder, &'a mut Vec<Element>);
+    impl<'a, Builder: UIBuilder> SignalVisitor for Visitor<'a, Builder> {
       fn visit<Identity: SignalIdentity>(&mut self) {
         let specification: SignalEditorSpecification<Identity> = SignalEditorSpecification {
           builder: self.0,
           _marker: PhantomData,
         };
-        signal_elements.extend (specification.render());
+        self.1.extend (specification.render());
       }
     }
 
-    visit_signals(&mut Visitor(&mut builder));
+    visit_signals(&mut Visitor(&mut builder, &mut signal_elements));
 
   builder.next_grid_row_class("clipping");
   builder.next_grid_row_class("sample_rate");
@@ -313,16 +315,16 @@ fn app<Builder: UIBuilder>(builder: &mut Builder) -> Element {
         <input type="button" id="mutate_everything_button" value="Randomize everything a little" />
         <input type="button" id="mutate_onething_button" value="Randomize a few things a lot" />
         <textarea id="json_area">
-          text!(serde_json::to_string_pretty (&state.sound).unwrap())
+          {text!(serde_json::to_string_pretty (&state.sound).unwrap())}
         </textarea>
       </div>
       <div class="main_grid">
         {envelope_inputs}
-        <div class=["envelope", "envelope_canvas"]><canvas id="envelope_canvas" width=MAX_RENDER_LENGTH*DISPLAY_SAMPLE_RATE height=90 /></div>
+        <div class=["envelope", "envelope_canvas"]><canvas id="envelope_canvas" width={MAX_RENDER_LENGTH*DISPLAY_SAMPLE_RATE} height=90 /></div>
         <div class=["envelope", "input_region"]></div>
         <div class=["waveform", "grid_row_label"]>{waveform_label}</div>
         <div class=["waveform", "waveform_input"]>{main_waveform_input}</div>
-        <div class=["waveform", "waveform_canvas"]><canvas id="waveform_canvas" width=MAX_RENDER_LENGTH*DISPLAY_SAMPLE_RATE height=32 /></div>
+        <div class=["waveform", "waveform_canvas"]><canvas id="waveform_canvas" width={MAX_RENDER_LENGTH*DISPLAY_SAMPLE_RATE} height=32 /></div>
         <div class=["waveform", "input_region"]></div>
         {signal_elements}
         <div class=["clipping", "grid_row_label"]>{clipping_label}</div>
@@ -508,7 +510,7 @@ with_state(|state| {
       context.stroke();
     }
   }
-}}
+})}
 
 const SWITCH_PLAYBACK_DELAY: f64 = 0.15;
 
