@@ -122,7 +122,7 @@ pub trait UIBuilder {
   fn on_render_progress<Callback: FnMut()> (&mut self, _callback: Callback) {}
 }
 
-pub fn envelope_input<Builder: UIBuilder, G: 'static + GetterBase<From = State, To = UserTime>>(builder: &mut Builder, id: &str, name: &str, range: [f64; 2], getter: Getter<G>) -> Vec<Element; 2> {
+pub fn envelope_input<Builder: UIBuilder, G: 'static + GetterBase<From = State, To = UserTime>>(builder: &mut Builder, id: &str, name: &str, range: [f64; 2], getter: Getter<G>) -> Vec<Element> {
   let (input, label) = numerical_input(
       builder,
       id, name, getter, range,
@@ -131,7 +131,7 @@ pub fn envelope_input<Builder: UIBuilder, G: 'static + GetterBase<From = State, 
   
   builder.next_grid_row_class(id);
     
-  [
+  vec![
     html! {
       <div class=[id, "grid_row_label"]>{label}</div>
     },
@@ -261,7 +261,7 @@ fn app<Builder: UIBuilder>(builder: &mut Builder) -> Element {
     if let Ok(sound) = serde_json::from_str(&loading) {
       with_state_mut(|state| state.sound = sound);
     }
-  });
+  };
   builder.add_event_listener("json_area", |_:ClickEvent| {
     js!{
       $("#json_area").select();
@@ -401,7 +401,7 @@ fn redraw_app() {
         let global_listener = move |event: Value, mut target: Element| {
           loop {
             if let Some(id) = target.get_attribute (id) {
-              if let Some(specific_listener) = state.event_listeners.get ((id, event_type.clone()) {
+              if let Some(specific_listener) = state.event_listeners.get ((id, event_type.clone())) {
                 (specific_listener) (event);
                 break
               }
@@ -422,15 +422,6 @@ fn redraw_app() {
     state.render_progress_functions = builder.render_progress_functions;
     state.event_listeners = builder.event_listeners;
   });
-}
-
-
-
-    redraw
-      .render_progress_functions
-      .push(Box::new(move |state| main_canvas.update(state)));
-
-
 }
 
 

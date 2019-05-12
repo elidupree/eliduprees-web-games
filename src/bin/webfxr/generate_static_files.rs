@@ -2,8 +2,8 @@ use crate::UIBuilder;
 use std::fs;
 
 struct StaticFilesUIBuilder {
-  pub css: String;
-  pub next_grid_row: i32;
+  pub css: String,
+  pub next_grid_row: i32,
 }
 
 impl UIBuilder for StaticFilesUIBuilder {
@@ -35,13 +35,13 @@ pub fn generate_static_files() {
   
   
 
-  let name_column = 1
-  let dice_column = name_column + 1
-  let lock_column = dice_column + 1
-  let toggle_column = lock_column + 1
-  let input_column = toggle_column + 1
-  let add_effect_column = input_column + 1
-  let canvas_column = add_effect_column + 1
+  let name_column = 1;
+  let dice_column = name_column + 1;
+  let lock_column = dice_column + 1;
+  let toggle_column = lock_column + 1;
+  let input_column = toggle_column + 1;
+  let add_effect_column = input_column + 1;
+  let canvas_column = add_effect_column + 1;
   builder.css(&format!("
 html,body {background-color: white;}
 
@@ -76,7 +76,7 @@ input[type='button'].down {
 
 @media screen and (max-width: 30em) {
 }
-", name_column=name_column, dice_column=dice_column, lock_column=lock_column, toggle_column=toggle_column, input_column=input_column, add_effect_column=add_effect_column, canvas_column=canvas_column))
+", name_column=name_column, dice_column=dice_column, lock_column=lock_column, toggle_column=toggle_column, input_column=input_column, add_effect_column=add_effect_column, canvas_column=canvas_column));
   
   let app_element = app(&mut builder);
   
@@ -85,7 +85,7 @@ input[type='button'].down {
   
   
   
-  fs::write(static_path.join("webfxr.html"), &format!("<!DOCTYPE html>
+  fs::write(static_path.join("webfxr.html"), &format!(r#"<!DOCTYPE html>
 
 <html>
 <head>
@@ -134,7 +134,7 @@ input[type='button'].down {
     <script async src="webfxr.js"></script>
 </body>
 </html>
-", app_element=app_element)).unwrap();
+"#, app_element=app_element)).unwrap();
 
 
 
