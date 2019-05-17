@@ -4,6 +4,7 @@ use stdweb::unstable::{TryFrom, TryInto};
 use stdweb::{JsSerialize, Value};
 use typed_html::elements::FlowContent;
 use typed_html::{html, text};
+use stdweb::web::event::{ChangeEvent};
 
 use super::*;
 
@@ -21,7 +22,7 @@ pub fn checkbox_input<Builder: UIBuilder, G: 'static + GetterBase<From = State, 
   name: &str,
   getter: Getter<G>,
 ) -> (Element, Element) {
-  let current_value = get(getter);
+  let current_value = get(&getter);
   (
     html! { <input type="checkbox" id=id checked=current_value /> },
     html! { <label for=id text=name /> },
@@ -39,7 +40,7 @@ pub fn menu_input<Builder: UIBuilder, T: 'static + Eq + Clone, G: 'static + Gett
   getter: Getter<G>,
   options: &[(T, &str)],
 ) -> Element {
-  let current_value = get(getter);
+  let current_value = get(&getter);
   let mut values = options.iter().map(|(a, _)| a.clone()).collect();
   (
     html! {
@@ -69,7 +70,7 @@ pub fn waveform_input<Builder: UIBuilder, G: 'static + GetterBase<From = State, 
   getter: Getter<G>,
 ) -> Element {
   RadioInputSpecification {
-    state: state,
+    builder: builder,
     id: id,
     name: name,
     options: &waveforms_list(),
@@ -80,7 +81,7 @@ pub fn waveform_input<Builder: UIBuilder, G: 'static + GetterBase<From = State, 
 
 //fn round_step (input: f64, step: f64)->f64 {(input*step).round()/step}
 
-pub struct RadioInputSpecification<'a, T: 'a> {
+pub struct RadioInputSpecification<'a, Builder: UIBuilder, T: 'a> {
   pub builder: &'a mut Builder,
   pub id: &'a str,
   pub name: &'a str,
@@ -88,13 +89,21 @@ pub struct RadioInputSpecification<'a, T: 'a> {
   pub getter: DynamicGetter<State, T>,
 }
 
-impl<'a, Builder: UIBuilder, T: Clone + Eq + JsSerialize + 'static> RadioInputSpecification<'a, T> {
+impl<'a, Builder: UIBuilder, T: Clone + Eq + JsSerialize + 'static> RadioInputSpecification<'a, Builder, T> {
   fn value_id(&self, value: &T) -> String {
     js_unwrap! {@{self.id}+"_radios_"+@{value}}
   }
   pub fn render(self) -> (Element, Element) {
-  with_state(|state| {
-    let current_value = self.getter.get(state);
+    let current_value = get(&self.getter);
+    for (value, name) in self.options {
+          let id = self.value_id(value);
+          let value = value.clone();
+          let getter = self.getter.clone();
+          self.builder.add_event_listener(&id, move |_: ClickEvent| {
+            set(getter, value.clone());
+          });
+        }
+        
     (
       html! {
         <div class="radio">
@@ -103,19 +112,9 @@ impl<'a, Builder: UIBuilder, T: Clone + Eq + JsSerialize + 'static> RadioInputSp
           })}
         </div>
       },
-      html! { <label for=id text=name /> },
-      move |thingy| {
-        for (value, name) in self.options {
-          let id = self.value_id(value);
-          let value = value.clone();
-          let getter = getter.clone();
-          thingy.add_event_listener(&id, move |_: ClickEvent| {
-            set(getter, value.clone());
-          });
-        }
-      },
+      html! { <label for=self.id text=self.name /> },
     )
-  })}
+  }
 }
 
 pub fn numerical_input<
@@ -130,16 +129,16 @@ pub fn numerical_input<
   slider_range: [f64; 2],
   slider_step: f64,
 ) -> Value {
-  let current_value = getter.get(&state.borrow()).clone();
+  let current_value = get(getter);
   NumericalInputSpecification {
     id,
     name,
     slider_range,
     slider_step,
     current_value,
-    input_callback: input_callback_gotten(state, getter, |target, value: UserNumber<T>| {
-      *target = value
-    }),
+    input_callback: move |value: UserNumber<T>| {
+      set(&getter, value)
+    },
   }
   .render()
 }
@@ -154,8 +153,8 @@ pub struct NumericalInputSpecification<'a, Builder: UIBuilder, T: UserNumberType
   pub input_callback: F,
 }
 
-impl<'a, F: 'static + Fn(UserNumber<T>) + Copy, T: UserNumberType>
-  NumericalInputSpecification<'a, T, F>
+impl<'a, Builder: UIBuilder, F: 'static + Fn(UserNumber<T>) + Copy, T: UserNumberType>
+  NumericalInputSpecification<'a, Builder, T, F>
 {
   pub fn render(self) -> (Element, Element) {
     let value_type = with_state(T::currently_used);

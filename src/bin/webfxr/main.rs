@@ -20,7 +20,7 @@ extern crate rand;
 extern crate rand_xoshiro;
 
 use std::cell::RefCell;
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashSet, HashMap, VecDeque};
 use std::marker::PhantomData;
 use std::mem;
 use std::ops::Bound;
@@ -31,7 +31,17 @@ pub use array_ext::Array;
 pub use eliduprees_web_games::*;
 use ordered_float::OrderedFloat;
 use stdweb::web::{self, TypedArray};
-use stdweb::web::event::{ConcreteEvent, ClickEvent};
+use stdweb::web::event::{ConcreteEvent, ClickEvent, InputEvent};
+use typed_html::elements::FlowContent;
+
+macro_rules! js_unwrap {
+  ($($x:tt)*) => {
+    {
+      let result = js!{return $($x)*};
+      result.try_into().unwrap()
+    }
+  }
+}
 
 #[macro_use]
 mod misc;
@@ -86,6 +96,36 @@ pub struct State {
   pub loop_playback: bool,
   pub effects_shown: HashSet<&'static str>,
   pub render_progress_functions: Vec<Box<dyn FnMut()>>,
+}
+
+thread_local! {
+  static STATE: RefCell<State> = {
+    let sound = SoundDefinition::default();
+    let mut undo_history = VecDeque::new();
+    undo_history.push_back(sound.clone());
+  RefCell::new(State {
+    sound,
+    undo_history,
+    undo_position: 0,
+    rendering_state: Default::default(),
+    playback_state: None,
+    loop_playback: false,
+    effects_shown: HashSet::new(),
+    render_progress_functions: Default::default(),
+  })
+  };
+}
+
+pub fn with_state <F: FnOnce (& State)->R, R> (callback: F)->R {
+  STATE.with (| state | {
+    (callback) (&state.borrow())
+  })
+}
+
+pub fn with_state_mut <F: FnOnce (&mut State)->R, R> (callback: F)->R {
+  STATE.with (| state | {
+    (callback) (&mut state.borrow_mut())
+  })
 }
 
 fn update_for_changed_sound(state: &Rc<RefCell<State>>) {
@@ -189,15 +229,7 @@ fn app<Builder: UIBuilder>(builder: &mut Builder) -> Element {
         options: &[(false, "Hard clipping"), (true, "Soft clipping")],
       }
       .render();
-      
-    let label = assign_row(
-      redraw.rows,
-      js! { return @{& clipping_input}.children("label").first();},
-    );
-    js! {@{&label}.addClass("toplevel_input_label")}
-    js! { @{grid_element}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{redraw.rows}+" / span 1")); }
-    js! {@{grid_element}.append (@{label},@{clipping_input}.addClass("sound_radio_input"));}
-    redraw.rows += 1;
+
 
     let (sample_rate_input, sample_rate_label) = RadioInputSpecification {
         builder: builder,
@@ -278,7 +310,7 @@ fn app<Builder: UIBuilder>(builder: &mut Builder) -> Element {
     }
   });
   
-  builder.after_morphdom(|| {
+  builder.after_morphdom(|| {with_state(|state| {
     js! {
       var canvas = document.getElementById ("envelope_canvas");
       var context = canvas.getContext ("2d");
@@ -286,18 +318,18 @@ fn app<Builder: UIBuilder>(builder: &mut Builder) -> Element {
       context.beginPath();
       var horizontal = 0;
       context.moveTo (0, canvas.height);
-      horizontal += @{sound.envelope.attack.rendered*DISPLAY_SAMPLE_RATE};
+      horizontal += @{state.sound.envelope.attack.rendered*DISPLAY_SAMPLE_RATE};
       context.lineTo (horizontal, 0);
-      horizontal += @{sound.envelope.sustain.rendered*DISPLAY_SAMPLE_RATE};
+      horizontal += @{state.sound.envelope.sustain.rendered*DISPLAY_SAMPLE_RATE};
       context.lineTo (horizontal, 0);
-      horizontal += @{sound.envelope.decay.rendered*DISPLAY_SAMPLE_RATE};
+      horizontal += @{state.sound.envelope.decay.rendered*DISPLAY_SAMPLE_RATE};
       context.lineTo (horizontal, canvas.height);
       context.strokeStyle = "rgb(0,0,0)";
       context.stroke();
     }
     
     redraw_waveform_canvas();
-  });
+  })});
   
   html! {
     <div class="app">
@@ -370,7 +402,7 @@ impl UIBuilder for ClientSideUIBuilder {
       }
     });
     if sound_changed {
-      update_for_changed_sound(&state);
+      update_for_changed_sound();
     }
 
     }));
@@ -404,7 +436,7 @@ fn redraw_app() {
       if state.event_types_initialized.insert (event_type.clone()) {
         let global_listener = move |event: Value, mut target: Element| {
           loop {
-            if let Some(id) = target.get_attribute (id) {
+            if let Some(id) = target.get_attribute ("id") {
               if let Some(specific_listener) = state.event_listeners.get ((id, event_type.clone())) {
                 (specific_listener) (event);
                 break
@@ -642,37 +674,21 @@ fn play<G: 'static + GetterBase<From = RenderingState, To = RenderedSamples>>(
 fn main() {
   stdweb::initialize();
 
-  let sound = SoundDefinition::default();
-  let mut undo_history = VecDeque::new();
-  undo_history.push_back(sound.clone());
-
-  let state = Rc::new(RefCell::new(State {
-    sound: sound,
-    undo_history: undo_history,
-    undo_position: 0,
-    rendering_state: Default::default(),
-    playback_state: None,
-    loop_playback: false,
-    waveform_canvas: Canvas::default(),
-    effects_shown: HashSet::new(),
-    render_progress_functions: Default::default(),
-  }));
-
   js! { $(document.body).on ("keydown", function(event) {
     //if (event.ctrlKey || event.metaKey) {
       if (event.key === "z") {
-        @{{ let state = state.clone(); move || undo (&state) }}();
+        @{undo}();
         event.preventDefault();
       }
       if (event.key === "Z" || event.key === "y") {
-        @{{ let state = state.clone(); move || redo (&state) }}();
+        @{redo}();
         event.preventDefault();
       }
     //}
   });}
 
-  update_for_changed_sound(&state);
-  render_loop(state.clone());
+  update_for_changed_sound();
+  render_loop();
 
   stdweb::event_loop();
 }
