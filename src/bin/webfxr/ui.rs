@@ -51,23 +51,15 @@ pub struct IllustrationCanvas {
   pub getter: DynamicGetter<RenderingState, Illustration>,
 }
 
-impl Default for Canvas {
-  fn default() -> Canvas {
-    let canvas = js! { return ($(new_canvas ())); };
-    let context = js! { return @{&canvas}[0].getContext ("2d"); };
-    Canvas { canvas, context }
-  }
-}
 
 impl IllustrationCanvas {
   pub fn new(
-    state: Rc<RefCell<State>>,
+    id: String,
     getter: DynamicGetter<RenderingState, Illustration>,
   ) -> IllustrationCanvas {
     IllustrationCanvas {
-      canvas: Default::default(),
+      canvas_id: id,
       lines_drawn: 0,
-      state: state,
       getter: getter,
     }
   }
@@ -75,7 +67,7 @@ impl IllustrationCanvas {
     let line = &illustration.lines[index];
 
     js! {
-      var canvas = document.getElementById (@{& id});
+      var canvas = document.getElementById (@{& self.canvas_id});
       var context = canvas.getContext ("2d");
 
       context.fillStyle = @{line.clipping} ? "rgb(255,0,0)" : "rgb(0,0,0)";
@@ -91,18 +83,20 @@ impl IllustrationCanvas {
 
   /*pub fn reset(&self) {
     js! {
-      var canvas = document.getElementById (@{& id});
+      var canvas = document.getElementById (@{& self.canvas_id});
       var context = canvas.getContext ("2d");
 
       context.clearRect (0, 0, canvas.width, canvas.height);
     }
   }*/
 
-  pub fn update(&mut self, state: &State) {
+  pub fn update(&mut self) {
+    with_state(|state| {
     let illustration = self.getter.get(&state.rendering_state);
     //println!("{:?}", (self.lines_drawn, illustration.lines.len()));
     while self.lines_drawn < illustration.lines.len() {
       self.draw_next_line(illustration);
+    }
     }
   }
 
@@ -112,7 +106,7 @@ impl IllustrationCanvas {
     playback_position: Option<f64>,
     constants: &RenderingStateConstants,
   ) {
-    self.reset();
+    //self.reset();
     self.update(state);
 
     if let Some(playback_position) = playback_position {
@@ -120,7 +114,7 @@ impl IllustrationCanvas {
         / constants.samples_per_illustrated as f64)
         .floor();
       js! {
-        var canvas = document.getElementById (@{& id});
+        var canvas = document.getElementById (@{& self.canvas_id});
         var context = canvas.getContext ("2d");
 
         context.fillStyle = "rgb(255,255,0)";
@@ -137,13 +131,13 @@ pub fn make_rendered_canvas<
   G: Clone + 'static + GetterBase<From = RenderingState, To = RenderedSamples>,
 >(
   builder: &mut Builder,
-  id: String,
+  id: &str,
   rendered_getter: Getter<G>,
   height: i32,
 ) -> Element {
   
   let canvas = IllustrationCanvas::new(
-    id.clone(),
+    id.to_string(),
     (rendered_getter.clone()
       + getter! (samples: RenderedSamples => Illustration {samples.illustration}))
     .dynamic(),
@@ -151,7 +145,7 @@ pub fn make_rendered_canvas<
 
   {
    let getter = rendered_getter.clone();
-  builder.add_event_listener(id.clone(), move | _:ClickEvent | {
+  builder.add_event_listener(id.to_string(), move | _:ClickEvent | {
     play (getter.clone());
   });
   
@@ -168,6 +162,6 @@ pub fn make_rendered_canvas<
   });
   
   html!{
-    <canvas id=id width={MAX_RENDER_LENGTH*DISPLAY_SAMPLE_RATE} height=height />
+    <canvas id=id width={(MAX_RENDER_LENGTH*DISPLAY_SAMPLE_RATE) as usize} height={height as usize} />
   }
 }

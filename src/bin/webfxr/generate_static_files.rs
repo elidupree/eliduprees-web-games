@@ -1,6 +1,7 @@
 use crate::UIBuilder;
 use std::fs;
 use std::path::Path;
+use std::fmt::Write;
 use super::*;
 
 struct StaticFilesUIBuilder {

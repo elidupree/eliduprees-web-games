@@ -96,6 +96,7 @@ pub struct State {
   pub loop_playback: bool,
   pub effects_shown: HashSet<&'static str>,
   pub render_progress_functions: Vec<Box<dyn FnMut()>>,
+  pub event_listeners: HashMap <(String, & 'static str), Box <dyn FnMut (Value)>>,
 }
 
 thread_local! {
@@ -128,19 +129,18 @@ pub fn with_state_mut <F: FnOnce (&mut State)->R, R> (callback: F)->R {
   })
 }
 
-fn update_for_changed_sound(state: &Rc<RefCell<State>>) {
-  restart_rendering(state);
-  redraw_app(state);
+fn update_for_changed_sound() {
+  restart_rendering();
+  redraw_app();
   play(
-    &mut state.borrow_mut(),
     getter! (state: RenderingState => RenderedSamples {state.final_samples}),
   );
 }
 
-fn restart_rendering(state: &Rc<RefCell<State>>) {
-  let mut guard = state.borrow_mut();
-  let state = &mut *guard;
-  state.rendering_state = RenderingState::new(&state.sound);
+fn restart_rendering() {
+  with_state_mut(|state| {
+    state.rendering_state = RenderingState::new(&state.sound);
+  });
 }
 
 pub struct RedrawState {
@@ -328,7 +328,7 @@ fn app<Builder: UIBuilder>(builder: &mut Builder) -> Element {
       context.stroke();
     }
     
-    redraw_waveform_canvas();
+    redraw_waveform_canvas(state);
   })});
   
   html! {
@@ -463,8 +463,7 @@ fn redraw_app() {
 
 
 
-fn redraw_waveform_canvas() {
-with_state(|state| {
+fn redraw_waveform_canvas(state: &State) {
   //let sample_rate = 500.0;
   //let waveform_samples = display_samples (sample_rate, 3.0, | phase | state.sound.sample_waveform (time, phase));
 
@@ -542,14 +541,12 @@ with_state(|state| {
       context.stroke();
     }
   }
-})}
+}
 
 const SWITCH_PLAYBACK_DELAY: f64 = 0.15;
 
-fn render_loop(state: Rc<RefCell<State>>) {
-  {
-    let mut guard = state.borrow_mut();
-    let state = &mut *guard;
+fn render_loop() {
+  with_state_mut (| state | {
     let start = now();
 
     let already_finished = state.rendering_state.finished();
@@ -578,7 +575,7 @@ fn render_loop(state: Rc<RefCell<State>>) {
     if !already_finished {
       let mut functions = mem::replace(&mut state.render_progress_functions, Default::default());
       for function in &mut functions {
-        (function)(state);
+        (function)();
       }
       state.render_progress_functions = functions;
     }
@@ -643,15 +640,15 @@ fn render_loop(state: Rc<RefCell<State>>) {
       }
       redraw_waveform_canvas(state);
     }
-  }
+  });
 
-  web::window().request_animation_frame(move |_time| render_loop(state));
+  web::window().request_animation_frame(move |_time| render_loop());
 }
 
 fn play<G: 'static + GetterBase<From = RenderingState, To = RenderedSamples>>(
-  state: &mut State,
   getter: Getter<G>,
 ) {
+  with_state_mut (| state | {
   let samples = getter.get(&state.rendering_state);
   /*if let Some(ref playback) = state.playback_state {
     let old_samples = playback.samples_getter.get (&state.rendering_state);
@@ -668,6 +665,7 @@ fn play<G: 'static + GetterBase<From = RenderingState, To = RenderedSamples>>(
   /*js! {
     play_buffer (@{&samples.audio_buffer});
   }*/
+});
 }
 
 #[cfg(target_os = "emscripten")]
