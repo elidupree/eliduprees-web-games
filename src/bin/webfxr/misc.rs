@@ -1,7 +1,6 @@
 use std::cell::Cell;
 use std::marker::PhantomData;
 use std::rc::Rc;
-use stdweb::unstable::TryInto;
 
 //use super::*;
 
@@ -21,7 +20,7 @@ pub fn max(first: f64, second: f64) -> f64 {
 }
 
 pub fn audio_now() -> f64 {
-  let seconds: f64 = js! { return audio.currentTime}.try_into().unwrap();
+  let seconds: f64 = js_unwrap! { return audio.currentTime; };
   seconds
 }
 

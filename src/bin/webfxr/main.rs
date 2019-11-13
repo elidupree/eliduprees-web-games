@@ -1,9 +1,11 @@
 #![feature(never_type, nll)]
 #![recursion_limit = "512"]
+#![cfg_attr (not(target_os = "emscripten"), allow (unreachable_code))]
+#![cfg_attr (not(target_os = "emscripten"), allow (unused_variables))]
 
 extern crate eliduprees_web_games;
 
-#[macro_use]
+//#[macro_use]
 extern crate stdweb;
 #[macro_use]
 extern crate typed_html;
@@ -35,6 +37,12 @@ use stdweb::web::{self, TypedArray, IElement, INode};
 use stdweb::web::event::{ConcreteEvent, ClickEvent, InputEvent};
 use typed_html::elements::FlowContent;
 
+
+
+#[cfg(target_os = "emscripten")]
+use stdweb::{js, js_serializable, js_deserializable};
+
+#[cfg(target_os = "emscripten")]
 macro_rules! js_unwrap {
   ($($x:tt)*) => {
     {
@@ -42,6 +50,17 @@ macro_rules! js_unwrap {
       result.try_into().unwrap()
     }
   }
+}
+
+
+#[cfg(not(target_os = "emscripten"))]
+macro_rules! js {
+  ($($x:tt)*) => {unreachable!()}
+}
+
+#[cfg(not(target_os = "emscripten"))]
+macro_rules! js_unwrap {
+  ($($x:tt)*) => {unreachable!()}
 }
 
 #[macro_use]
@@ -161,13 +180,13 @@ pub trait UIBuilder {
   #[inline(always)]
   fn last_n_grid_rows_class (&mut self, _classname: & str, _n: i32) {}
   #[inline(always)]
-  fn add_event_listener <Event: ConcreteEvent, Callback: FnMut(Event)> (&mut self, _id: impl Into <String>, _listener: Callback) where <Event as TryFrom<Value>>::Error: Debug {}
+  fn add_event_listener <Event: ConcreteEvent, Callback: 'static + FnMut(Event)> (&mut self, _id: impl Into <String>, _listener: Callback) where <Event as TryFrom<Value>>::Error: Debug {}
   #[inline(always)]
-  fn add_event_listener_erased <Callback: FnMut(Value)> (&mut self, _id: impl Into <String>, _event_type: &'static str, _listener: Callback) {}
+  fn add_event_listener_erased <Callback: 'static + FnMut(Value)> (&mut self, _id: impl Into <String>, _event_type: &'static str, _listener: Callback) {}
   #[inline(always)]
-  fn after_morphdom<Callback: FnOnce()> (&mut self, _callback: Callback) {}
+  fn after_morphdom<Callback: 'static + FnOnce()> (&mut self, _callback: Callback) {}
   #[inline(always)]
-  fn on_render_progress<Callback: FnMut()> (&mut self, _callback: Callback) {}
+  fn on_render_progress<Callback: 'static + FnMut()> (&mut self, _callback: Callback) {}
 }
 
 pub fn envelope_input<Builder: UIBuilder, G: 'static + GetterBase<From = State, To = UserTime>>(builder: &mut Builder, id: &str, name: &str, range: [f64; 2], getter: Getter<G>) -> Vec<Element> {
@@ -390,10 +409,10 @@ struct ClientSideUIBuilder {
 }
 
 impl UIBuilder for ClientSideUIBuilder {
-  fn add_event_listener <Event: ConcreteEvent, Callback: FnMut(Event)> (&mut self, id: impl Into <String>, listener: Callback) where <Event as TryFrom<Value>>::Error: Debug {
+  fn add_event_listener <Event: ConcreteEvent, Callback: 'static + FnMut(Event)> (&mut self, id: impl Into <String>, mut listener: Callback) where <Event as TryFrom<Value>>::Error: Debug {
     self.add_event_listener_erased (id, Event::EVENT_TYPE, move | event | (listener)(event.try_into().unwrap()));
   }
-  fn add_event_listener_erased <Callback: FnMut(Value)> (&mut self, id: impl Into <String>, event_type: &'static str, listener: Callback) {
+  fn add_event_listener_erased <Callback: 'static + FnMut(Value)> (&mut self, id: impl Into <String>, event_type: &'static str, mut listener: Callback) {
     self.event_listeners.insert ((id.into(), event_type), Box::new (move |event| {
     
     let mut sound_changed = false;
@@ -416,10 +435,10 @@ impl UIBuilder for ClientSideUIBuilder {
 
     }));
   }
-  fn after_morphdom<Callback: FnOnce()> (&mut self, callback: Callback) {
+  fn after_morphdom<Callback: 'static + FnOnce()> (&mut self, callback: Callback) {
     self.after_morphdom_functions.push (Box::new (callback));
   }
-  fn on_render_progress<Callback: FnMut()> (&mut self, callback: Callback) {
+  fn on_render_progress<Callback: 'static + FnMut()> (&mut self, callback: Callback) {
     self.render_progress_functions.push (Box::new (callback));
   }
 }
@@ -439,14 +458,16 @@ fn redraw_app() {
     });
   }
   for f in builder.after_morphdom_functions { (f)(); }
-  
+  let event_listeners = builder.event_listeners;
+  let render_progress_functions = builder.render_progress_functions;
   with_state_mut (move | state | {
-    for ((_, event_type),_) in & builder.event_listeners {
+    for event_listener in &event_listeners {
+      let event_type: & 'static str = (event_listener.0).1;
       if state.event_types_initialized.insert (event_type) {
         let global_listener = move |event: Value, mut target: stdweb::web::Element| {
-          loop {
+          with_state_mut (move | state | {loop {
             if let Some(id) = target.get_attribute ("id") {
-              if let Some(specific_listener) = state.event_listeners.get (&(id, event_type)) {
+              if let Some(specific_listener) = state.event_listeners.get_mut (&(id, event_type)) {
                 (specific_listener) (event);
                 break
               }
@@ -455,7 +476,7 @@ fn redraw_app() {
               Some (parent) => target = parent,
               None => break
             }
-          }
+          }})
         };
         js! {
           $(document).on ($(event_type), function (event) {
@@ -464,8 +485,8 @@ fn redraw_app() {
         }
       }
     }
-    state.render_progress_functions = builder.render_progress_functions;
-    state.event_listeners = builder.event_listeners;
+    state.render_progress_functions = render_progress_functions;
+    state.event_listeners = event_listeners;
   });
 }
 

@@ -203,7 +203,9 @@ pub enum Waveform {
   Experimental,
 }
 
+#[cfg(target_os = "emscripten")]
 js_serializable!(Waveform);
+#[cfg(target_os = "emscripten")]
 js_deserializable!(Waveform);
 
 pub fn waveforms_list() -> Vec<(Waveform, &'static str)> {

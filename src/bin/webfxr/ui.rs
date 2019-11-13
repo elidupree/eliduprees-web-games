@@ -149,7 +149,7 @@ pub fn make_rendered_canvas<
   });
   
   }
-    {canvas = canvas.clone();
+    {let canvas = canvas.clone();
   builder.after_morphdom (move | | {
     //rendered.redraw (None, & guard.rendering_state.constants);
     //canvas.reset();

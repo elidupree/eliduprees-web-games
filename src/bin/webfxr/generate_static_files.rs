@@ -11,20 +11,20 @@ struct StaticFilesUIBuilder {
 
 impl UIBuilder for StaticFilesUIBuilder {
   fn css (&mut self, css: & str) {
-    write!(&mut self.css, "{}\n", css);
+    write!(&mut self.css, "{}\n", css).unwrap();
   }
   fn next_grid_row_class (&mut self, classname: & str) {
     write!(&mut self.css, ".{classname} {{
   grid-row: {start} / {end}
 }}
-", classname=classname, start=self.next_grid_row, end=self.next_grid_row+1);
+", classname=classname, start=self.next_grid_row, end=self.next_grid_row+1).unwrap();
     self.next_grid_row += 1;
   }
   fn last_n_grid_rows_class (&mut self, classname: & str, n: i32) {
     write!(&mut self.css, ".{classname} {{
   grid-row: {start} / {end}
 }}
-", classname=classname, start=self.next_grid_row-n, end=self.next_grid_row);
+", classname=classname, start=self.next_grid_row-n, end=self.next_grid_row).unwrap();
   }
 }
 

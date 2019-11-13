@@ -1,6 +1,6 @@
 //use std::cell::RefCell;
 use std::fmt::Debug;
-//use std::rc::Rc;
+use std::rc::Rc;
 use stdweb::unstable::{TryInto};
 use stdweb::Value;
 use typed_html::types::Id;
@@ -9,7 +9,7 @@ use stdweb::web::event::{ChangeEvent};
 
 use super::*;
 
-fn get<G: 'static + GetterBase<From = State, To = T>, T>(getter: &Getter<G>) -> &T {
+fn get<G: 'static + GetterBase<From = State, To = T>, T: Clone>(getter: &Getter<G>) -> T {
   with_state(|state| getter.get(state).clone())
 }
 fn set<G: 'static + GetterBase<From = State, To = T>, T>(getter: &Getter<G>, value: T) {
@@ -23,10 +23,10 @@ pub fn checkbox_input<Builder: UIBuilder, G: 'static + GetterBase<From = State, 
   name: &str,
   getter: Getter<G>,
 ) -> (Element, Element) {
-  let current_value = *get(&getter);
-  builder.add_event_listener(id, move |_: ClickEvent| {
-    set(&getter, js_unwrap! {$("#"+@{id}).prop ("checked")});
-  });
+  let current_value = get(&getter);
+  builder.add_event_listener(id, {let id = id.to_string(); move |_: ClickEvent| {
+    set(&getter, js_unwrap! {$("#"+@{id.clone()}).prop ("checked")});
+  }});
   (
     html! { <input type="checkbox" id=id checked=current_value /> },
     html! { <label for=id>{text!(name)}</label> },
@@ -41,15 +41,15 @@ pub fn menu_input<Builder: UIBuilder, T: 'static + Eq + Clone, G: 'static + Gett
 ) -> Element {
   let current_value = get(&getter);
   let values: Vec<T> = options.iter().map(|(a, _)| a.clone()).collect();
-  builder.add_event_listener(id, move |_: ChangeEvent| {
-    let index: i32 = js_unwrap! {$("#"+@{id}).prop ("selectedIndex")};
+  builder.add_event_listener(id, {let id = id.to_string(); move |_: ChangeEvent| {
+    let index: i32 = js_unwrap! {$("#"+@{id.clone()}).prop ("selectedIndex")};
     if let Some(value) = values.get(index as usize) {
       set(&getter, value.clone());
     }
-  });
+  }});
   
   let option_elements = options.iter().map(|(value, name)| html!{
-          <option selected={value == current_value}>
+          <option selected={*value == current_value}>
             {text!(name.to_string())}
           </option>
         });
@@ -106,7 +106,7 @@ impl<'a, Builder: UIBuilder, T: Clone + Eq + Debug + 'static> RadioInputSpecific
       html! {
         <div class="radio">
           {self.options.iter().map (| (value, name) | html!{
-            <input type="button" id={Id::new (self.value_id(value))} value={name.to_string()} class={if value == current_value {"down"} else {""}}/>
+            <input type="button" id={Id::new (self.value_id(value))} value={name.to_string()} class={if *value == current_value {"down"} else {""}}/>
           })}
         </div>
       },
@@ -168,15 +168,16 @@ impl<'a, Builder: UIBuilder, F: 'static + Fn(UserNumber<T>), T: UserNumberType>
       (self.slider_range[1] - self.slider_range[0]) / 1000.0
     };
 
+    let id = self.id.to_string();
     let number_id = format!("{}_numerical_number", self.id);
     let range_id = format!("{}_numerical_range", self.id);
 
-    let input_callback = self.input_callback;
-    let update = move |value: String| {
+    let input_callback = Rc::new (self.input_callback);
+    let update = {let value_type = value_type.clone(); move |value: String| {
       if let Some(value) = UserNumber::new(value_type.clone(), value) {
         (input_callback)(value);
       }
-    };
+    }};
     let to_rendered_callback = { let value_type = value_type.clone(); move | value: String |{
           if let Some(value) = UserNumber::new (value_type.clone(), value) {
             value.rendered
@@ -184,34 +185,34 @@ impl<'a, Builder: UIBuilder, F: 'static + Fn(UserNumber<T>), T: UserNumberType>
           else {std::f64::NAN}
         }};
 
-    let range_overrides = move || {
+    let range_overrides = {let range_id = range_id.clone(); let value_type = value_type.clone(); let update = update.clone(); move || {
       let value = js_unwrap! {$("#"+@{range_id.clone()})[0].valueAsNumber};
       let source = value_type.approximate_from_rendered(value);
       (update)(source);
-    };
-    let number_overrides = move || {
+    }};
+    let number_overrides = {let number_id = number_id.clone(); let update = update.clone(); move || {
       (update)(js_unwrap! {$("#"+@{number_id.clone()}).val()});
-    };
+    }};
 
     let label = format!("{} ({})", self.name, value_type.unit_name());
     
-    self.builder.add_event_listener(&number_id, move |_: ChangeEvent| {
+    {let number_overrides = number_overrides.clone() ; self.builder.add_event_listener(number_id.clone(), move |_: ChangeEvent| {
       (number_overrides)();
-    });
+    });}
     
-    self.builder.add_event_listener(&range_id, move |_: ChangeEvent| {
-          let value = js_unwrap! {$("#"+@{range_id})[0].valueAsNumber};
+    {let value_type = value_type.clone(); let range_id = range_id.clone(); self.builder.add_event_listener(range_id.clone(), move |_: ChangeEvent| {
+          let value = js_unwrap! {$("#"+@{range_id.clone()})[0].valueAsNumber};
           let source = value_type.approximate_from_rendered(value);
           (update)(source);
-        });
+        });}
     
-    self.builder.add_event_listener_erased (&range_id, "wheel", move | event: Value | {
+    self.builder.add_event_listener_erased (range_id.clone(), "wheel", move | event: Value | {
           js! {
         if (window.webfxr_scrolling) {return;}
         var event = @{event};
-        var parent = $("#"+@{self.id});
+        var parent = $("#"+@{id.clone() });
         var number_input = parent.children ("input[type=number]");
-        var value = @{to_rendered_callback} (number_input.val());
+        var value = @{to_rendered_callback.clone()} (number_input.val());
         var range_input = parent.children ("input[type=range]");
         if (isNaN (value)) {var value = range_input[0].valueAsNumber;}
         //console.log (event.originalEvent.deltaY, event.originalEvent.deltaX, event.originalEvent.deltaMode);
@@ -230,7 +231,7 @@ impl<'a, Builder: UIBuilder, F: 'static + Fn(UserNumber<T>), T: UserNumberType>
         var source = @{{let value_type = value_type.clone(); move | value: f64 | value_type.approximate_from_rendered (value)}} (value);
         range_input.val (value);
         number_input.val(source);
-        @{& number_overrides}(parent);
+        @{number_overrides.clone()}(parent);
         event.preventDefault();
         event.stopPropagation();
     };
@@ -240,7 +241,7 @@ impl<'a, Builder: UIBuilder, F: 'static + Fn(UserNumber<T>), T: UserNumberType>
     (
       html! {
         <div id={Id::new (self.id)} class="labeled_input numeric">
-          <input type="number" id={Id::new (number_id)} value=displayed_value />
+          <input type="number" id={Id::new (number_id.clone())} value=displayed_value />
           <input type="range" id={Id::new (range_id)} value=self.current_value.rendered.to_string() min={self.slider_range [0].to_string()} max={self.slider_range [1].to_string()} step=slider_step.to_string()  />
         </div>
       },
@@ -263,7 +264,7 @@ impl<'a, Builder: UIBuilder, Identity: SignalIdentity> SignalEditorSpecification
   }*/
 
   pub fn time_input<G: 'static + GetterBase<From = State, To = UserTime>>(
-    &self,
+    & mut self,
     id: &str,
     name: &str,
     getter: Getter<G>,
@@ -274,7 +275,7 @@ impl<'a, Builder: UIBuilder, Identity: SignalIdentity> SignalEditorSpecification
   pub fn value_input<
     G: 'static + GetterBase<From = State, To = UserNumber<Identity::NumberType>>,
   >(
-    &self,
+    & mut self,
     id: &str,
     name: &str,
     getter: Getter<G>,
@@ -290,7 +291,7 @@ impl<'a, Builder: UIBuilder, Identity: SignalIdentity> SignalEditorSpecification
         To = UserNumber<<Identity::NumberType as UserNumberType>::DifferenceType>,
       >,
   >(
-    &self,
+    & mut self,
     id: &str,
     name: &str,
     getter: Getter<G>,
@@ -307,7 +308,7 @@ impl<'a, Builder: UIBuilder, Identity: SignalIdentity> SignalEditorSpecification
   }
 
   pub fn frequency_input<G: 'static + GetterBase<From = State, To = UserFrequency>>(
-    &self,
+    & mut self,
     id: &str,
     name: &str,
     getter: Getter<G>,
@@ -316,7 +317,7 @@ impl<'a, Builder: UIBuilder, Identity: SignalIdentity> SignalEditorSpecification
   }
 
   pub fn checkbox_input<G: 'static + GetterBase<From = State, To = bool>>(
-    &self,
+    &mut self,
     id: &str,
     name: &str,
     getter: Getter<G>,
@@ -324,7 +325,7 @@ impl<'a, Builder: UIBuilder, Identity: SignalIdentity> SignalEditorSpecification
     checkbox_input(self.builder, id, name, getter)
   }
   pub fn waveform_input<G: 'static + GetterBase<From = State, To = Waveform>>(
-    &self,
+    &mut self,
     id: &str,
     name: &str,
     getter: Getter<G>,
@@ -332,7 +333,7 @@ impl<'a, Builder: UIBuilder, Identity: SignalIdentity> SignalEditorSpecification
     waveform_input(self.builder, id, name, getter)
   }
 
-  pub fn render(self) -> Vec<Element> {
+  pub fn render(mut self) -> Vec<Element> {
     with_state(|state| {
       let sound = &state.sound;
       let signals_getter = Identity::definition_getter();
@@ -390,15 +391,15 @@ impl<'a, Builder: UIBuilder, Identity: SignalIdentity> SignalEditorSpecification
           let select_id = format!("{}_add_effect", info.id);
 
           elements.push (html! {
-            <select id= {Id::new (select_id)} class=[&signal_class, "add_effect_buttons"]>
+            <select id= {Id::new (select_id.clone())} class=[&signal_class, "add_effect_buttons"]>
               <option selected=true>"Add effect..."</option>
               <option>{text!("{} jump", {info.name})}</option>
               <option>{text!("{} slide", info.name)}</option>
               <option>{text!("{} oscillation", info.name)}</option>
             </select>
           });
-          self.builder.add_event_listener(&select_id, move |_: ChangeEvent| {
-              let index = js_unwrap! {$("#"+@{select_id})[0].selectedIndex};
+          self.builder.add_event_listener(select_id.clone(), move |_: ChangeEvent| {
+              let index = js_unwrap! {$("#"+@{select_id.clone()})[0].selectedIndex};
               with_state_mut(|state| {
                 let signal = getter.get_mut(state);
                 match index {
