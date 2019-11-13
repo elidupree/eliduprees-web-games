@@ -21,16 +21,17 @@ extern crate rand_xoshiro;
 
 use std::cell::RefCell;
 use std::collections::{HashSet, HashMap, VecDeque};
+use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::mem;
 use std::ops::Bound;
 use std::rc::Rc;
 use stdweb::Value;
-//use stdweb::unstable::TryInto;
+use stdweb::unstable::{TryInto, TryFrom};
 pub use array_ext::Array;
 pub use eliduprees_web_games::*;
 use ordered_float::OrderedFloat;
-use stdweb::web::{self, TypedArray};
+use stdweb::web::{self, TypedArray, IElement, INode};
 use stdweb::web::event::{ConcreteEvent, ClickEvent, InputEvent};
 use typed_html::elements::FlowContent;
 
@@ -96,6 +97,7 @@ pub struct State {
   pub loop_playback: bool,
   pub effects_shown: HashSet<&'static str>,
   pub render_progress_functions: Vec<Box<dyn FnMut()>>,
+  pub event_types_initialized: HashSet <& 'static str>,
   pub event_listeners: HashMap <(String, & 'static str), Box <dyn FnMut (Value)>>,
 }
 
@@ -113,6 +115,8 @@ thread_local! {
     loop_playback: false,
     effects_shown: HashSet::new(),
     render_progress_functions: Default::default(),
+    event_types_initialized: HashSet::new(),
+    event_listeners: HashMap::new(),
   })
   };
 }
@@ -157,9 +161,9 @@ pub trait UIBuilder {
   #[inline(always)]
   fn last_n_grid_rows_class (&mut self, _classname: & str, _n: i32) {}
   #[inline(always)]
-  fn add_event_listener <Event: ConcreteEvent, Callback: FnMut(Event)> (&mut self, _id: String, _listener: Callback) {}
+  fn add_event_listener <Event: ConcreteEvent, Callback: FnMut(Event)> (&mut self, _id: impl Into <String>, _listener: Callback) where <Event as TryFrom<Value>>::Error: Debug {}
   #[inline(always)]
-  fn add_event_listener_erased <Callback: FnMut(Value)> (&mut self, _id: String, _event_type: &'static str, _listener: Callback) {}
+  fn add_event_listener_erased <Callback: FnMut(Value)> (&mut self, _id: impl Into <String>, _event_type: &'static str, _listener: Callback) {}
   #[inline(always)]
   fn after_morphdom<Callback: FnOnce()> (&mut self, _callback: Callback) {}
   #[inline(always)]
@@ -169,8 +173,7 @@ pub trait UIBuilder {
 pub fn envelope_input<Builder: UIBuilder, G: 'static + GetterBase<From = State, To = UserTime>>(builder: &mut Builder, id: &str, name: &str, range: [f64; 2], getter: Getter<G>) -> Vec<Element> {
   let (input, label) = numerical_input(
       builder,
-      id, name, getter, range,
-
+      id, name, getter, range, 0.0,
     );
   
   builder.next_grid_row_class(id);
@@ -208,7 +211,7 @@ fn app<Builder: UIBuilder>(builder: &mut Builder) -> Element {
     struct Visitor<'a, Builder: UIBuilder>(&'a mut Builder, &'a mut Vec<Element>);
     impl<'a, Builder: UIBuilder> SignalVisitor for Visitor<'a, Builder> {
       fn visit<Identity: SignalIdentity>(&mut self) {
-        let specification: SignalEditorSpecification<Identity> = SignalEditorSpecification {
+        let specification: SignalEditorSpecification<Builder, Identity> = SignalEditorSpecification {
           builder: self.0,
           _marker: PhantomData,
         };
@@ -216,7 +219,7 @@ fn app<Builder: UIBuilder>(builder: &mut Builder) -> Element {
       }
     }
 
-    visit_signals(&mut Visitor(&mut builder, &mut signal_elements));
+    visit_signals(&mut Visitor(builder, &mut signal_elements));
 
   builder.next_grid_row_class("clipping");
   builder.next_grid_row_class("sample_rate");
@@ -292,19 +295,19 @@ fn app<Builder: UIBuilder>(builder: &mut Builder) -> Element {
           .mutate_sound(&mut state.sound);
     });
   });
-  let load_callback = || {
-    let loading = js_unwrap!{$("#json_area").val()};
+  /*let load_callback = || {
+    let loading: String = js_unwrap!{$("#json_area").val()};
     if let Ok(sound) = serde_json::from_str(&loading) {
       with_state_mut(|state| state.sound = sound);
     }
-  };
+  };*/
   builder.add_event_listener("json_area", |_:ClickEvent| {
     js!{
       $("#json_area").select();
     }
   });
   builder.add_event_listener("json_area", |_:InputEvent| {
-    let loading = js_unwrap!{$("#json_area").val()};
+    let loading: String = js_unwrap!{$("#json_area").val()};
     if let Ok(sound) = serde_json::from_str(&loading) {
       with_state_mut(|state| state.sound = sound);
     }
@@ -331,9 +334,8 @@ fn app<Builder: UIBuilder>(builder: &mut Builder) -> Element {
     redraw_waveform_canvas(state);
   })});
   
-  html! {
-    <div class="app">
-      <div class="left_column">
+  let left_column = html! {
+    <div class="left_column">
         {make_rendered_canvas(builder, "main_canvas", getter!(state: RenderingState => RenderedSamples {state.final_samples}), 100)}
         <input type="button" id="play_button" value="Play" />
         <div class="labeled_input">
@@ -349,14 +351,16 @@ fn app<Builder: UIBuilder>(builder: &mut Builder) -> Element {
         <textarea id="json_area">
           {text!(serde_json::to_string_pretty (&state.sound).unwrap())}
         </textarea>
-      </div>
-      <div class="main_grid">
+    </div>
+  };
+  let main_grid = html! {
+    <div class="main_grid">
         {envelope_inputs}
-        <div class=["envelope", "envelope_canvas"]><canvas id="envelope_canvas" width={MAX_RENDER_LENGTH*DISPLAY_SAMPLE_RATE} height=90 /></div>
+        <div class=["envelope", "envelope_canvas"]><canvas id="envelope_canvas" width={(MAX_RENDER_LENGTH*DISPLAY_SAMPLE_RATE) as usize} height=90 /></div>
         <div class=["envelope", "input_region"]></div>
         <div class=["waveform", "grid_row_label"]>{waveform_label}</div>
         <div class=["waveform", "waveform_input"]>{main_waveform_input}</div>
-        <div class=["waveform", "waveform_canvas"]><canvas id="waveform_canvas" width={MAX_RENDER_LENGTH*DISPLAY_SAMPLE_RATE} height=32 /></div>
+        <div class=["waveform", "waveform_canvas"]><canvas id="waveform_canvas" width={(MAX_RENDER_LENGTH*DISPLAY_SAMPLE_RATE) as usize} height=32 /></div>
         <div class=["waveform", "input_region"]></div>
         {signal_elements}
         <div class=["clipping", "grid_row_label"]>{clipping_label}</div>
@@ -366,10 +370,15 @@ fn app<Builder: UIBuilder>(builder: &mut Builder) -> Element {
         <div class=["sample_rate", "grid_main_input"]>{sample_rate_input}</div>
         <div class=["sample_rate", "input_region"]></div>
       </div>
+  };
+  html! {
+    <div class="app">
+      {left_column}
+      {main_grid}
     </div>
   }
   
-  });
+  })
 }
 
 
@@ -381,11 +390,11 @@ struct ClientSideUIBuilder {
 }
 
 impl UIBuilder for ClientSideUIBuilder {
-  fn add_event_listener <Event: ConcreteEvent, Callback: FnMut(Event)> (&mut self, id: String, listener: Callback) {
+  fn add_event_listener <Event: ConcreteEvent, Callback: FnMut(Event)> (&mut self, id: impl Into <String>, listener: Callback) where <Event as TryFrom<Value>>::Error: Debug {
     self.add_event_listener_erased (id, Event::EVENT_TYPE, move | event | (listener)(event.try_into().unwrap()));
   }
-  fn add_event_listener_erased <Callback: FnMut(Value)> (&mut self, id: String, event_type: &'static str, listener: Callback) {
-    self.event_listeners.insert ((id, event_type), Box::new (move |event| {
+  fn add_event_listener_erased <Callback: FnMut(Value)> (&mut self, id: impl Into <String>, event_type: &'static str, listener: Callback) {
+    self.event_listeners.insert ((id.into(), event_type), Box::new (move |event| {
     
     let mut sound_changed = false;
     (listener)(event);
@@ -432,12 +441,11 @@ fn redraw_app() {
   
   with_state_mut (move | state | {
     for ((_, event_type),_) in & builder.event_listeners {
-      let event_type = event_type.to_string();
-      if state.event_types_initialized.insert (event_type.clone()) {
-        let global_listener = move |event: Value, mut target: Element| {
+      if state.event_types_initialized.insert (event_type) {
+        let global_listener = move |event: Value, mut target: stdweb::web::Element| {
           loop {
             if let Some(id) = target.get_attribute ("id") {
-              if let Some(specific_listener) = state.event_listeners.get ((id, event_type.clone())) {
+              if let Some(specific_listener) = state.event_listeners.get (&(id, event_type)) {
                 (specific_listener) (event);
                 break
               }
@@ -449,7 +457,7 @@ fn redraw_app() {
           }
         };
         js! {
-          $(document).on (event_type, function (event) {
+          $(document).on ($(event_type), function (event) {
             @{global_listener} (event, event.target);
           });
         }
@@ -546,6 +554,7 @@ fn redraw_waveform_canvas(state: &State) {
 const SWITCH_PLAYBACK_DELAY: f64 = 0.15;
 
 fn render_loop() {
+  let mut play_getter = None;
   with_state_mut (| state | {
     let start = now();
 
@@ -628,7 +637,7 @@ fn render_loop() {
       let offset = playback.time.current_offset();
       if offset > state.sound.rendering_duration() {
         if state.loop_playback {
-          play(state, playback.samples_getter);
+          play_getter = Some(playback.samples_getter);
         } else {
           let samples = playback.samples_getter.get(&state.rendering_state);
           //samples.redraw (None, & state.rendering_state.constants);
@@ -641,6 +650,10 @@ fn render_loop() {
       redraw_waveform_canvas(state);
     }
   });
+  
+  if let Some(play_getter) = play_getter {
+    play(play_getter);
+  }
 
   web::window().request_animation_frame(move |_time| render_loop());
 }

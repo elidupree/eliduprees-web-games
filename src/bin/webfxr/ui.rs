@@ -92,22 +92,21 @@ impl IllustrationCanvas {
 
   pub fn update(&mut self) {
     with_state(|state| {
-    let illustration = self.getter.get(&state.rendering_state);
-    //println!("{:?}", (self.lines_drawn, illustration.lines.len()));
-    while self.lines_drawn < illustration.lines.len() {
-      self.draw_next_line(illustration);
-    }
-    }
+      let illustration = self.getter.get(&state.rendering_state);
+      //println!("{:?}", (self.lines_drawn, illustration.lines.len()));
+      while self.lines_drawn < illustration.lines.len() {
+        self.draw_next_line(illustration);
+      }
+    });
   }
 
   pub fn redraw(
     &mut self,
-    state: &State,
     playback_position: Option<f64>,
     constants: &RenderingStateConstants,
   ) {
     //self.reset();
-    self.update(state);
+    self.update();
 
     if let Some(playback_position) = playback_position {
       let index = (playback_position * constants.sample_rate as f64
@@ -136,12 +135,12 @@ pub fn make_rendered_canvas<
   height: i32,
 ) -> Element {
   
-  let canvas = IllustrationCanvas::new(
+  let canvas = Rc::new (RefCell::new (IllustrationCanvas::new(
     id.to_string(),
     (rendered_getter.clone()
       + getter! (samples: RenderedSamples => Illustration {samples.illustration}))
     .dynamic(),
-  );
+  )));
 
   {
    let getter = rendered_getter.clone();
@@ -150,15 +149,15 @@ pub fn make_rendered_canvas<
   });
   
   }
-    
+    {canvas = canvas.clone();
   builder.after_morphdom (move | | {
-  //rendered.redraw (None, & guard.rendering_state.constants);
-  //canvas.reset();
-  canvas.update(&state.borrow());
-  });
+    //rendered.redraw (None, & guard.rendering_state.constants);
+    //canvas.reset();
+    canvas.borrow_mut().update();
+  });}
   
   builder.on_render_progress (move | | {
-    canvas.update();
+    canvas.borrow_mut().update();
   });
   
   html!{
