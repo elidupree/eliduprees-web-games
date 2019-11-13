@@ -34,7 +34,7 @@ pub fn random_number_logarithmic<G: Rng, T: UserNumberType>(
 
 pub fn random_waveform<G: Rng>(generator: &mut G) -> Waveform {
   match generator.gen_range(0, 4) {
-    0...2 => [
+    0..=2 => [
       Waveform::Sine,
       Waveform::Square,
       Waveform::Triangle,

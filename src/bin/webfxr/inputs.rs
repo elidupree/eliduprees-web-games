@@ -1,9 +1,8 @@
-use std::cell::RefCell;
+//use std::cell::RefCell;
 use std::fmt::Debug;
-use std::rc::Rc;
-use stdweb::unstable::{TryFrom, TryInto};
-use stdweb::{JsSerialize, Value};
-use typed_html::elements::FlowContent;
+//use std::rc::Rc;
+use stdweb::unstable::{TryInto};
+use stdweb::Value;
 use typed_html::types::Id;
 use typed_html::{html, text};
 use stdweb::web::event::{ChangeEvent};
@@ -43,7 +42,7 @@ pub fn menu_input<Builder: UIBuilder, T: 'static + Eq + Clone, G: 'static + Gett
   let current_value = get(&getter);
   let values: Vec<T> = options.iter().map(|(a, _)| a.clone()).collect();
   builder.add_event_listener(id, move |_: ChangeEvent| {
-    let index = js_unwrap! {$("#"+@{id}).prop ("selectedIndex")};
+    let index: i32 = js_unwrap! {$("#"+@{id}).prop ("selectedIndex")};
     if let Some(value) = values.get(index as usize) {
       set(&getter, value.clone());
     }
@@ -153,7 +152,7 @@ pub struct NumericalInputSpecification<'a, Builder: UIBuilder, T: UserNumberType
   pub input_callback: F,
 }
 
-impl<'a, Builder: UIBuilder, F: 'static + Fn(UserNumber<T>) + Copy, T: UserNumberType>
+impl<'a, Builder: UIBuilder, F: 'static + Fn(UserNumber<T>), T: UserNumberType>
   NumericalInputSpecification<'a, Builder, T, F>
 {
   pub fn render(self) -> (Element, Element) {
@@ -178,14 +177,20 @@ impl<'a, Builder: UIBuilder, F: 'static + Fn(UserNumber<T>) + Copy, T: UserNumbe
         (input_callback)(value);
       }
     };
+    let to_rendered_callback = { let value_type = value_type.clone(); move | value: String |{
+          if let Some(value) = UserNumber::new (value_type.clone(), value) {
+            value.rendered
+          }
+          else {std::f64::NAN}
+        }};
 
     let range_overrides = move || {
-      let value = js_unwrap! {$("#"+@{range_id})[0].valueAsNumber};
+      let value = js_unwrap! {$("#"+@{range_id.clone()})[0].valueAsNumber};
       let source = value_type.approximate_from_rendered(value);
       (update)(source);
     };
     let number_overrides = move || {
-      (update)(js_unwrap! {$("#"+@{number_id}).val()});
+      (update)(js_unwrap! {$("#"+@{number_id.clone()}).val()});
     };
 
     let label = format!("{} ({})", self.name, value_type.unit_name());
@@ -235,8 +240,8 @@ impl<'a, Builder: UIBuilder, F: 'static + Fn(UserNumber<T>) + Copy, T: UserNumbe
     (
       html! {
         <div id={Id::new (self.id)} class="labeled_input numeric">
-          <input type="number" id={Id::new (number_id)} value=displayed_value min={self.slider_range [0]} max={self.slider_range [1]} step=slider_step />
-          <input type="range" id={Id::new (range_id)} value=self.current_value.rendered />
+          <input type="number" id={Id::new (number_id)} value=displayed_value />
+          <input type="range" id={Id::new (range_id)} value=self.current_value.rendered.to_string() min={self.slider_range [0].to_string()} max={self.slider_range [1].to_string()} step=slider_step.to_string()  />
         </div>
       },
       html! {
@@ -335,9 +340,6 @@ impl<'a, Builder: UIBuilder, Identity: SignalIdentity> SignalEditorSpecification
       let state_getter = uh + signals_getter.clone();
       let info = Identity::info();
       let signal = signals_getter.get(&sound.signals);
-      let first_row = self.redraw.rows;
-
-      let container = &self.redraw.main_grid;
 
       let applicable = Identity::applicable(sound);
       let enabled = sound.enabled::<Identity>();
@@ -350,26 +352,24 @@ impl<'a, Builder: UIBuilder, Identity: SignalIdentity> SignalEditorSpecification
       let effects_class = format!("{}_effects", info.id);
 
       let mut signal_label = if enabled {
-        let (input, label) = self.value_input (self.builder,
+        let (input, label) = self.value_input (
       & format! ("{}_initial", & info.id),
       info.name,
       state_getter.clone() + getter! {self@        <[NumberType: UserNumberType]>{_marker: PhantomData<NumberType> = PhantomData,} => signal: Signal<NumberType> => UserNumber<NumberType> {signal.initial_value}}
     );
-        elements.append(html! { <div class=[&signal_class, "signal_numerical"]>{input}</div> });
-        build_functions.append(Box::new(build));
+        elements.push (html! { <div class=[&signal_class, "signal_numerical"]>{input}</div> });
         label
       } else {
         html! { <span>{text! (info.name)}</span> }
       };
 
       if applicable && info.can_disable {
-        let (toggle, label) = self.checkbox_input (self.builder,
+        let (toggle, label) = self.checkbox_input (
       & format! ("{}_enabled", & info.id),
       info.name,
       state_getter.clone() + getter! (self@ <[NumberType: UserNumberType]>{_marker: PhantomData<NumberType> = PhantomData,} => signal: Signal<NumberType> => bool {signal.enabled})
     );
-        elements.append(html! { <div class=[&signal_class, "signal_toggle"]>{toggle}</div> });
-        build_functions.append(build);
+        elements.push (html! { <div class=[&signal_class, "signal_toggle"]>{toggle}</div> });
         signal_label = label;
       }
 
@@ -379,7 +379,7 @@ impl<'a, Builder: UIBuilder, Identity: SignalIdentity> SignalEditorSpecification
       );
 
       if !applicable {
-        elements.append (html!{ <div class=[&signal_class, "signal_not_applicable"]>"Not applicable for the current waveform"</div> });
+        elements.push (html!{ <div class=[&signal_class, "signal_not_applicable"]>"Not applicable for the current waveform"</div> });
       }
 
       if enabled {
@@ -389,7 +389,7 @@ impl<'a, Builder: UIBuilder, Identity: SignalIdentity> SignalEditorSpecification
           let getter = state_getter.clone();
           let select_id = format!("{}_add_effect", info.id);
 
-          elements.append(html! {
+          elements.push (html! {
             <select id= {Id::new (select_id)} class=[&signal_class, "add_effect_buttons"]>
               <option selected=true>"Add effect..."</option>
               <option>{text!("{} jump", {info.name})}</option>
@@ -430,9 +430,8 @@ impl<'a, Builder: UIBuilder, Identity: SignalIdentity> SignalEditorSpecification
         let rendered_canvas =
           make_rendered_canvas(self.builder, format! ("{}_rendered_canvas", & info.id), samples_getter, 32);
         elements
-          .append(html! { <div class=[&signal_class, "rendered_canvas"]>{rendered_canvas}</div> });
+          .push(html! { <div class=[&signal_class, "rendered_canvas"]>{rendered_canvas}</div> });
 
-        //TODO move to canvas code: self.redraw.render_progress_functions.push (Box::new (move | state | rendered_canvas.update (state)));
 
         /*if info.id == "harmonics" {
           let toggle = self.checkbox_input(
@@ -554,9 +553,9 @@ impl<'a, Builder: UIBuilder, Identity: SignalIdentity> SignalEditorSpecification
         }
         */
       }
-      js! { @{& container}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{first_row}+" / "+@{self.redraw.rows})); }
+      //js! { @{& container}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{first_row}+" / "+@{self.redraw.rows})); }
       
-      Elements
+      elements
     })
   }
 }

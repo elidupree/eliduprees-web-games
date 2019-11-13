@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
-use stdweb::Value;
+use typed_html::types::Id;
 
 use super::*;
 
@@ -130,13 +130,13 @@ pub fn make_rendered_canvas<
   G: Clone + 'static + GetterBase<From = RenderingState, To = RenderedSamples>,
 >(
   builder: &mut Builder,
-  id: &str,
+  id: String,
   rendered_getter: Getter<G>,
   height: i32,
 ) -> Element {
   
   let canvas = Rc::new (RefCell::new (IllustrationCanvas::new(
-    id.to_string(),
+    id.clone(),
     (rendered_getter.clone()
       + getter! (samples: RenderedSamples => Illustration {samples.illustration}))
     .dynamic(),
@@ -161,6 +161,6 @@ pub fn make_rendered_canvas<
   });
   
   html!{
-    <canvas id=id width={(MAX_RENDER_LENGTH*DISPLAY_SAMPLE_RATE) as usize} height={height as usize} />
+    <canvas id={Id::new (id)} width={(MAX_RENDER_LENGTH*DISPLAY_SAMPLE_RATE) as usize} height={height as usize} />
   }
 }

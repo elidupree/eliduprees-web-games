@@ -9,7 +9,7 @@ extern crate stdweb;
 extern crate typed_html;
 extern crate serde;
 extern crate serde_json;
-#[macro_use]
+//#[macro_use]
 extern crate serde_derive;
 #[macro_use]
 extern crate derivative;
@@ -25,7 +25,7 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::mem;
 use std::ops::Bound;
-use std::rc::Rc;
+//use std::rc::Rc;
 use stdweb::Value;
 use stdweb::unstable::{TryInto, TryFrom};
 pub use array_ext::Array;
@@ -336,7 +336,7 @@ fn app<Builder: UIBuilder>(builder: &mut Builder) -> Element {
   
   let left_column = html! {
     <div class="left_column">
-        {make_rendered_canvas(builder, "main_canvas", getter!(state: RenderingState => RenderedSamples {state.final_samples}), 100)}
+        {make_rendered_canvas(builder, "main_canvas".to_string(), getter!(state: RenderingState => RenderedSamples {state.final_samples}), 100)}
         <input type="button" id="play_button" value="Play" />
         <div class="labeled_input">
           {loop_input}
@@ -429,8 +429,9 @@ impl UIBuilder for ClientSideUIBuilder {
 fn redraw_app() {
   let mut builder = ClientSideUIBuilder::default();
   let app_element = app(&mut builder);
+  //let something = typed_html::output::stdweb::Stdweb::build (&stdweb::web::document(),app_element.vnode());
   
-  js! {morphdom($("#app")[0], @{app_element.vnode()});}
+  js! {morphdom($("#app")[0], $(@{app_element .to_string() }));}
   js! {
     document.getElementsByTagName("canvas").forEach(function(canvas) {
       var context = canvas.getContext ("2d");
