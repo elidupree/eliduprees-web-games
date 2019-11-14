@@ -73,6 +73,7 @@ pub struct RenderedSamples {
   //pub serial_number: SerialNumber,
   pub samples: Vec<f32>,
   pub illustration: Illustration,
+  #[cfg(target_os = "emscripten")]
   pub audio_buffer: Value,
 }
 impl Default for RenderedSamples {
@@ -81,6 +82,7 @@ impl Default for RenderedSamples {
       //serial_number: Default::default(),
       samples: Vec::new(),
       illustration: Default::default(),
+      #[cfg(target_os = "emscripten")]
       audio_buffer: js! {
         if (window.webfxr_num_samples) {
           return audio.createBuffer (1, window.webfxr_num_samples, window.webfxr_sample_rate);
@@ -192,6 +194,7 @@ impl RenderedSamples {
   pub fn push(&mut self, value: f64, constants: &RenderingStateConstants) {
     self.samples.push(value as f32);
     let illustration = &mut self.illustration;
+    #[cfg(target_os = "emscripten")]
     let buffer = &self.audio_buffer;
     maybe_batch(&self.samples, constants, |batch_start, rendered_slice| {
       //let average = rendered_slice.iter().map (| sample | *sample as f64).sum::<f64>()/rendered_slice.len() as f64;

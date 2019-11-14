@@ -5,7 +5,7 @@
 
 extern crate eliduprees_web_games;
 
-//#[macro_use]
+#[cfg_attr (target_os = "emscripten", macro_use)]
 extern crate stdweb;
 #[macro_use]
 extern crate typed_html;
@@ -40,14 +40,11 @@ use typed_html::elements::FlowContent;
 
 
 #[cfg(target_os = "emscripten")]
-use stdweb::{js, js_serializable, js_deserializable};
-
-#[cfg(target_os = "emscripten")]
 macro_rules! js_unwrap {
   ($($x:tt)*) => {
     {
       let result = js!{return $($x)*};
-      result.try_into().unwrap()
+      stdweb::unstable::TryInto::try_into(result).unwrap()
     }
   }
 }

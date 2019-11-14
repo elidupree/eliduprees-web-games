@@ -1,7 +1,6 @@
 //use std::cell::RefCell;
 use std::fmt::Debug;
 use std::rc::Rc;
-use stdweb::unstable::{TryInto};
 use stdweb::Value;
 use typed_html::types::Id;
 use typed_html::{html, text};
