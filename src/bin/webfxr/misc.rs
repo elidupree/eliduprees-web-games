@@ -20,7 +20,7 @@ pub fn max(first: f64, second: f64) -> f64 {
 }
 
 pub fn audio_now() -> f64 {
-  let seconds: f64 = js_unwrap! { return audio.currentTime; };
+  let seconds: f64 = js_unwrap! { audio.currentTime };
   seconds
 }
 

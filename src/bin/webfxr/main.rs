@@ -27,7 +27,7 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::mem;
 use std::ops::Bound;
-//use std::rc::Rc;
+use std::rc::Rc;
 use stdweb::Value;
 use stdweb::unstable::{TryInto, TryFrom};
 pub use array_ext::Array;
@@ -114,7 +114,7 @@ pub struct State {
   pub effects_shown: HashSet<&'static str>,
   pub render_progress_functions: Vec<Box<dyn FnMut()>>,
   pub event_types_initialized: HashSet <& 'static str>,
-  pub event_listeners: HashMap <(String, & 'static str), Box <dyn FnMut (Value)>>,
+  pub event_listeners: HashMap <(String, & 'static str), Rc<dyn Fn(Value)>>,
 }
 
 thread_local! {
@@ -177,9 +177,9 @@ pub trait UIBuilder {
   #[inline(always)]
   fn last_n_grid_rows_class (&mut self, _classname: & str, _n: i32) {}
   #[inline(always)]
-  fn add_event_listener <Event: ConcreteEvent, Callback: 'static + FnMut(Event)> (&mut self, _id: impl Into <String>, _listener: Callback) where <Event as TryFrom<Value>>::Error: Debug {}
+  fn add_event_listener <Event: ConcreteEvent, Callback: 'static + Fn(Event)> (&mut self, _id: impl Into <String>, _listener: Callback) where <Event as TryFrom<Value>>::Error: Debug {}
   #[inline(always)]
-  fn add_event_listener_erased <Callback: 'static + FnMut(Value)> (&mut self, _id: impl Into <String>, _event_type: &'static str, _listener: Callback) {}
+  fn add_event_listener_erased <Callback: 'static + Fn(Value)> (&mut self, _id: impl Into <String>, _event_type: &'static str, _listener: Callback) {}
   #[inline(always)]
   fn after_morphdom<Callback: 'static + FnOnce()> (&mut self, _callback: Callback) {}
   #[inline(always)]
@@ -388,7 +388,7 @@ fn app<Builder: UIBuilder>(builder: &mut Builder) -> Element {
       </div>
   };
   html! {
-    <div class="app">
+    <div class="app" id="app">
       {left_column}
       {main_grid}
     </div>
@@ -402,15 +402,22 @@ fn app<Builder: UIBuilder>(builder: &mut Builder) -> Element {
 struct ClientSideUIBuilder {
   pub after_morphdom_functions: Vec<Box<dyn FnOnce()>>,
   pub render_progress_functions: Vec<Box<dyn FnMut()>>,
-  pub event_listeners: HashMap <(String, & 'static str), Box <dyn FnMut (Value)>>,
+  pub event_listeners: HashMap <(String, & 'static str), Rc<dyn Fn(Value)>>,
 }
 
 impl UIBuilder for ClientSideUIBuilder {
-  fn add_event_listener <Event: ConcreteEvent, Callback: 'static + FnMut(Event)> (&mut self, id: impl Into <String>, mut listener: Callback) where <Event as TryFrom<Value>>::Error: Debug {
-    self.add_event_listener_erased (id, Event::EVENT_TYPE, move | event | (listener)(event.try_into().unwrap()));
+  fn add_event_listener <Event: ConcreteEvent, Callback: 'static + Fn(Event)> (&mut self, id: impl Into <String>, listener: Callback) where <Event as TryFrom<Value>>::Error: Debug {
+    self.add_event_listener_erased (id, Event::EVENT_TYPE, move | event | {
+      //js!{ console.log (@{&event}); }
+      //js!{ console.log (@{Event::EVENT_TYPE}); }
+      //js!{ console.log (@{std::any::type_name::<Event>()}); }
+      let converted: Event = event.try_into().unwrap();
+      //js!{ console.log ("conversion worked"); }
+      (listener)(converted);
+    });
   }
-  fn add_event_listener_erased <Callback: 'static + FnMut(Value)> (&mut self, id: impl Into <String>, event_type: &'static str, mut listener: Callback) {
-    self.event_listeners.insert ((id.into(), event_type), Box::new (move |event| {
+  fn add_event_listener_erased <Callback: 'static + Fn(Value)> (&mut self, id: impl Into <String>, event_type: &'static str, listener: Callback) {
+    self.event_listeners.insert ((id.into(), event_type), Rc::new (move |event| {
     
     let mut sound_changed = false;
     (listener)(event);
@@ -447,9 +454,13 @@ fn redraw_app() {
   let app_element = app(&mut builder);
   //let something = typed_html::output::stdweb::Stdweb::build (&stdweb::web::document(),app_element.vnode());
   
-  js! {morphdom($("#app")[0], $(@{app_element .to_string() }));}
   js! {
-    document.getElementsByTagName("canvas").forEach(function(canvas) {
+    var new_app = $(@{app_element .to_string() })[0];
+    console.log(new_app);
+    morphdom($("#app")[0], new_app);
+  }
+  js! {
+    document.querySelectorAll("canvas").forEach(function(canvas) {
       var context = canvas.getContext ("2d");
       context.clearRect (0, 0, canvas.width, canvas.height);
     });
@@ -462,21 +473,23 @@ fn redraw_app() {
       let event_type: & 'static str = (event_listener.0).1;
       if state.event_types_initialized.insert (event_type) {
         let global_listener = move |event: Value, mut target: stdweb::web::Element| {
-          with_state_mut (move | state | {loop {
+          let specific_listener = with_state_mut (move | state | {loop {
             if let Some(id) = target.get_attribute ("id") {
               if let Some(specific_listener) = state.event_listeners.get_mut (&(id, event_type)) {
-                (specific_listener) (event);
-                break
+                return Some (specific_listener.clone());
               }
             }
             match target.parent_element() {
               Some (parent) => target = parent,
-              None => break
+              None => return None
             }
-          }})
+          }});
+          if let Some(specific_listener) = specific_listener {
+            (specific_listener) (event);
+          }
         };
         js! {
-          $(document).on ($(event_type), function (event) {
+          document.addEventListener(@{event_type}, function (event) {
             @{global_listener} (event, event.target);
           });
         }
@@ -574,10 +587,12 @@ const SWITCH_PLAYBACK_DELAY: f64 = 0.15;
 
 fn render_loop() {
   let mut play_getter = None;
+  let mut functions = Vec::new();
+  let mut already_finished = false;
   with_state_mut (| state | {
     let start = now();
 
-    let already_finished = state.rendering_state.finished();
+    already_finished = state.rendering_state.finished();
 
     while !state.rendering_state.finished() {
       {
@@ -601,10 +616,16 @@ fn render_loop() {
     }
 
     if !already_finished {
-      let mut functions = mem::replace(&mut state.render_progress_functions, Default::default());
-      for function in &mut functions {
-        (function)();
-      }
+      functions = mem::replace(&mut state.render_progress_functions, Default::default());
+    }
+  });
+  
+  for function in &mut functions {
+    (function)();
+  }
+  
+  with_state_mut (| state | {
+    if !already_finished {
       state.render_progress_functions = functions;
     }
 
