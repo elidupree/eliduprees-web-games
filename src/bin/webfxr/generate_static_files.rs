@@ -33,7 +33,7 @@ pub fn generate_static_files() {
     css: "
     
 ".to_string(),
-    next_grid_row: 0,
+    next_grid_row: 1,
   };
   
   
@@ -52,15 +52,24 @@ html,body {{background-color: white;}}
 .left_column {{}}
 
 .main_grid {{display: grid; grid-template-columns: 1fr 0fr 0fr 0fr 0fr 0fr 0fr 1fr;}}
+
+
+.grid_row_label,.signal_label {{grid-column: {name_column} / span 1; text-align: right; align-self: center;}}
+
 .signal_toggle {{grid-column:{toggle_column}/ span 1; }}
-.labeled_input.numeric, .effect_header, .odd_harmonics_toggle, .view_toggle {{grid-column: {input_column} / span 1; white-space: nowrap;}}
-.sound_radio_input {{grid-column: {input_column} / span 2; }}
-.add_effect_buttons {{grid-column: {add_effect_column} / span 1; width: 8em;}}
+
+.grid_main_input, .grid_numerical, .labeled_input.numeric, .effect_header, .odd_harmonics_toggle, .view_toggle, .signal_numerical {{grid-column: {input_column} / span 1; white-space: nowrap;}}
+.sound_radio_input, .waveform_input {{grid-column: {input_column} / span 2; }}
 .signal_effect {{grid-column: {input_column} / span 2 !important; }}
-.toplevel_input_label {{grid-column: {name_column} / span 1; text-align: right; align-self: center;}}
+
+.add_effect_buttons {{grid-column: {add_effect_column} / span 1; width: 8em;}}
+
+.main_grid .canvas_wrapper, .envelope_canvas, .rendered_canvas, .waveform_canvas {{grid-column: {canvas_column} / span 1; align-self: center; }}
+
+
 .input_region {{border: 0.125em solid #ccc; border-width: 0.0625em 0; grid-column: {name_column} / -1; }}
 .input_region:nth-child(odd) {{background-color:#eee; }}
-.main_grid .canvas_wrapper {{grid-column: {canvas_column} / span 1; align-self: center; }}
+
 .panel {{margin:0.8em; padding:0.8em; background-color:#eee;}}
 .panel .labeled_input {{margin:0.2em;}}
 .panel label {{margin-left: 0.2em; margin-right: 0.6em;}}

@@ -332,7 +332,7 @@ impl<'a, Builder: UIBuilder, Identity: SignalIdentity> SignalEditorSpecification
     waveform_input(self.builder, id, name, getter)
   }
 
-  pub fn render(mut self) -> Vec<Element> {
+  pub fn render(mut self) -> (Vec<Element>, Element) {
     with_state(|state| {
       let sound = &state.sound;
       let signals_getter = Identity::definition_getter();
@@ -350,6 +350,10 @@ impl<'a, Builder: UIBuilder, Identity: SignalIdentity> SignalEditorSpecification
 
       let signal_class = format!("{}", info.id);
       let effects_class = format!("{}_effects", info.id);
+      let input_region_class = format!("{}_input_region", info.id);
+      
+      self.builder.next_grid_row_class (&signal_class);
+      self.builder.last_n_grid_rows_class (& input_region_class, 1);
 
       let mut signal_label = if enabled {
         let (input, label) = self.value_input (
@@ -555,7 +559,8 @@ impl<'a, Builder: UIBuilder, Identity: SignalIdentity> SignalEditorSpecification
       }
       //js! { @{& container}.prepend ($("<div>", {class:"input_region"}).css("grid-row", @{first_row}+" / "+@{self.redraw.rows})); }
       
-      elements
+      let input_region: Element =html! {<div class=[& input_region_class, "input_region"]></div>};
+      (elements,  input_region)
     })
   }
 }

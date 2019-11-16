@@ -223,19 +223,22 @@ fn app<Builder: UIBuilder>(builder: &mut Builder) -> Element {
   let (main_waveform_input, waveform_label) = waveform_input (builder, "waveform", "Waveform", getter! (state: State => Waveform {state.sound.waveform}));
   
   let mut signal_elements = Vec::with_capacity (16);
+  let mut signal_input_regions = Vec::with_capacity (16);
 
-    struct Visitor<'a, Builder: UIBuilder>(&'a mut Builder, &'a mut Vec<Element>);
+    struct Visitor<'a, Builder: UIBuilder>(&'a mut Builder, &'a mut Vec<Element>, &'a mut Vec<Element>);
     impl<'a, Builder: UIBuilder> SignalVisitor for Visitor<'a, Builder> {
       fn visit<Identity: SignalIdentity>(&mut self) {
         let specification: SignalEditorSpecification<Builder, Identity> = SignalEditorSpecification {
           builder: self.0,
           _marker: PhantomData,
         };
-        self.1.extend (specification.render());
+        let (elements, input_region) = specification.render();
+        self.1.extend (elements);
+        self.2.push (input_region);
       }
     }
 
-    visit_signals(&mut Visitor(builder, &mut signal_elements));
+    visit_signals(&mut Visitor(builder, &mut signal_elements, &mut signal_input_regions));
 
   builder.next_grid_row_class("clipping");
   builder.next_grid_row_class("sample_rate");
@@ -371,20 +374,23 @@ fn app<Builder: UIBuilder>(builder: &mut Builder) -> Element {
   };
   let main_grid = html! {
     <div class="main_grid">
+        <div class=["envelope", "input_region"]></div>
+        <div class=["waveform", "input_region"]></div>
+        {signal_input_regions}
+        <div class=["clipping", "input_region"]></div>
+        <div class=["sample_rate", "input_region"]></div>
+        
         {envelope_inputs}
         <div class=["envelope", "envelope_canvas"]><canvas id="envelope_canvas" width={(MAX_RENDER_LENGTH*DISPLAY_SAMPLE_RATE) as usize} height=90 /></div>
-        <div class=["envelope", "input_region"]></div>
+        
         <div class=["waveform", "grid_row_label"]>{waveform_label}</div>
         <div class=["waveform", "waveform_input"]>{main_waveform_input}</div>
         <div class=["waveform", "waveform_canvas"]><canvas id="waveform_canvas" width={(MAX_RENDER_LENGTH*DISPLAY_SAMPLE_RATE) as usize} height=32 /></div>
-        <div class=["waveform", "input_region"]></div>
         {signal_elements}
         <div class=["clipping", "grid_row_label"]>{clipping_label}</div>
         <div class=["clipping", "grid_main_input"]>{clipping_input}</div>
-        <div class=["clipping", "input_region"]></div>
         <div class=["sample_rate", "grid_row_label"]>{sample_rate_label}</div>
         <div class=["sample_rate", "grid_main_input"]>{sample_rate_input}</div>
-        <div class=["sample_rate", "input_region"]></div>
       </div>
   };
   html! {
