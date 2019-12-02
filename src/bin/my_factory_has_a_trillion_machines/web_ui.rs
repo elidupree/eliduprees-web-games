@@ -104,8 +104,26 @@ fn tile_position (visual: Vector2 <f64>)->MousePosition {
 }
 
 fn draw_rectangle (center: Vector2<f32>, size: Vector2<f32>, color: [f32; 3], sprite: & str, facing: Facing) {
+  let mut center = center;
+  center[1] = 1.0-center[1];
+  let corner = -size / 2.0;
   js! {
-  
+    context.save();
+    context.scale(context.canvas.width, context.canvas.height);
+    context.translate (@{center [0]},@{center [1]});
+    context.rotate (-Math.PI * @{facing} / 2);
+    
+    var sprite = loaded_sprites[@{sprite}];
+    
+    context.drawImage (sprite, @{corner[0]},@{corner[1]}, @{size [0]},@{size [1]});
+    /*context.globalCompositeOperation = "lighter";
+    var r = @{color[0]*255.0};
+    var g = @{color[1]*255.0};
+    var b = @{color[2]*255.0};
+    context.fillStyle = "rgb("+r+","+g+","+b+")";
+    context.fillRect (@{corner[0]},@{corner[1]}, @{size [0]},@{size [1]});*/
+    
+    context.restore();
   };
   /*sprite_offset.rotate_90((4-facing)%4);*/
 }
@@ -492,6 +510,15 @@ fn do_frame(state: & Rc<RefCell<State>>) {
   let state = &mut *state;
   let fractional_time = state.start_game_time as f64 + (now() - state.start_ui_time)*TIME_TO_MOVE_MATERIAL as f64*2.0;
   state.current_game_time = fractional_time as Number;
+  
+  if (js! {return window.loaded_sprites === undefined;}.try_into().unwrap()) {
+    return;
+  }
+  
+  js! {
+    context.fillStyle = "white";
+    context.fillRect(0, 0, context.canvas.width, context.canvas.height);
+  }
   
     //target.clear_color(1.0, 1.0, 1.0, 1.0);
     
