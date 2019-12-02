@@ -1,4 +1,4 @@
-#![feature (nll)]
+//#![feature (nll)]
 #![recursion_limit="256"]
 
 extern crate eliduprees_web_games;
@@ -15,8 +15,6 @@ extern crate arrayvec;
 #[cfg (test)]
 #[macro_use]
 extern crate proptest;
-#[macro_use]
-extern crate glium;
 extern crate siphasher;
 extern crate itertools;
 

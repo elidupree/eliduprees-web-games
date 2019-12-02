@@ -7,7 +7,6 @@ use std::hash::{Hash, Hasher};
 use std::collections::HashMap;
 use std::cmp::{min,max};
 use std::iter;
-use glium::{Surface};
 use arrayvec::ArrayVec;
 use stdweb::unstable::TryInto;
 use stdweb::web::ArrayBuffer;
@@ -21,19 +20,6 @@ use graph_algorithms::MapFuture;
 use misc;
 use modules::{self, Module};
 
-
-
-#[derive (Deserialize)]
-struct SpriteBounds {
-  x: u32,y: u32, width: u32, height: u32,
-}
-js_deserializable! (SpriteBounds) ;
-
-struct SpriteSheet {
-  texture: glium::texture::CompressedSrgbTexture2d,
-  size: [u32; 2],
-  bounds_map: HashMap <String, SpriteBounds>
-}
 
 #[derive (Copy, Clone)]
 struct MousePosition {
@@ -75,9 +61,6 @@ struct MouseState {
 }
 
 struct State {
-  glium_display: glium::Display,
-  glium_program: glium::Program,
-  sprite_sheet: Option <SpriteSheet>,
   game: Game,
   future: MapFuture,
   start_ui_time: f64,
@@ -85,14 +68,6 @@ struct State {
   current_game_time: Number,
   mouse: MouseState,
 }
-
-#[derive(Copy, Clone)]
-struct Vertex {
-  position: [f32; 2],
-  sprite_coordinates: [f32; 2],
-  color: [f32; 3],
-}
-implement_vertex!(Vertex, position, sprite_coordinates, color);
 
 fn machine_choices()->Vec<MachineType> { vec![machine_data::conveyor(), machine_data::splitter(), machine_data::iron_smelter(), machine_data::material_generator(), machine_data::consumer(), modules::basic_module()]}
 
@@ -128,35 +103,11 @@ fn tile_position (visual: Vector2 <f64>)->MousePosition {
   }
 }
 
-fn draw_rectangle (vertices: &mut Vec<Vertex>, sprite_sheet: & SpriteSheet, center: Vector2<f32>, size: Vector2<f32>, color: [f32; 3], sprite: & str, facing: Facing) {
-  let bounds = &sprite_sheet.bounds_map [sprite];
-  let sprite_center = Vector2::new(
-    bounds.x as f32 + bounds.width  as f32/2.0,
-    bounds.y as f32 + bounds.height as f32/2.0,
-  );
-  let sprite_size = Vector2::new(
-    (bounds.width -1) as f32,
-    (bounds.height-1) as f32,
-  );
-    
-  let vertex = |x,y| {
-    let mut sprite_offset = Vector2::new(x*sprite_size[0], y*sprite_size[1]);
-    sprite_offset = sprite_offset.rotate_90((4-facing)%4);
-    sprite_offset[1] *= -1.0;
-    let sprite_coordinates = sprite_center + sprite_offset;
-    Vertex {
-      position: [center [0] + size [0]*x, center [1] + size [1]*y],
-      sprite_coordinates: [
-        sprite_coordinates [0]/sprite_sheet.size [0] as f32,
-        sprite_coordinates [1]/sprite_sheet.size [1] as f32,
-      ], 
-      color,
-    }
+fn draw_rectangle (center: Vector2<f32>, size: Vector2<f32>, color: [f32; 3], sprite: & str, facing: Facing) {
+  js! {
+  
   };
-          vertices.extend(&[
-            vertex(-0.5,-0.5),vertex( 0.5,-0.5),vertex( 0.5, 0.5),
-            vertex(-0.5,-0.5),vertex( 0.5, 0.5),vertex(-0.5, 0.5)
-          ]);
+  /*sprite_offset.rotate_90((4-facing)%4);*/
 }
 
 impl MousePosition {
@@ -174,46 +125,7 @@ fn inside_machine (position: Vector, machine: & StatefulMachine)->bool {
 }
 
 pub fn run_game() {
-  let vertex_shader_source = r#"
-#version 100
-attribute highp vec2 position;
-attribute lowp vec3 color;
-attribute highp vec2 sprite_coordinates;
-varying lowp vec3 color_transfer;
-varying highp vec2 sprite_coordinates_transfer;
 
-void main() {
-gl_Position = vec4 (position*2.0 - 1.0, 0.0, 1.0);
-sprite_coordinates_transfer = sprite_coordinates;
-color_transfer = color;
-}
-
-"#;
-
-  let fragment_shader_source = r#"
-#version 100
-varying lowp vec3 color_transfer;
-varying highp vec2 sprite_coordinates_transfer;
-uniform sampler2D sprite_sheet;
-
-void main() {
-lowp vec4 t = texture2D (sprite_sheet, sprite_coordinates_transfer);
-if (t.rgba == vec4(1)) {
-  gl_FragColor = t;
-}
-else {
-  gl_FragColor = vec4(color_transfer, t.a);
-}
-}
-
-"#;
-  let display = glium::Display::new (glium::glutin::WindowBuilder::new()
-    .with_dimensions((600, 600).into()), glium::glutin::ContextBuilder::new(), & glium::glutin::EventsLoop::new()
-    ).expect("failed to create window");
-    
-  let program =
-    glium::Program::from_source(&display, vertex_shader_source, fragment_shader_source, None)
-      .expect("glium program generation failed");
       
   let mut game=Game{map:Map {machines: ArrayVec::new(), last_change_time: 0, },inventory_before_last_change: Default::default()};
   game.inventory_before_last_change.insert (Material::Iron, 100);
@@ -222,7 +134,6 @@ else {
   let future = game.map.future (& output_edges, & ordering);
       
   let state = Rc::new (RefCell::new (State {
-    glium_display: display, glium_program: program, sprite_sheet: None,
     game, future, start_ui_time: now(), start_game_time: 0, current_game_time: 0,
     mouse: Default::default(),
   }));
@@ -520,18 +431,17 @@ fn mouse_up(state: &mut State) {
 
 
 
-fn draw_machines (state: & State, machines: & [StatefulMachine], isomorphism: GridIsomorphism, vertices: &mut Vec<Vertex>) {
-  let sprite_sheet = match state.sprite_sheet {Some (ref value) => value, None => return};
+fn draw_machines (state: & State, machines: & [StatefulMachine], isomorphism: GridIsomorphism) {
     for machine in machines {
       let drawn = machine.machine_type.drawn_machine(& machine.map_state);
       let size = Vector2::new(tile_size()[0] * drawn.size[0] as f32/2.0, tile_size()[1] * drawn.size[1] as f32/2.0);
       let machine_isomorphism = machine.map_state.position*isomorphism;
-      draw_rectangle (vertices, sprite_sheet,
+      draw_rectangle (
         canvas_position (machine_isomorphism.translation),
         size,
         machine_color (machine), "rounded-rectangle-transparent", drawn.position.rotation
       );
-      draw_rectangle (vertices, sprite_sheet,
+      draw_rectangle (
         canvas_position (machine_isomorphism.translation),
         size,
         machine_color (machine), &drawn.icon, drawn.position.rotation.transformed_by(isomorphism)
@@ -540,13 +450,13 @@ fn draw_machines (state: & State, machines: & [StatefulMachine], isomorphism: Gr
     for machine in machines {
       if machine.machine_type.radius() > 1 {
         for ((input_location, input_facing), expected_material) in machine.machine_type.input_locations (& machine.map_state).into_iter().zip (machine.machine_type. input_materials()) {
-          draw_rectangle (vertices, sprite_sheet,
+          draw_rectangle (
             canvas_position (input_location.transformed_by(isomorphism)),
             tile_size(),
             machine_color (machine), "input", input_facing.transformed_by(isomorphism)
           );
           if let Some(material) = expected_material {
-            draw_rectangle (vertices, sprite_sheet,
+            draw_rectangle (
               canvas_position (input_location.transformed_by(isomorphism)),
               tile_size()*0.8,
               machine_color (machine), material.icon(), 0
@@ -559,7 +469,7 @@ fn draw_machines (state: & State, machines: & [StatefulMachine], isomorphism: Gr
       if machine.machine_type.radius() > 1 {
         for (output_location, output_facing) in machine.machine_type.output_locations (& machine.map_state) {
           if let Some(output_facing) = output_facing {
-          draw_rectangle (vertices, sprite_sheet,
+          draw_rectangle (
             canvas_position ((output_location - Vector::new(2, 0).rotate_90(output_facing)).transformed_by(isomorphism)),
             tile_size(),
             machine_color (machine), "input", output_facing.rotate_90(2).transformed_by(isomorphism)
@@ -572,56 +482,20 @@ fn draw_machines (state: & State, machines: & [StatefulMachine], isomorphism: Gr
     for machine in machines {
       if let MachineType::ModuleMachine(module_machine) = &machine.machine_type {
         let machine_isomorphism = machine.map_state.position*isomorphism;
-        draw_machines (state, &module_machine.module.map.machines, machine_isomorphism, vertices);
+        draw_machines (state, &module_machine.module.map.machines, machine_isomorphism);
       }
     }
 }
 
-fn do_frame(state: & Rc<RefCell<State>>) {
-  
-  
-  if state.borrow().sprite_sheet.is_none() {
-    let state = state.clone();
-    let load = move | data: ArrayBuffer, width: u32, height: u32, bounds_map: HashMap <String, SpriteBounds> | {
-      
-    
-      let mut state = state.borrow_mut();
-      let state = &mut*state;
-      
-      let data: Vec<u8> = data.into();
-      let image = glium::texture::RawImage2d::from_raw_rgba (data, (width, height));
-      
-      state.sprite_sheet = Some (SpriteSheet {
-        texture: glium::texture::CompressedSrgbTexture2d::new (& state.glium_display, image).unwrap(),
-        size: [width, height],
-        bounds_map
-      });
-    };
-    js!{
-      if (window.loaded_sprites) {
-        @{load} (loaded_sprites.rgba.buffer, loaded_sprites.width, loaded_sprites.height, loaded_sprites.coords);
-      }
-    }
-  }
-  
+fn do_frame(state: & Rc<RefCell<State>>) {  
   let mut state = state.borrow_mut();
   let state = &mut *state;
   let fractional_time = state.start_game_time as f64 + (now() - state.start_ui_time)*TIME_TO_MOVE_MATERIAL as f64*2.0;
   state.current_game_time = fractional_time as Number;
   
-  let sprite_sheet = match state.sprite_sheet {Some (ref value) => value, None => return};
-  
-  let parameters = glium::DrawParameters {
-    blend: glium::draw_parameters::Blend::alpha_blending(),
-    ..Default::default()
-  };
-  let indices = glium::index::NoIndices(glium::index::PrimitiveType::TrianglesList);
-
-    let mut target = state.glium_display.draw();
-    target.clear_color(1.0, 1.0, 1.0, 1.0);
-    let mut vertices = Vec::<Vertex>::new();
+    //target.clear_color(1.0, 1.0, 1.0, 1.0);
     
-    draw_machines (state, &state.game.map.machines, Default::default(), &mut vertices);
+    draw_machines (state, &state.game.map.machines, Default::default());
     for (machine, future) in state.game.map.machines.iter().zip (&state.future.machines) {
       let materials_states = iter::once (&machine.materials_state).chain (future.changes.iter().map (| (time, state) | {
         assert!(*time == state.last_flow_change);
@@ -666,7 +540,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
             else {
               Vector2::new (tile_size() [0]*progress*1.2, -tile_size() [1]*progress*1.6)
             };
-            draw_rectangle (&mut vertices, sprite_sheet,
+            draw_rectangle (
               canvas_position (output_location) + offset,
               tile_size()*0.6,
               [0.0,0.0,0.0], pattern_material.icon(), Facing::default()
@@ -680,7 +554,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
         for index in 0..min (3, storage_amount) {
           let mut position = canvas_position (storage_location);
           position [1] += tile_size() [1]*index as f32*0.1;
-          draw_rectangle (&mut vertices, sprite_sheet,
+          draw_rectangle (
             position,
             tile_size()*0.6,
             [0.0,0.0,0.0], storage_material.icon(), Facing::default()
@@ -692,16 +566,5 @@ fn do_frame(state: & Rc<RefCell<State>>) {
     for (material, amount) in state.game.inventory_at (& state.future, state.current_game_time) {
       js!{ $("#inventory").append(@{format!("{:?}: {}", material, amount)});}
     }
-
-
-    target.draw(&glium::VertexBuffer::new(& state.glium_display, &vertices)
-                .expect("failed to generate glium Vertex buffer"),
-              &indices,
-              & state.glium_program,
-              & uniform! {sprite_sheet: & sprite_sheet.texture},
-              &parameters)
-        .expect("failed target.draw");
-
-    target.finish().expect("failed to finish drawing");
 }
   
