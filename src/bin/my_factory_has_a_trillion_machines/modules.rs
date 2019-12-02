@@ -1,3 +1,4 @@
+#![allow(unused_imports)]
 use arrayvec::ArrayVec;
 //use std::collections::HashMap;
 use std::cmp::{min, max};
@@ -67,7 +68,7 @@ pub fn basic_module()->MachineType {
 }
 
 impl Module {
-  fn max_operating_rate (&self)->Number {
+  /*fn max_operating_rate (&self)->Number {
     RATE_DIVISOR
   }
   fn max_operating_rate_with_inputs <I: IntoIterator <Item = (Number, Material)>> (&self, input_rates: I)->Number {
@@ -78,7 +79,7 @@ impl Module {
       ideal_rate = min (ideal_rate, inferred_rate);
     }
     ideal_rate
-  }
+  }*/
   /*fn min_operating_rate_to_produce <I: IntoIterator <Item = Number>> (&self, output_rates: I)->Number {
     output_rates.into_iter().zip (&self.outputs).map (| (rate, output) | {
       

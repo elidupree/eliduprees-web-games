@@ -3,6 +3,7 @@
 
 extern crate eliduprees_web_games;
 
+#[cfg (target_os = "emscripten")]
 #[macro_use]
 extern crate stdweb;
 #[macro_use]
@@ -19,13 +20,14 @@ extern crate siphasher;
 extern crate itertools;
 
 pub use eliduprees_web_games::*;
-mod misc;
-mod flow_pattern;
+// hack-ish: modules marked pub to suppress dead code warnings from builds with different conditional compilation
+pub mod misc;
+pub mod flow_pattern;
 #[macro_use]
-mod machine_data;
-mod geometry;
-mod modules;
-mod graph_algorithms;
+pub mod machine_data;
+pub mod geometry;
+pub mod modules;
+pub mod graph_algorithms;
 
 #[cfg (target_os = "emscripten")]
 mod web_ui;

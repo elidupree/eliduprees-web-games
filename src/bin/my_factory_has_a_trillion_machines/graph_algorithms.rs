@@ -123,10 +123,8 @@ impl Map {
         
         for (delivered_output, output_future) in outputs.iter_mut().zip(future_output) {
           for (when, pattern) in output_future {
-            if when < next_change_time {
-              if pattern != delivered_output.changes.last().map_or_else (Default::default, | change | change.1) {
-                delivered_output.changes.push ((when, pattern));
-              }
+            if when < next_change_time && pattern != delivered_output.changes.last().map_or_else (Default::default, | change | change.1) {
+              delivered_output.changes.push ((when, pattern));
             }
           }
         }
