@@ -60,7 +60,8 @@ impl Mul<GridIsomorphism> for GridIsomorphism {
 }
 impl Div<GridIsomorphism> for GridIsomorphism {
   type Output = GridIsomorphism; 
-  fn div (self, other: GridIsomorphism)->GridIsomorphism {
+  #[allow (clippy::suspicious_arithmetic_impl)]
+  fn div (self, other: GridIsomorphism)->GridIsomorphism {  
     self * other.inverse()
   }
 }
