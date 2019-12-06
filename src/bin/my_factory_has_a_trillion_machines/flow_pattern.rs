@@ -1,75 +1,132 @@
 //use std::hash::{Hash, Hasher};
-//use std::cmp::{max};
+use std::cmp::{max};
 
 use num::Integer;
 use geometry::Number;
+use machine_data::Material;
 pub const RATE_DIVISOR: Number = ::machine_data::TIME_TO_MOVE_MATERIAL * 2*2*2*2*2*2 * 3*3*3 * 5*5;
 
 
 #[derive (Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Default)]
-pub struct FlowPattern {
-  origin_time: Number, //when the first item was disbursed as part of this flow
+pub struct FlowRate {
   rate: Number, //items per max cycle length
 }
 
-impl FlowPattern {
-  pub fn new (origin_time: Number, rate: Number) -> FlowPattern {
-    FlowPattern {
-      origin_time: if rate == 0 {0} else { origin_time.mod_floor (&RATE_DIVISOR)},
+#[derive (Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Default)]
+pub struct FlowPattern {
+  start_time: Number,
+  rate: FlowRate,
+}
+
+#[derive (Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Default)]
+pub struct MaterialFlow {
+  pub material: Material,
+  pub flow: FlowPattern,
+}
+
+
+impl FlowRate {
+  pub fn new (rate: Number) -> FlowRate {
+    if rate <= 0 {panic! ("Tried to construct a FlowRate with non-positive rate")}
+    FlowRate {
       rate
     }
   }
   pub fn rate (&self)->Number {self.rate}
-  pub fn delayed_by (&self, delay: Number)->FlowPattern {FlowPattern::new (self.origin_time + delay, self.rate)}
-  
   
   fn fractional_progress_before (&self, time: Number)->Number {
-    ((time - self.origin_time)*self.rate + RATE_DIVISOR - 1)
+    time*self.rate + RATE_DIVISOR - 1
   }
   pub fn num_disbursed_at_time (&self, time: Number)->Number {
     self.num_disbursed_before (time + 1) - self.num_disbursed_before (time)
   }
+  // calibrated to return 0 for time 0, but this could be a misleading name for this function, so not making it public
   fn num_disbursed_before (&self, time: Number)->Number {
     self.fractional_progress_before (time).div_floor (&RATE_DIVISOR)
   }
   pub fn num_disbursed_between (&self, range: [Number; 2])->Number {
     self.num_disbursed_before (range [1]) - self.num_disbursed_before (range [0])
   }
-  pub fn last_disbursement_before (&self, time: Number)->Option <Number> {
-    if self.rate <= 0 {return None;}
+  pub fn last_disbursement_before (&self, time: Number)->Number {
     let fractional_part = self.fractional_progress_before (time).mod_floor(&RATE_DIVISOR);
     let time_not_disbursing = fractional_part.div_floor (&self.rate);
-    Some(time-1 - time_not_disbursing)
+    time-1 - time_not_disbursing
   }
-  pub fn nth_disbursement (&self, n: Number)->Option <Number> {
-    if self.rate <= 0 {return None;}
-    Some (self.origin_time + (n*RATE_DIVISOR).div_floor (&self.rate))
+  pub fn nth_disbursement_time (&self, n: Number)->Number {
+    (n*RATE_DIVISOR).div_floor (&self.rate)
   }
-  pub fn time_from_which_this_will_always_disburse_at_least_amount_plus_ideal_rate (&self, start_time: Number, target_amount: Number)->Option <Number> {
-    if self.rate <= 0 && target_amount > 0 {return None;}
+  pub fn time_from_which_this_will_always_disburse_at_least_amount_plus_ideal_rate (&self, start_time: Number, target_amount: Number)->Number {
     let already_disbursed = self.num_disbursed_before (start_time);
     let target_amount = target_amount + already_disbursed;
-    Some (self.origin_time + (target_amount*RATE_DIVISOR + self.rate - 1).div_floor(&self.rate))
+    (target_amount*RATE_DIVISOR + self.rate - 1).div_floor(&self.rate)
   }
 
 }
 
-
-/*
-impl PartialEq for FlowPattern {
-  fn eq (&self, other: & Self)->bool {
-    self.rate == other.rate && (self.rate == 0 || self.origin_time == other.origin_time)
-  }
-}
-impl Hash for FlowPattern {
-  fn hash<H: Hasher> (&self, hasher: &mut H) {
-    self.rate.hash (hasher);
-    if self.rate != 0 {
-      self.origin_time.hash (hasher);
+impl FlowPattern {
+  pub fn new (start_time: Number, rate: Number) -> FlowPattern {
+    FlowPattern {
+      start_time,
+      rate: FlowRate::new (rate),
     }
   }
+  pub fn start_time (&self)->Number {self.start_time}
+  pub fn rate (&self)->Number {self.rate.rate()}
+  pub fn delayed_by (&self, delay: Number)->FlowPattern {FlowPattern::new (self.start_time + delay, self.rate.rate())}
+  
+  pub fn num_disbursed_at_time (&self, time: Number)->Number {
+    if time < self.start_time {return 0;}
+    self.rate.num_disbursed_at_time (time - self.start_time)
+  }
+  pub fn num_disbursed_between (&self, range: [Number; 2])->Number {
+    self.rate.num_disbursed_between ([max (0, range [0] - self.start_time), max (0, range [1] - self.start_time)])
+  }
+  
+  pub fn num_disbursed_before (&self, time: Number)->Number {
+    if time < self.start_time {return 0;}
+    self.rate.num_disbursed_before (time - self.start_time)
+  }
+  pub fn last_disbursement_before (&self, time: Number)->Option <Number> {
+    if time <= self.start_time {return None}
+    Some (self.rate.last_disbursement_before (time - self.start_time) + self.start_time)
+  }
+  pub fn nth_disbursement_time (&self, n: Number)->Option <Number> {
+    if n < 0 {return None;}
+    Some (self.rate.nth_disbursement_time (n) + self.start_time)
+  }
 }
-*/
+
+/*
+impl MaterialFlow {
+  pub fn new (material: Material, flow:FlowPattern) ->MaterialFlow {
+    MaterialFlow {material, flow}
+  }
+  pub fn start_time (&self)->Number {self.flow.start_time()}
+  pub fn rate (&self)->Number {self.flow.rate()}
+  pub fn delayed_by (&self, delay: Number)->MaterialFlow {
+    MaterialFlow {material: self.material, flow: self.flow.delayed_by (delay)}
+  }
+  
+  pub fn num_disbursed_at_time (&self, time: Number)->Number {
+    self.flow.num_disbursed_at_time (time)
+  }
+  pub fn num_disbursed_between (&self, range: [Number; 2])->Number {
+    self.flow.num_disbursed_between (range)
+  }
+  
+  pub fn num_disbursed_before (&self, time: Number)->Number {
+    self.flow.num_disbursed_before (time)
+  }
+  pub fn last_disbursement_before (&self, time: Number)->Option <Number> {
+    self.flow.last_disbursement_before (time)
+  }
+  pub fn nth_disbursement_time (&self, n: Number)->Option <Number> {
+    if n < 0 {return None;}
+    Some (self.rate.nth_disbursement_time (n) + self.start_time)
+  }
+}*/
+
+/*
 
 pub fn time_from_which_patterns_will_always_disburse_at_least_amount_plus_ideal_rate_in_total <I: IntoIterator <Item = FlowPattern> + Clone> (patterns: I, start_time: Number, target_amount: Number)->Option <Number> {
   let mut already_disbursed = 0;
@@ -91,6 +148,7 @@ pub fn time_from_which_patterns_will_always_disburse_at_least_amount_plus_ideal_
   )
 }
 
+*/
 
 #[cfg (test)]
 mod tests {
@@ -115,26 +173,27 @@ mod tests {
   
   proptest! {
     #[test]
-    fn randomly_test_flow_pattern_density_property(start in -1000000i64..1000000, rate in 0..=RATE_DIVISOR, initial_time in -1000000i64..1000000, duration in 0i64..1000000) {
+    fn randomly_test_flow_rate_density_property(rate in 1..=RATE_DIVISOR, initial_time in -1000000i64..1000000, duration in 0i64..1000000) {
       let ideal_rounded_down = rate*duration/RATE_DIVISOR;
       let ideal_rounded_up = (rate*duration + RATE_DIVISOR - 1)/RATE_DIVISOR;
-      let observed = FlowPattern::new (start, rate).num_disbursed_between ([initial_time, initial_time + duration]);
+      let observed = FlowRate::new (rate).num_disbursed_between ([initial_time, initial_time + duration]);
       prop_assert!(observed >= ideal_rounded_down);
       prop_assert!(observed <= ideal_rounded_up);
     }
     
     #[test]
-    fn randomly_test_flow_pattern_cycle_property(start in -1000000i64..1000000, rate in 0..=RATE_DIVISOR, initial_time in -1000000i64..1000000, test_time in -1000000i64..1000000) {
-      let real_pattern = FlowPattern::new (start, rate);
-      let noncanonical_pattern = FlowPattern {origin_time: start, rate};
-      let interval = [initial_time, test_time];
-      prop_assert_eq!(real_pattern.num_disbursed_between (interval), noncanonical_pattern.num_disbursed_between (interval));
+    fn randomly_test_flow_rate_cycle_property(rate in 0..=RATE_DIVISOR, initial_time in -1000000i64..1000000, test_time in -1000000i64..1000000) {
+      let rate = FlowRate::new (rate);
+      prop_assert_eq!(
+        rate.num_disbursed_between ([initial_time, test_time]),
+        rate.num_disbursed_between ([initial_time + RATE_DIVISOR, test_time + RATE_DIVISOR])
+      );
     }
     
     #[test]
-    fn randomly_test_flow_pattern_density_rounds_up_from_beginning (start in -1000000i64..1000000, rate in 0..=RATE_DIVISOR, duration in 0i64..1000000) {
+    fn randomly_test_flow_rate_density_rounds_up_from_beginning (rate in 0..=RATE_DIVISOR, duration in 0i64..1000000) {
       let ideal_rounded_up = (rate*duration + RATE_DIVISOR - 1)/RATE_DIVISOR;
-      let observed = FlowPattern::new (start, rate).num_disbursed_between ([start, start + duration]);
+      let observed = FlowRate::new (rate).num_disbursed_between ([0, 0 + duration]);
       prop_assert_eq!(observed, ideal_rounded_up);
     }
     
@@ -142,25 +201,40 @@ mod tests {
     fn randomly_test_last_disbursement_before (start in -1000000i64..1000000, rate in 1..=RATE_DIVISOR, initial_time in -1000000i64..1000000) {
       let initial_time = initial_time + start;
       let pattern = FlowPattern::new (start, rate);
-      let observed = pattern.last_disbursement_before (initial_time).unwrap();
-      println!("{}", observed);
-      prop_assert! (observed <initial_time) ;
-      prop_assert_eq!(pattern.num_disbursed_between ([observed+1, initial_time]), 0);
-      prop_assert_eq!(pattern.num_disbursed_between ([observed, initial_time]), 1);
+      let observed = pattern.last_disbursement_before (initial_time);
+      match observed {
+        None => {
+          prop_assert_eq!(pattern.num_disbursed_before(initial_time), 0);
+        }
+        Some (observed) => {
+          println!("{}", observed);
+          prop_assert! (observed <initial_time) ;
+          prop_assert_eq!(pattern.num_disbursed_between ([observed+1, initial_time]), 0);
+          prop_assert_eq!(pattern.num_disbursed_between ([observed, initial_time]), 1);
+        }
+      }
     }
     
     #[test]
-    fn randomly_test_nth_disbursement (start in -1000000i64..1000000, rate in 1..=RATE_DIVISOR, n in -1000000i64..1000000) {
-      let pattern = FlowPattern::new (start, rate);
-      let observed = pattern.nth_disbursement(n).unwrap();
-      println!("{}, {}, {}", observed, pattern.num_disbursed_before (observed), pattern.num_disbursed_before (observed + 1));
-      prop_assert_eq!(pattern.num_disbursed_before (observed), n);
-      prop_assert_eq!(pattern.num_disbursed_before (observed + 1), n+1);
+    fn randomly_test_nth_disbursement_time (start in -1000000i64..1000000, rate in 1..=RATE_DIVISOR, n in -1000000i64..1000000) {
+      let flowrate = FlowRate::new (rate);
+      let observed = flowrate.nth_disbursement_time (n).unwrap();
+      println!("{}, {}, {}", observed, flowrate.num_disbursed_before (observed), flowrate.num_disbursed_before (observed + 1));
+      prop_assert_eq!(flowrate.num_disbursed_before (observed), n);
+      prop_assert_eq!(flowrate.num_disbursed_before (observed + 1), n+1);
+      
+      if n > 0 {
+        let pattern = FlowPattern::new (start, rate);
+        let observed = pattern.nth_disbursement_time (n).unwrap();
+        println!("{}, {}, {}", observed, pattern.num_disbursed_before (observed), pattern.num_disbursed_before (observed + 1));
+        prop_assert_eq!(pattern.num_disbursed_before (observed), n);
+        prop_assert_eq!(pattern.num_disbursed_before (observed + 1), n+1);
+      }
     }
     
     #[test]
-    fn randomly_test_time_from_which_this_will_always_disburse_at_least_amount_plus_ideal_rate (start in -1000000i64..1000000, rate in 1..=RATE_DIVISOR, amount in -1000000i64..1000000, initial_time in  -1000000i64..1000000, duration in 0i64..1000000) {
-      let pattern = FlowPattern::new (start, rate);
+    fn randomly_test_time_from_which_this_will_always_disburse_at_least_amount_plus_ideal_rate (rate in 1..=RATE_DIVISOR, amount in -1000000i64..1000000, initial_time in  -1000000i64..1000000, duration in 0i64..1000000) {
+      let rate = FlowRate::new (rate);
       let observed = pattern.time_from_which_this_will_always_disburse_at_least_amount_plus_ideal_rate (initial_time, amount).unwrap();
       let ideal_count_rounded_up = amount + (rate*(duration+1) + RATE_DIVISOR - 1)/RATE_DIVISOR;
       let observed_count = pattern.num_disbursed_between([initial_time, observed + duration + 1]);
@@ -168,12 +242,12 @@ mod tests {
       prop_assert!(observed_count >= ideal_count_rounded_up);
     }
 
-    #[test]
+    /*#[test]
     fn randomly_test_at_least_amount_plus_ideal_rate_functions_are_consistent (start in -1000000i64..1000000, rate in 0..=RATE_DIVISOR, amount in -100000i64..1000000, initial_time in  -1000000i64..1000000) {
       let pattern = FlowPattern::new (start, rate);
       let single = pattern.time_from_which_this_will_always_disburse_at_least_amount_plus_ideal_rate (initial_time, amount);
       let collection = time_from_which_patterns_will_always_disburse_at_least_amount_plus_ideal_rate_in_total (iter::once(pattern), initial_time, amount);
       prop_assert_eq!(single, collection);
-    }
+    }*/
   }
 }
