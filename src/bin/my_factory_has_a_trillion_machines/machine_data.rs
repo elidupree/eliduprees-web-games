@@ -315,7 +315,7 @@ impl MachineTypeTrait for Distributor {
       DistributorFutureInfo::Failure (failure) => MachineMomentaryVisuals {materials: Vec::new(), operating_state: failure},
       DistributorFutureInfo::Success (info) => {
         let output_disbursements_since_start = info.outputs.num_disbursed_between ([inputs.start_time, time + TIME_TO_MOVE_MATERIAL]);
-        let mut materials = Vec::with_capacity(self.inputs.len() + self.outputs.len() - 1) ;
+        let mut materials = Vec::with_capacity(self.inputs.len() - 1) ;
         //let mut operating_state = MachineOperatingState::WaitingForInput;
         let output_rate = info.outputs.rate();
         let input_rate = something.rate();
@@ -419,11 +419,22 @@ impl MachineTypeTrait for Assembler {
       AssemblerFutureInfo::Failure (failure) => MachineMomentaryVisuals {materials: Vec::new(), operating_state: failure},
       AssemblerFutureInfo::Success (info) => {
         
-        let previous_disbursements = info.outputs.num_disbursed_before(time + TIME_TO_MOVE_MATERIAL);
-        let disbursements_since_start = info.outputs.num_disbursed_between ([inputs.start_time, time + TIME_TO_MOVE_MATERIAL]);
+        let first_relevant_assembly_start_index = info.assembly_start_pattern.num_disbursed_between ([inputs.start_time, time - TIME_TO_MOVE_MATERIAL - self.assembly_duration);
+        
         let mut materials = Vec::with_capacity(self.inputs.len() + self.outputs.len() - 1) ;
         //let mut operating_state = MachineOperatingState::WaitingForInput;
-        for n in previous_disbursements+1 .. {
+        for assembly_start_index in first_relevant_assembly_start_index.. {
+          let assembly_start_time = info.assembly_start_pattern.nth_disbursement_time_since (inputs.start_time, assembly_start_index);
+          let assembly_finish_time = assembly_start_time + self.assembly_duration;
+          if assembly_start_time >= time {
+            for (input, material_flow) in self.inputs.iter().zip (& inputs.input_flows) {
+              let last_input_index = material_flow.flow.num_disbursed_between ([inputs.start_time, assembly_start_time - TIME_TO_MOVE_MATERIAL +1]) -1;
+              for which_input in 0..input.cost {
+                let input_index = last_input_index - which_input;
+                
+              }
+            }
+          }
           let (output_index, output_time) = info.outputs.nth_disbursement (n);
           let (input_index, input_time) = info.inputs.nth_disbursement (n);
           if input_time > time {break}
@@ -444,205 +455,6 @@ impl MachineTypeTrait for Assembler {
     }
   }
 }
-
-
-pub fn only_value<I: IntoIterator>(mut iterator: I)->Option <I::Item> where I::Item: PartialEq<I::Item> { let iterator = iterator.into_iter(); iterator.next().filter (|a| iterator.all (|b| *a==b)) }
-
-impl StandardMachine {
-  fn max_output_rate (&self)->Number {
-    RATE_DIVISOR/self.min_output_cycle_length
-  }
-  fn max_output_rate_with_inputs <I: IntoIterator <Item = (Number, Material)>> (&self, input_rates: I)->Number {
-    let mut ideal_rate = if self.merge_inputs {0} else {self.max_output_rate()};
-    for ((rate, material), input) in input_rates.into_iter().zip(&self.inputs) {
-      let allowed_material = input.material.unwrap_or (material) == material;
-      let inferred_rate = if allowed_material {rate/input.cost} else {0};
-      if self.merge_inputs {
-        ideal_rate += inferred_rate;
-      }
-      else {
-        ideal_rate = min (ideal_rate, inferred_rate);
-      }
-    }
-    min(self.max_output_rate(), ideal_rate)
-  }
-  fn min_output_rate_to_produce <I: IntoIterator <Item = Number>> (&self, output_rates: I)->Number {
-    output_rates.into_iter().max().unwrap_or_else(|| self.max_output_rate())
-  }
-  
-  fn input_storage_before_impl (&self, input_patterns: & [(FlowPattern, Material)], output_pattern: FlowPattern, starting_storage: & [(Number, Material)], interval: [Number; 2])->Inputs <(Number, Material)> {
-    let output_disbursements = output_pattern.num_disbursed_between (interval);
-    if self.merge_inputs {
-      let (storage, mut material) = starting_storage[0];
-      let input_materials = input_patterns.iter().filter_map (| (pattern, material) | if pattern.rate() >0 {Some (material)} else {None});
-      let only_input_material = only_value (input_materials);
-      let mut used_storage = storage;
-      let mut amount = 0;
-      for (pattern, pattern_material) in input_patterns.iter() {
-        let disbursed = pattern.num_disbursed_between (interval);
-        amount += disbursed;
-        if disbursed > 0 && *pattern_material != material {
-          if only_input_material == Some(pattern_material) {
-            used_storage = 0;
-            material = *pattern_material;
-          }
-          else {
-            material = Material::Garbage;
-          }
-        }
-      }
-      inputs! [(used_storage + amount - output_disbursements*self.inputs[0].cost, material)]
-    }
-    else {
-      self.inputs.iter().zip (starting_storage).zip (input_patterns).map (| ((input, (storage_amount, storage_material)), (pattern, pattern_material)) | {
-        let allowed_material = input.material.unwrap_or (*pattern_material) == *pattern_material;
-        if allowed_material && pattern.rate() > 0 {
-          if *storage_amount > 0 {
-            assert_eq!(storage_material, pattern_material);
-          }
-          let accumulated = pattern.num_disbursed_between (interval);
-          let spent = output_disbursements*input.cost;
-          (storage_amount + accumulated - spent, *pattern_material)
-        }
-        else {
-          (*storage_amount, *storage_material)
-        }
-      }).collect()
-    }
-  }
-  
-  pub fn input_storage_before (&self, state: &MachineMaterialsState, input_patterns: & [(FlowPattern, Material)], time: Number)->Inputs <(Number, Material)> {
-    let (start_time, output_pattern, starting_storage) = self.future_internal_output_patterns (state, input_patterns).into_iter().rev().find (| (start_time, _, _) | *start_time < time).unwrap();
-    
-    self.input_storage_before_impl (input_patterns, output_pattern, &starting_storage, [max (start_time, state.last_flow_change), time])
-  }
-  
-  fn update_last_flow_change (&self, state: &mut MachineMaterialsState, change_time: Number, old_input_patterns: & [(FlowPattern, Material)]) {
-    let (start_time, output_pattern, starting_storage) = self.future_internal_output_patterns (state, old_input_patterns).into_iter().rev().find (| (time,_,_) | *time < change_time).unwrap();
-    state.input_storage_before_last_flow_change = self.input_storage_before_impl (old_input_patterns, output_pattern, &starting_storage, [max (start_time, state.last_flow_change), change_time]);
-    state.retained_output_pattern = output_pattern;
-    state.last_flow_change = change_time;
-  }
-  
-  fn push_output_pattern_impl (&self, result: &mut ArrayVec<[(Number, FlowPattern, Inputs <(Number, Material)>); MAX_IMPLICIT_OUTPUT_FLOW_CHANGES]>, state: &MachineMaterialsState, input_patterns: & [(FlowPattern, Material)], time: Number, pattern: FlowPattern) {
-    let (start_time, output_pattern, starting_storage) = result.last().cloned().unwrap();
-    assert!(time >= start_time) ;
-    if time == start_time {
-      result.pop();
-      result.push ((time, pattern, starting_storage));
-    }
-    else {
-      let new_storage = self.input_storage_before_impl (input_patterns, output_pattern, &starting_storage, [max (start_time, state.last_flow_change), time]);
-      result.push ((time, pattern, new_storage));
-    }
-  }
-  
-  fn future_internal_output_patterns (&self, state: &MachineMaterialsState, input_patterns: & [(FlowPattern, Material)])->ArrayVec<[(Number, FlowPattern, Inputs <(Number, Material)>); MAX_IMPLICIT_OUTPUT_FLOW_CHANGES]> {
-    let mut result = ArrayVec::new();
-    result.push ((Number::min_value(), state.retained_output_pattern, state.input_storage_before_last_flow_change.clone()));
-    
-    let time_to_switch_output = state.next_legal_output_change_time (self.min_output_cycle_length);
-    self.push_output_pattern_impl (&mut result, state, input_patterns, time_to_switch_output, FlowPattern::default());
-    
-    let ideal_rate = self.max_output_rate_with_inputs (input_patterns.iter().map (| (pattern, material) | (pattern.rate(), *material)));
-    if ideal_rate > 0 {
-      let mut when_enough_inputs_to_begin_output = time_to_switch_output;
-      let storage_before = result.last().unwrap().2.clone();
-      if self.merge_inputs {
-        when_enough_inputs_to_begin_output = max(when_enough_inputs_to_begin_output, flow_pattern::time_from_which_patterns_will_always_disburse_at_least_amount_plus_ideal_rate_in_total (input_patterns.iter().map (| (pattern, _material) | *pattern), time_to_switch_output, (self.inputs[0].cost - 1) - storage_before[0].0).unwrap());
-      }
-      else {
-        for (((pattern, _material), input), (storage_amount, _storage_material)) in input_patterns.iter().zip (self.inputs.iter()).zip (storage_before) {
-          let min_start_time = pattern.time_from_which_this_will_always_disburse_at_least_amount_plus_ideal_rate (time_to_switch_output, (input.cost - 1) - storage_amount).unwrap();
-          when_enough_inputs_to_begin_output = max (when_enough_inputs_to_begin_output, min_start_time);
-        }
-      }
-      let ideal_output = FlowPattern::new (when_enough_inputs_to_begin_output, ideal_rate);
-      self.push_output_pattern_impl (&mut result, state, input_patterns, when_enough_inputs_to_begin_output, ideal_output);
-    }
-    
-    result
-  }
-}
-
-impl MachineTypeTrait for StandardMachine {
-  fn name (&self)->& str {&self.name}
-  fn cost (&self)->Vec<(Number, Material)> {self.cost.clone()}
-  fn num_inputs (&self)->usize {self.inputs.len()}
-  fn num_outputs (&self)->usize {self.outputs.len()}
-  fn radius (&self)->Number {self.radius}
-  
-  fn input_locations (&self, state: &MachineMapState)->Inputs <(Vector, Facing)> {
-    self.inputs.iter().map (| input | {
-      input.relative_location.transformed_by (state.position)
-    }).collect()
-  }
-  fn output_locations (&self, state: &MachineMapState)->Inputs <(Vector, Option<Facing>)> {
-    self.outputs.iter().map (| output | {
-      output.relative_location.transformed_by (state.position)
-    }).collect()
-  }
-  
-  fn input_materials (&self)->Inputs <Option <Material>> {
-    self.inputs.iter().map (| input | input.material).collect()
-  }
-  
-  fn displayed_storage (&self, map_state: & MachineMapState, materials_state: & MachineMaterialsState, input_patterns: & [(FlowPattern, Material)], time: Number)->Inputs <(Vector, (Number, Material))> {
-    self.input_storage_before (materials_state, input_patterns, time).into_iter().zip (self.input_locations (map_state)).map (| ((amount, material), (position,_facing)) | (position, (amount, material))).collect()
-  }
-  fn drawn_machine (&self, map_state: & MachineMapState)->DrawnMachine {
-    DrawnMachine {
-      icon: self.icon.clone(),
-      position: map_state.position,
-      size: Vector::new (self.radius*2, self.radius*2),
-    }
-  }
-  
-  fn max_output_rates (&self, input_rates: & [(Number, Material)])->Inputs <(Number, Material)> {
-    let input_materials = input_rates.iter().filter_map (| (rate, material) | if *rate > 0 {Some (*material)} else {None});
-    let merged_material = only_value (input_materials).unwrap_or (Material::Garbage) ;
-    let ideal_rate = self.max_output_rate_with_inputs (input_rates.iter().cloned());
-    self.outputs.iter().map (| output | (ideal_rate, output.material.unwrap_or (merged_material))).collect()
-  }
-  fn reduced_input_rates_that_can_still_produce (&self, input_rates: & [(Number, Material)], output_rates: & [(Number, Material)])->Inputs <(Number, Material)> {
-    let ideal_rate = self.min_output_rate_to_produce (output_rates.iter().map(|(rate, _material)| *rate));
-    if self.merge_inputs {
-      // TODO better
-      //let total = input_rates().iter().sum();
-      //let excess = max (0, total - RATE_DIVISOR);
-      input_rates.iter().cloned().collect()
-    }
-    else {
-      self.inputs.iter().zip(input_rates).map (| (input, (_rate, material)) | (ideal_rate*input.cost, *material)).collect()
-    }
-  }
-  
-  fn with_inputs_changed (&self, old_state: &MachineMaterialsState, change_time: Number, old_input_patterns: & [(FlowPattern, Material)])->MachineMaterialsState {
-    let mut new_state = old_state.clone();
-    self.update_last_flow_change (&mut new_state, change_time, old_input_patterns);    
-    new_state
-  }
-  
-  fn future_output_patterns (&self, state: &MachineMaterialsState, input_patterns: & [(FlowPattern, Material)])->Inputs <ArrayVec<[(Number, (FlowPattern, Material)); MAX_IMPLICIT_OUTPUT_FLOW_CHANGES]>> {
-    let internal = self.future_internal_output_patterns (state, input_patterns);
-    let storage_after: Inputs<_> = internal.iter().map (| (start, pattern, storage) | {
-      if *start < state.last_flow_change {
-        state.input_storage_before_last_flow_change.clone()
-      }
-      else {
-        self.input_storage_before_impl (input_patterns, *pattern, storage, [*start, start + 1])
-      }
-    }).collect();
-    
-    self.outputs.iter().map (| output | {
-      internal.iter().zip(&storage_after).map (| ((start, pattern, _storage_before), storage_after) | {
-        (max (start + TIME_TO_MOVE_MATERIAL, state.last_flow_change), (pattern.delayed_by (TIME_TO_MOVE_MATERIAL), output.material.unwrap_or_else(|| storage_after[0].1)))
-      }).collect()
-    }).collect()
-  }
-}
-
-
 
 
 #[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
