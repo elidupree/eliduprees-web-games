@@ -1,12 +1,12 @@
 use std::cmp::{min, max};
-use std::iter::{self, FromIterator};
 use std::collections::HashMap;
+use std::ops::Deref;
 
 use arrayvec::ArrayVec;
 
 
-use geometry::{Number, Vector, Facing, GridIsomorphism, TransformedBy};
-use flow_pattern::{self, FlowPattern, RATE_DIVISOR};
+use geometry::{Number, Vector, Facing, GridIsomorphism};
+use flow_pattern::{FlowPattern, MaterialFlow, RATE_DIVISOR};
 use modules::ModuleMachine;
 
 pub const MAX_COMPONENTS: usize = 256;
@@ -105,7 +105,7 @@ impl Deref for MachineType {
 }
 
 machine_type_enum! {
-  Distributor, Assembler, Mine, ModuleMachine, // Conveyor,
+  Distributor, Assembler, //Mine, ModuleMachine, // Conveyor,
 }
 
 #[derive (Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
@@ -168,14 +168,14 @@ impl InputLocation {
 impl AssemblerInput {
   pub fn new (x: Number, y: Number, facing: Facing, material: Material, cost: Number)->AssemblerInput {
     AssemblerInput {
-      location: InputLocation (x,y, facing), material, cost
+      location: InputLocation::new (x,y, facing), material, cost
     }
   }
 }
 impl AssemblerOutput {
   pub fn new (x: Number, y: Number, facing: Facing, material: Material, amount: Number)->AssemblerOutput {
     AssemblerOutput {
-      location: InputLocation (x,y, facing), material, amount
+      location: InputLocation::new (x,y, facing), material, amount
     }
   }
 }
@@ -256,11 +256,11 @@ struct DistributorSuccessInfo {
 impl Distributor {
   fn future_info (&self, inputs: MachineObservedInputs)->DistributorFutureInfo {
     let material_iterator = inputs.input_flows().iter().flatten().map (| material_flow | material_flow.material);
-    let material = match material_iter.next() {
-      None => return DistributorFutureInfo::Failure (InputMissing),
+    let material = match material_iterator.next() {
+      None => return DistributorFutureInfo::Failure (MachineOperatingState::InputMissing),
       Some (material) => if material_iterator.all(| second | second == material) {
         material
-      } else {return DistributorFutureInfo::Failure (InputIncompatible)}
+      } else {return DistributorFutureInfo::Failure (MachineOperatingState::InputIncompatible)}
     };
     
     
@@ -268,7 +268,7 @@ impl Distributor {
     
     let per_output_rate = min (RATE_DIVISOR, total_input_rate/Number::from (self.outputs.len()));
     if per_output_rate == 0 {
-      return DistributorFutureInfo::Failure (InputTooInfrequent)
+      return DistributorFutureInfo::Failure (MachineOperatingState::InputTooInfrequent)
     }
     let total_output_rate = per_output_rate*self.outputs.len();
     // the rounding here could theoretically be better, but this should be okay
@@ -318,24 +318,24 @@ impl MachineTypeTrait for Distributor {
         let mut materials = Vec::with_capacity(self.inputs.len() - 1) ;
         //let mut operating_state = MachineOperatingState::WaitingForInput;
         let output_rate = info.outputs.rate();
-        let input_rate = something.rate();
+        let input_rate = inputs.input_patterns.rate();
         for output_index_since_start in output_disbursements_since_start+1 .. {
           //input_rate may be greater than output_rate; if it is, we sometimes want to skip forward in the sequence. Note that if input_rate == output_rate, this uses the same index for both. Round down so as to use earlier inputs
-          input_index_since_start = output_index_since_start*input_rate/output_rate;
+          let input_index_since_start = output_index_since_start*input_rate/output_rate;
           let (output_index, output_time) = info.outputs.nth_disbursement_since (info.start_time, output_index_since_start);
           let (input_index, input_time) = info.inputs.nth_disbursement_since (info.start_time, input_index_since_start);
           if input_time > time {break}
           //assert!(n <= previous_disbursements + self.inputs.len() + self.outputs.len() - 1);
           // TODO: smoother movement
-          let input_location = vector_to_float (self.inputs [input_index]);
-          let output_location = vector_to_float (self.outputs [output_index]);
+          let input_location = self.inputs [input_index].to_f64 ();
+          let output_location = self.outputs [output_index].to_f64 ();
           let output_fraction = (output_time - input_time) as f64/(time - input_time) as f64;
           let location = input_location*(1.0 - output_fraction) + output_location*output_fraction;
           materials.push ((location, info.material));
         }
         
         MachineMomentaryVisuals {
-          operating_state: if disbursements_since_start > 0 {MachineOperatingState::Operating} else {MachineOperatingState::WaitingForInput},
+          operating_state: if output_disbursements_since_start > 0 {MachineOperatingState::Operating} else {MachineOperatingState::WaitingForInput},
           materials,
         }
       }
@@ -367,10 +367,10 @@ impl Assembler {
     for (input, material_flow) in self.inputs.iter().zip (&inputs.input_flows) {
       // TODO: don't make the priority between the failure types be based on input order
       match material_flow {
-        None => return AssemblerFutureInfo::Failure (InputMissing),
+        None => return AssemblerFutureInfo::Failure (MachineOperatingState::InputMissing),
         Some (material_flow) => {
           if material_flow.material != input.material {
-            return AssemblerFutureInfo::Failure (InputIncompatible)
+            return AssemblerFutureInfo::Failure (MachineOperatingState::InputIncompatible)
           }
           assembly_rate = min (assembly_rate, material_flow.flow.rate()/input.cost);
           assembly_start = max (assembly_start, material_flow.flow.nth_disbursement_time_since (inputs.start_time, input.cost) + TIME_TO_MOVE_MATERIAL);
@@ -379,7 +379,7 @@ impl Assembler {
     }
     
     if assembly_rate == 0 {
-      return AssemblerFutureInfo::Failure (InputTooInfrequent)
+      return AssemblerFutureInfo::Failure (MachineOperatingState::InputTooInfrequent)
     }
     
     let outputs = self.outputs.iter().map (| output | FlowPattern::new (assembly_start + self.assembly_duration + TIME_TO_MOVE_MATERIAL, assembly_rate*output.amount)).collect();
@@ -426,29 +426,50 @@ impl MachineTypeTrait for Assembler {
         for assembly_start_index in first_relevant_assembly_start_index.. {
           let assembly_start_time = info.assembly_start_pattern.nth_disbursement_time_since (inputs.start_time, assembly_start_index);
           let assembly_finish_time = assembly_start_time + self.assembly_duration;
+          let mut too_late = assembly_start_time >= time;
+
           if assembly_start_time >= time {
             for (input, material_flow) in self.inputs.iter().zip (& inputs.input_flows) {
               let last_input_index = material_flow.flow.num_disbursed_between ([inputs.start_time, assembly_start_time - TIME_TO_MOVE_MATERIAL +1]) -1;
               for which_input in 0..input.cost {
                 let input_index = last_input_index - which_input;
-                
+                let input_time = material_flow.flow.nth_disbursement_time_since (inputs.start_time, input_index);
+                if input_time > time { continue;}
+                too_late = false;
+                assert!(input_time < assembly_start_time) ;
+                let input_location = input.location.to_f64();
+                let assembly_location = Vector2::new (0.0, 0.0);
+                let assembly_fraction = (time - input_time) as f64/(assembly_start_time - input_time) as f64;
+                let location = input_location*(1.0 - assembly_fraction) + assembly_location*assembly_fraction;
+                materials.push ((location, input.material));
               }
             }
           }
-          let (output_index, output_time) = info.outputs.nth_disbursement (n);
-          let (input_index, input_time) = info.inputs.nth_disbursement (n);
-          if input_time > time {break}
-          assert!(n <= previous_disbursements + self.inputs.len() + self.outputs.len() - 1);
-          // TODO: smoother movement
-          let input_location = vector_to_float (self.inputs [input_index]);
-          let output_location = vector_to_float (self.outputs [output_index]);
-          let output_fraction = (output_time - input_time) as f64/(time - input_time) as f64;
-          let location = input_location*(1.0 - output_fraction) + output_location*output_fraction;
-          materials.push ((location, info.material));
+          else if assembly_finish_time <= time {
+            for (output, flow) in self.outputs.iter().zip (& info.outputs) {
+              let first_output_index = flow.num_disbursed_between ([inputs.start_time, assembly_finish_time + TIME_TO_MOVE_MATERIAL]);
+              for which_input in 0..output.amount {
+                let output_index = first_output_index + which_input;
+                let output_time = flow.nth_disbursement_time_since (inputs.start_time, output_index);
+                assert!(output_time >assembly_finish_time) ;
+                let output_location = output.location.to_f64();
+                let assembly_location = Vector2::new (0.0, 0.0);
+                let assembly_fraction = (time - output_time) as f64/(assembly_start_time - output_time) as f64;
+                let location = output_location*(1.0 - assembly_fraction) + assembly_location*assembly_fraction;
+                materials.push ((location, output.material));
+              }
+            }
+          }
+          else {
+            // hack, TODO better representation of the assembly being in progress
+            materials.push ((Vector2::new (0.0, 0.0), Material::Garbage));
+          }
+          
+          if too_late { break }
         }
         
         MachineMomentaryVisuals {
-          operating_state: if disbursements_since_start > 0 {MachineOperatingState::Operating} else {MachineOperatingState::WaitingForInput},
+          operating_state: if time >= info.assembly_start_pattern.start_time() - TIME_TO_MOVE_MATERIAL {MachineOperatingState::Operating} else {MachineOperatingState::WaitingForInput},
           materials,
         }
       }
@@ -493,8 +514,7 @@ pub struct Group {
 
 #[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
 pub struct Map {
-  pub machines: ArrayVec <[StatefulMachine; MAX_COMPONENTS]>,
-  pub last_change_time: Number,  
+  pub machines: Vec <[StatefulMachine; MAX_COMPONENTS]>,
 }
 
 #[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
