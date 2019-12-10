@@ -26,7 +26,7 @@ pub mod flow_pattern;
 #[macro_use]
 pub mod machine_data;
 pub mod geometry;
-pub mod modules;
+//pub mod modules;
 pub mod graph_algorithms;
 
 #[cfg (target_os = "emscripten")]

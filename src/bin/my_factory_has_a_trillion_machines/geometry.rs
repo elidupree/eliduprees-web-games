@@ -8,6 +8,13 @@ pub type Number = i64;
 pub type Vector = Vector2 <Number>;
 pub type Facing = u8;
 
+pub trait VectorExtension {
+  fn to_f64(&self)->Vector2 <f64>;
+}
+impl VectorExtension for Vector {
+  fn to_f64(&self)->Vector2 <f64> {Vector2::new (self [0] as f64, self [1] as f64)}
+}
+
 #[derive (Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Derivative)]
 #[derivative (Default)]
 pub struct GridIsomorphism {
