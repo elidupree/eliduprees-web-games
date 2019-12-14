@@ -20,9 +20,10 @@ macro_rules! inputs {
   ($($whatever:tt)*) => {::std::iter::FromIterator::from_iter ([$($whatever)*].iter().cloned())};
 }
 
+#[derive (Copy, Clone)]
 pub struct MachineObservedInputs <'a> {
-  input_flows: & 'a [Option<MaterialFlow>],
-  start_time: Number,
+  pub input_flows: & 'a [Option<MaterialFlow>],
+  pub start_time: Number,
 }
 
 #[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Derivative)]
@@ -265,7 +266,7 @@ struct DistributorSuccessInfo {
 
 impl Distributor {
   fn future_info (&self, inputs: MachineObservedInputs)->DistributorFutureInfo {
-    let material_iterator = inputs.input_flows.iter().flatten().map (| material_flow | material_flow.material);
+    let mut material_iterator = inputs.input_flows.iter().flatten().map (| material_flow | material_flow.material);
     let material = match material_iterator.next() {
       None => return DistributorFutureInfo::Failure (MachineOperatingState::InputMissing),
       Some (material) => if material_iterator.all(| second | second == material) {
@@ -338,8 +339,8 @@ impl MachineTypeTrait for Distributor {
           if input_time > time {break}
           //assert!(n <= previous_disbursements + self.inputs.len() + self.outputs.len() - 1);
           // TODO: smoother movement
-          let input_location = self.inputs [input_index].to_f64 ();
-          let output_location = self.outputs [output_index].to_f64 ();
+          let input_location = self.inputs [input_index].position.to_f64 ();
+          let output_location = self.outputs [output_index].position.to_f64 ();
           let output_fraction = (output_time - input_time) as f64/(time - input_time) as f64;
           let location = input_location*(1.0 - output_fraction) + output_location*output_fraction;
           materials.push ((location, info.material));
@@ -384,7 +385,7 @@ impl Assembler {
             return AssemblerFutureInfo::Failure (MachineOperatingState::InputIncompatible)
           }
           assembly_rate = min (assembly_rate, material_flow.rate()/input.cost);
-          assembly_start = max (assembly_start, material_flow.nth_disbursement_time_geq (input.cost+1, inputs.start_time) + TIME_TO_MOVE_MATERIAL);
+          assembly_start = max (assembly_start, material_flow.nth_disbursement_time_geq (input.cost+1, inputs.start_time).unwrap() + TIME_TO_MOVE_MATERIAL);
         }
       }
     }
@@ -435,7 +436,7 @@ impl MachineTypeTrait for Assembler {
         let mut materials = Vec::with_capacity(self.inputs.len() + self.outputs.len() - 1) ;
         //let mut operating_state = MachineOperatingState::WaitingForInput;
         for assembly_start_index in first_relevant_assembly_start_index.. {
-          let assembly_start_time = info.assembly_start_pattern.nth_disbursement_time_geq (assembly_start_index, inputs.start_time);
+          let assembly_start_time = info.assembly_start_pattern.nth_disbursement_time_geq (assembly_start_index, inputs.start_time).unwrap();
           let assembly_finish_time = assembly_start_time + self.assembly_duration;
           let mut too_late = assembly_start_time >= time;
 
@@ -445,7 +446,7 @@ impl MachineTypeTrait for Assembler {
               let last_input_index = material_flow.num_disbursed_between ([inputs.start_time, assembly_start_time - TIME_TO_MOVE_MATERIAL +1]) -1;
               for which_input in 0..input.cost {
                 let input_index = last_input_index - which_input;
-                let input_time = material_flow.nth_disbursement_time_geq (input_index, inputs.start_time);
+                let input_time = material_flow.nth_disbursement_time_geq (input_index, inputs.start_time).unwrap();
                 if input_time > time { continue;}
                 too_late = false;
                 assert!(input_time < assembly_start_time) ;
@@ -462,7 +463,7 @@ impl MachineTypeTrait for Assembler {
               let first_output_index = flow.num_disbursed_between ([inputs.start_time, assembly_finish_time + TIME_TO_MOVE_MATERIAL]);
               for which_input in 0..output.amount {
                 let output_index = first_output_index + which_input;
-                let output_time = flow.nth_disbursement_time_geq (output_index, inputs.start_time);
+                let output_time = flow.nth_disbursement_time_geq (output_index, inputs.start_time).unwrap();
                 assert!(output_time >assembly_finish_time) ;
                 let output_location = output.location.position.to_f64();
                 let assembly_location = Vector2::new (0.0, 0.0);
@@ -498,10 +499,12 @@ pub struct StatefulMachine {
 
 impl StatefulMachine {
   pub fn input_locations <'a> (& 'a self)->impl Iterator <Item = InputLocation> + 'a {
-    self.machine_type.relative_input_locations().into_iter().map (| location | location.transformed_by (self.state.position))
+    let position = self.state.position;
+    self.machine_type.relative_input_locations().into_iter().map (move | location | location.transformed_by (position))
   }
   pub fn output_locations <'a> (& 'a self)->impl Iterator <Item = InputLocation> + 'a {
-    self.machine_type.relative_output_locations().into_iter().map (| location | location.transformed_by (self.state.position))
+    let position = self.state.position;
+    self.machine_type.relative_output_locations().into_iter().map (move | location | location.transformed_by (position))
   }
 }
 
@@ -541,5 +544,6 @@ pub struct Map {
 #[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub struct Game {
   pub map: Map,
+  pub last_change_time: Number,
   pub inventory_before_last_change: HashMap <Material, Number>,
 }

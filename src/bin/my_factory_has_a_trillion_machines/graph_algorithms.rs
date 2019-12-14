@@ -1,4 +1,3 @@
-
 //use std::cmp::{min, max};
 use std::collections::HashMap;
 
@@ -6,7 +5,7 @@ use arrayvec::ArrayVec;
 
 use geometry::{Number};
 use flow_pattern::{MaterialFlow, FlowCollection};
-use machine_data::{Inputs, Material, MachineTypeTrait, Map, Game, InputLocation, MachineObservedInputs, MAX_COMPONENTS};
+use machine_data::{Inputs, Material, Map, Game, InputLocation, MachineObservedInputs, MAX_COMPONENTS};
 
 pub type OutputEdges = ArrayVec<[Inputs<Option<(usize, usize)>>; MAX_COMPONENTS]>;
 pub struct MapFuture {
@@ -73,9 +72,7 @@ impl Map {
   
   pub fn future (&self, output_edges: & OutputEdges, topological_ordering: & [usize])->MapFuture {
     let mut result = MapFuture {
-      machines: self.machines.iter().map (| machine | {
-        MachineFuture::default()
-      }).collect(),
+      machines: self.machines.iter().map (|_| MachineFuture::default()).collect(),
       dumped: Default::default(),
     };
     
@@ -101,8 +98,8 @@ impl Map {
 impl Game {
   pub fn inventory_at (&self, future: & MapFuture, time: Number)->HashMap <Material, Number> {
     let mut inventory = self.inventory_before_last_change.clone();
-    let interval = [self.map.last_change_time, time];
-    for (location, material_flow) in &future.dumped {
+    let interval = [self.last_change_time, time];
+    for (_location, material_flow) in &future.dumped {
       *inventory.entry (material_flow.material).or_default() += material_flow.flow.num_disbursed_between (interval);
     }
     inventory
