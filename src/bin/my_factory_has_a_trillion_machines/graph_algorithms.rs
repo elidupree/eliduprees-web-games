@@ -1,4 +1,3 @@
-use super::*;
 
 //use std::cmp::{min, max};
 use std::collections::HashMap;
@@ -6,7 +5,7 @@ use std::collections::HashMap;
 use arrayvec::ArrayVec;
 
 use geometry::{Number};
-use flow_pattern::{MaterialFlow};
+use flow_pattern::{MaterialFlow, FlowCollection};
 use machine_data::{Inputs, Material, MachineTypeTrait, Map, Game, InputLocation, MachineObservedInputs, MAX_COMPONENTS};
 
 pub type OutputEdges = ArrayVec<[Inputs<Option<(usize, usize)>>; MAX_COMPONENTS]>;

@@ -8,7 +8,7 @@ use arrayvec::ArrayVec;
 
 
 use geometry::{Number, Vector, VectorExtension, Facing, GridIsomorphism, TransformedBy};
-use flow_pattern::{FlowPattern, MaterialFlow, RATE_DIVISOR};
+use flow_pattern::{FlowPattern, MaterialFlow, RATE_DIVISOR, Flow, FlowCollection};
 //use modules::ModuleMachine;
 
 pub const MAX_COMPONENTS: usize = 256;
@@ -96,7 +96,7 @@ pub enum MachineType {
 
 impl Deref for MachineType {
   type Target = dyn MachineTypeTrait;
-  fn deref(&self)-> &dyn MachineTypeTrait {
+  fn deref(&self)-> &(dyn MachineTypeTrait + 'static) {
     match self {
       $(MachineType::$Variant (value) => value,)*
     }
@@ -274,7 +274,7 @@ impl Distributor {
     };
     
     
-    let total_input_rate = inputs.input_flows.iter().flatten().map (| material_flow | material_flow.flow.rate()).sum();
+    let total_input_rate = inputs.input_flows.rate();
     
     let num_outputs = Number::try_from (self.outputs.len()).unwrap();
     let per_output_rate = min (RATE_DIVISOR, total_input_rate/num_outputs);
@@ -285,7 +285,7 @@ impl Distributor {
     // the rounding here could theoretically be better, but this should be okay
     let denominator = total_output_rate*num_outputs;
     let per_output_latency = (RATE_DIVISOR + denominator - 1)/denominator;
-    let output_availability_start = inputs.input_flows.iter().flatten().map (| material_flow | material_flow.flow.first_disbursement_time_geq (inputs.start_time)).max ().unwrap();
+    let output_availability_start = inputs.input_flows.iter().flatten().map (| material_flow | material_flow.first_disbursement_time_geq (inputs.start_time)).max ().unwrap();
         
     let first_output_start = output_availability_start + TIME_TO_MOVE_MATERIAL;
         
@@ -333,8 +333,8 @@ impl MachineTypeTrait for Distributor {
         for output_index_since_start in output_disbursements_since_start+1 .. {
           //input_rate may be greater than output_rate; if it is, we sometimes want to skip forward in the sequence. Note that if input_rate == output_rate, this uses the same index for both. Round down so as to use earlier inputs
           let input_index_since_start = output_index_since_start*input_rate/output_rate;
-          let (output_index, output_time) = info.outputs.nth_disbursement_since (inputs.start_time, output_index_since_start);
-          let (input_index, input_time) = info.inputs.nth_disbursement_since (inputs.start_time, input_index_since_start);
+          let (output_time, output_index) = info.outputs.nth_disbursement_geq_time (output_index_since_start, inputs.start_time).unwrap();
+          let (input_time, input_index) = inputs.input_flows.nth_disbursement_geq_time (input_index_since_start, inputs.start_time).unwrap();
           if input_time > time {break}
           //assert!(n <= previous_disbursements + self.inputs.len() + self.outputs.len() - 1);
           // TODO: smoother movement
@@ -383,8 +383,8 @@ impl Assembler {
           if material_flow.material != input.material {
             return AssemblerFutureInfo::Failure (MachineOperatingState::InputIncompatible)
           }
-          assembly_rate = min (assembly_rate, material_flow.flow.rate()/input.cost);
-          assembly_start = max (assembly_start, material_flow.flow.nth_disbursement_time_since (inputs.start_time, input.cost) + TIME_TO_MOVE_MATERIAL);
+          assembly_rate = min (assembly_rate, material_flow.rate()/input.cost);
+          assembly_start = max (assembly_start, material_flow.nth_disbursement_time_geq (input.cost+1, inputs.start_time) + TIME_TO_MOVE_MATERIAL);
         }
       }
     }
@@ -435,17 +435,17 @@ impl MachineTypeTrait for Assembler {
         let mut materials = Vec::with_capacity(self.inputs.len() + self.outputs.len() - 1) ;
         //let mut operating_state = MachineOperatingState::WaitingForInput;
         for assembly_start_index in first_relevant_assembly_start_index.. {
-          let assembly_start_time = info.assembly_start_pattern.nth_disbursement_time_since (inputs.start_time, assembly_start_index);
+          let assembly_start_time = info.assembly_start_pattern.nth_disbursement_time_geq (assembly_start_index, inputs.start_time);
           let assembly_finish_time = assembly_start_time + self.assembly_duration;
           let mut too_late = assembly_start_time >= time;
 
           if assembly_start_time >= time {
             for (input, material_flow) in self.inputs.iter().zip (inputs.input_flows) {
               let material_flow = material_flow.unwrap();
-              let last_input_index = material_flow.flow.num_disbursed_between ([inputs.start_time, assembly_start_time - TIME_TO_MOVE_MATERIAL +1]) -1;
+              let last_input_index = material_flow.num_disbursed_between ([inputs.start_time, assembly_start_time - TIME_TO_MOVE_MATERIAL +1]) -1;
               for which_input in 0..input.cost {
                 let input_index = last_input_index - which_input;
-                let input_time = material_flow.flow.nth_disbursement_time_since (inputs.start_time, input_index);
+                let input_time = material_flow.nth_disbursement_time_geq (input_index, inputs.start_time);
                 if input_time > time { continue;}
                 too_late = false;
                 assert!(input_time < assembly_start_time) ;
@@ -462,7 +462,7 @@ impl MachineTypeTrait for Assembler {
               let first_output_index = flow.num_disbursed_between ([inputs.start_time, assembly_finish_time + TIME_TO_MOVE_MATERIAL]);
               for which_input in 0..output.amount {
                 let output_index = first_output_index + which_input;
-                let output_time = flow.nth_disbursement_time_since (inputs.start_time, output_index);
+                let output_time = flow.nth_disbursement_time_geq (output_index, inputs.start_time);
                 assert!(output_time >assembly_finish_time) ;
                 let output_location = output.location.position.to_f64();
                 let assembly_location = Vector2::new (0.0, 0.0);
