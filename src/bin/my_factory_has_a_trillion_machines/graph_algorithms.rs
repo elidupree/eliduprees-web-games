@@ -85,6 +85,7 @@ impl Map {
         start_time: machine.state.last_disturbed_time,
       };
       let outputs = machine.machine_type.output_flows (inputs);
+      println!("{:?}\n{:?}\n{:?}\n\n", machine, inputs , outputs);
       for ((flow, destination), location) in outputs.into_iter().zip (& output_edges [machine_index]).zip (machine.output_locations()) {
         match destination {
           None => if let Some(flow) = flow {result.dumped.push ((location, flow))},

@@ -167,9 +167,18 @@ impl <T: FlowCollection> FlowCollection for [T] {
         max = mid;
       }
     }
-    let previous_disbursements = self.num_disbursed_before (min);
+    let time = min;
+    let previous_disbursements = self.num_disbursed_before (time);
     // if previous_disbursements == n, then we pick the first disbursement at min, corresponding to the first flow index; but previous_disbursements may be less, meaning that we need a later index at the same time
-    Some ((min, (n - previous_disbursements) as usize))
+    let mut excess = n - previous_disbursements;
+    for (index, flow) in self.iter().enumerate() {
+      let flow_disbursements = flow.num_disbursed_at_time (time);
+      excess -= flow_disbursements;
+      if excess <0 {
+        return Some ((time, index))
+      }
+    }
+    unreachable!()
   }
 }
 

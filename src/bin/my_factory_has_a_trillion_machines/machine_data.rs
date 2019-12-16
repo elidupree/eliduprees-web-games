@@ -20,7 +20,7 @@ macro_rules! inputs {
   ($($whatever:tt)*) => {::std::iter::FromIterator::from_iter ([$($whatever)*].iter().cloned())};
 }
 
-#[derive (Copy, Clone)]
+#[derive (Copy, Clone, Debug)]
 pub struct MachineObservedInputs <'a> {
   pub input_flows: & 'a [Option<MaterialFlow>],
   pub start_time: Number,
@@ -212,8 +212,8 @@ pub fn splitter()->MachineType {
       InputLocation::new (-1, 0, 0),
     ],
     outputs: inputs! [
-      InputLocation::new (1, 0, 1),
-      InputLocation::new (-1, 0, 3),
+      InputLocation::new (0, 1, 1),
+      InputLocation::new (0, -1, 3),
     ],
   })
 }
@@ -326,12 +326,12 @@ impl MachineTypeTrait for Distributor {
     match self.future_info (inputs) {
       DistributorFutureInfo::Failure (failure) => MachineMomentaryVisuals {materials: Vec::new(), operating_state: failure},
       DistributorFutureInfo::Success (info) => {
-        let output_disbursements_since_start = info.outputs.num_disbursed_between ([inputs.start_time, time + TIME_TO_MOVE_MATERIAL]);
+        let output_disbursements_since_start = info.outputs.num_disbursed_between ([inputs.start_time, time]);
         let mut materials = Vec::with_capacity(self.inputs.len() - 1) ;
         //let mut operating_state = MachineOperatingState::WaitingForInput;
         let output_rate = info.outputs.rate();
         let input_rate = inputs.input_flows.rate();
-        for output_index_since_start in output_disbursements_since_start+1 .. {
+        for output_index_since_start in output_disbursements_since_start .. {
           //input_rate may be greater than output_rate; if it is, we sometimes want to skip forward in the sequence. Note that if input_rate == output_rate, this uses the same index for both. Round down so as to use earlier inputs
           let input_index_since_start = output_index_since_start*input_rate/output_rate;
           let (output_time, output_index) = info.outputs.nth_disbursement_geq_time (output_index_since_start, inputs.start_time).unwrap();
@@ -341,7 +341,8 @@ impl MachineTypeTrait for Distributor {
           // TODO: smoother movement
           let input_location = self.inputs [input_index].position.to_f64 ();
           let output_location = self.outputs [output_index].position.to_f64 ();
-          let output_fraction = (output_time - input_time) as f64/(time - input_time) as f64;
+          let output_fraction = (time - input_time) as f64/(output_time - input_time) as f64;
+          //println!("{:?}", (output_index_since_start, input_index_since_start, time, input_time, output_time, input_location, output_location, output_fraction));
           let location = input_location*(1.0 - output_fraction) + output_location*output_fraction;
           materials.push ((location, info.material));
         }
