@@ -222,10 +222,10 @@ pub fn iron_smelter()->MachineType {
   MachineType::Assembler (Assembler {
     info: StandardMachineInfo::new ("Iron smelter", "machine", 3, vec![(5, Material::Iron)]),
     inputs: inputs! [
-      AssemblerInput::new (-3, 0, 0, Material::IronOre, 10),
+      AssemblerInput::new (-3, 0, 0, Material::IronOre, 3),
     ],
     outputs: inputs! [
-      AssemblerOutput::new (3, 0, 0, Material::Iron, 3),
+      AssemblerOutput::new (3, 0, 0, Material::Iron, 2),
     ],
     assembly_duration: 10*TIME_TO_MOVE_MATERIAL,
   })
@@ -285,13 +285,12 @@ impl Distributor {
     }
     let total_output_rate = per_output_rate*num_outputs;
     // the rounding here could theoretically be better, but this should be okay
-    let denominator = total_output_rate*num_outputs;
-    let per_output_latency = (RATE_DIVISOR + denominator - 1)/denominator;
+    let latency_between_outputs = (RATE_DIVISOR + total_output_rate - 1)/total_output_rate;
     let output_availability_start = inputs.input_flows.iter().flatten().map (| material_flow | material_flow.first_disbursement_time_geq (inputs.start_time)).max ().unwrap();
         
     let first_output_start = output_availability_start + TIME_TO_MOVE_MATERIAL;
         
-    let outputs = (0..self.outputs.len()).map (| index | FlowPattern::new (first_output_start + Number::try_from (index).unwrap()*per_output_latency, per_output_rate)
+    let outputs = (0..self.outputs.len()).map (| index | FlowPattern::new (first_output_start + Number::try_from (index).unwrap()*latency_between_outputs, per_output_rate)
     ).collect();
     
     DistributorFutureInfo::Success (DistributorSuccessInfo {
@@ -323,7 +322,6 @@ impl MachineTypeTrait for Distributor {
     }
   }
   fn momentary_visuals(&self, inputs: MachineObservedInputs, time: Number)->MachineMomentaryVisuals {
-    // TODO: something's wrong with the algorithm here…
     match self.future_info (inputs) {
       DistributorFutureInfo::Failure (failure) => MachineMomentaryVisuals {materials: Vec::new(), operating_state: failure},
       DistributorFutureInfo::Success (info) => {
@@ -335,6 +333,7 @@ impl MachineTypeTrait for Distributor {
         let cropped_inputs: Inputs <_> = inputs.input_flows.iter().map (| material_flow | material_flow.map (| material_flow | CroppedFlow {flow: material_flow.flow, crop_start: material_flow.last_disbursement_time_leq (info.output_availability_start).unwrap()})).collect();
         for output_index_since_start in output_disbursements_since_start .. {
           //input_rate may be greater than output_rate; if it is, we sometimes want to skip forward in the sequence. Note that if input_rate == output_rate, this uses the same index for both. Round down so as to use earlier inputs
+          //TODO: wonder if there's a nice-looking way to make sure the deletions are distributed evenly over the inputs? (Right now when there is a simple 2-1 merge, everything from one side is deleted and everything from the other side goes through)
           let input_index_since_start = output_index_since_start*input_rate/output_rate;
           let (output_time, output_index) = info.outputs.nth_disbursement_geq_time (output_index_since_start, inputs.start_time).unwrap();
           let (input_time, input_index) = cropped_inputs.nth_disbursement_geq_time (input_index_since_start, inputs.start_time).unwrap();
@@ -388,7 +387,7 @@ impl Assembler {
             return AssemblerFutureInfo::Failure (MachineOperatingState::InputIncompatible)
           }
           assembly_rate = min (assembly_rate, material_flow.rate()/input.cost);
-          assembly_start = max (assembly_start, material_flow.nth_disbursement_time_geq (input.cost+1, inputs.start_time).unwrap() + TIME_TO_MOVE_MATERIAL);
+          assembly_start = max (assembly_start, material_flow.nth_disbursement_time_geq (input.cost-1, inputs.start_time).unwrap() + TIME_TO_MOVE_MATERIAL);
         }
       }
     }
@@ -434,7 +433,7 @@ impl MachineTypeTrait for Assembler {
       AssemblerFutureInfo::Failure (failure) => MachineMomentaryVisuals {materials: Vec::new(), operating_state: failure},
       AssemblerFutureInfo::Success (info) => {
         
-        let first_relevant_assembly_start_index = info.assembly_start_pattern.num_disbursed_between ([inputs.start_time, time - TIME_TO_MOVE_MATERIAL - self.assembly_duration]);
+        let first_relevant_assembly_start_index = max(0, info.assembly_start_pattern.num_disbursed_between ([inputs.start_time, time - self.assembly_duration]) - 1);
         
         let mut materials = Vec::with_capacity(self.inputs.len() + self.outputs.len() - 1) ;
         //let mut operating_state = MachineOperatingState::WaitingForInput;
@@ -464,15 +463,17 @@ impl MachineTypeTrait for Assembler {
           else if assembly_finish_time <= time {
             for (output, flow) in self.outputs.iter().zip (& info.outputs) {
               let first_output_index = flow.num_disbursed_between ([inputs.start_time, assembly_finish_time + TIME_TO_MOVE_MATERIAL]);
-              for which_input in 0..output.amount {
-                let output_index = first_output_index + which_input;
+              for which_output in 0..output.amount {
+                let output_index = first_output_index + which_output;
                 let output_time = flow.nth_disbursement_time_geq (output_index, inputs.start_time).unwrap();
                 assert!(output_time >assembly_finish_time) ;
+                if time < output_time {
                 let output_location = output.location.position.to_f64();
                 let assembly_location = Vector2::new (0.0, 0.0);
-                let assembly_fraction = (time - output_time) as f64/(assembly_start_time - output_time) as f64;
+                let assembly_fraction = (time - output_time) as f64/(assembly_finish_time - output_time) as f64;
                 let location = output_location*(1.0 - assembly_fraction) + assembly_location*assembly_fraction;
                 materials.push ((location, output.material));
+                }
               }
             }
           }
