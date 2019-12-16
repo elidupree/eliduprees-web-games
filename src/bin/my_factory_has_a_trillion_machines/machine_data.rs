@@ -8,7 +8,7 @@ use arrayvec::ArrayVec;
 
 
 use geometry::{Number, Vector, VectorExtension, Facing, GridIsomorphism, TransformedBy};
-use flow_pattern::{FlowPattern, MaterialFlow, RATE_DIVISOR, Flow, FlowCollection};
+use flow_pattern::{FlowPattern, MaterialFlow, CroppedFlow, RATE_DIVISOR, Flow, FlowCollection};
 //use modules::ModuleMachine;
 
 pub const MAX_COMPONENTS: usize = 256;
@@ -259,6 +259,7 @@ enum DistributorFutureInfo {
 
 struct DistributorSuccessInfo {
   outputs: Inputs <FlowPattern>,
+  output_availability_start: Number,
   material: Material,
 }
 
@@ -278,7 +279,7 @@ impl Distributor {
     let total_input_rate = inputs.input_flows.rate();
     
     let num_outputs = Number::try_from (self.outputs.len()).unwrap();
-    let per_output_rate = min (RATE_DIVISOR, total_input_rate/num_outputs);
+    let per_output_rate = min (RATE_DIVISOR/TIME_TO_MOVE_MATERIAL, total_input_rate/num_outputs);
     if per_output_rate == 0 {
       return DistributorFutureInfo::Failure (MachineOperatingState::InputTooInfrequent)
     }
@@ -294,7 +295,7 @@ impl Distributor {
     ).collect();
     
     DistributorFutureInfo::Success (DistributorSuccessInfo {
-      material, outputs
+      material, output_availability_start, outputs
     })
   }
 }
@@ -331,11 +332,12 @@ impl MachineTypeTrait for Distributor {
         //let mut operating_state = MachineOperatingState::WaitingForInput;
         let output_rate = info.outputs.rate();
         let input_rate = inputs.input_flows.rate();
+        let cropped_inputs: Inputs <_> = inputs.input_flows.iter().map (| material_flow | material_flow.map (| material_flow | CroppedFlow {flow: material_flow.flow, crop_start: material_flow.last_disbursement_time_leq (info.output_availability_start).unwrap()})).collect();
         for output_index_since_start in output_disbursements_since_start .. {
           //input_rate may be greater than output_rate; if it is, we sometimes want to skip forward in the sequence. Note that if input_rate == output_rate, this uses the same index for both. Round down so as to use earlier inputs
           let input_index_since_start = output_index_since_start*input_rate/output_rate;
           let (output_time, output_index) = info.outputs.nth_disbursement_geq_time (output_index_since_start, inputs.start_time).unwrap();
-          let (input_time, input_index) = inputs.input_flows.nth_disbursement_geq_time (input_index_since_start, inputs.start_time).unwrap();
+          let (input_time, input_index) = cropped_inputs.nth_disbursement_geq_time (input_index_since_start, inputs.start_time).unwrap();
           if input_time > time {break}
           //assert!(n <= previous_disbursements + self.inputs.len() + self.outputs.len() - 1);
           // TODO: smoother movement

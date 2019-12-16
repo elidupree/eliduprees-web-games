@@ -24,6 +24,12 @@ pub struct MaterialFlow {
   pub flow: FlowPattern,
 }
 
+#[derive (Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Default)]
+pub struct CroppedFlow <T> {
+  pub flow: T,
+  pub crop_start: Number,
+}
+
 pub trait FlowCollection {
   /// The total number of disbursements in each RATE_DIVISOR time units.
   fn rate (&self)->Number;
@@ -55,6 +61,9 @@ pub trait Flow: FlowCollection {
   }
   fn last_disbursement_time_lt (&self, time: Number)-> Option<Number> {
     self.nth_disbursement_time (self.num_disbursed_before (time)-1)
+  }
+  fn last_disbursement_time_leq (&self, time: Number)-> Option<Number> {
+    self.nth_disbursement_time (self.num_disbursed_before (time + 1)-1)
   }
 }
 
@@ -142,6 +151,22 @@ impl<T: FlowCollection> FlowCollection for Option<T> {
   }
 }
 
+impl<T: FlowCollection> FlowCollection for CroppedFlow <T> {
+  fn rate (&self)->Number {
+    self.flow.rate()
+  }
+  fn num_disbursed_before (&self, time: Number)->Number {
+    if time <self.crop_start {return 0;}
+    self. flow.num_disbursed_between ([self.crop_start, time])
+  }
+  fn nth_disbursement (&self, n: Number)->Option <(Number, usize)>{
+    let lost = self.flow.num_disbursed_before (self.crop_start);
+    self.flow.nth_disbursement(n + lost)
+  }
+}
+
+impl<T: Flow> Flow for CroppedFlow <T> {}
+
 
 impl <T: FlowCollection> FlowCollection for [T] {
   fn rate (&self)->Number {
@@ -153,6 +178,9 @@ impl <T: FlowCollection> FlowCollection for [T] {
   fn nth_disbursement (&self, n: Number)->Option <(Number, usize)>{
     let rate = self.rate ();
     if rate == 0 {return None}
+    
+    // hack – incorrect for FlowRate, but we never actually use it for that
+    if n < 0 {return None}
     
     // TODO: I'm guessing there's a more efficient way to do this…
     let mut min = self.iter().filter_map (| flow | flow.nth_disbursement(0).map(|a|a.0)).min().unwrap();
@@ -182,35 +210,7 @@ impl <T: FlowCollection> FlowCollection for [T] {
   }
 }
 
-/*
-impl MaterialFlow {
-  pub fn new (material: Material, flow:FlowPattern) ->MaterialFlow {
-    MaterialFlow {material, flow}
-  }
-  pub fn start_time (&self)->Number {self.flow.start_time()}
-  pub fn rate (&self)->Number {self.flow.rate()}
-  pub fn delayed_by (&self, delay: Number)->MaterialFlow {
-    MaterialFlow {material: self.material, flow: self.flow.delayed_by (delay)}
-  }
-  
-  pub fn num_disbursed_at_time (&self, time: Number)->Number {
-    self.flow.num_disbursed_at_time (time)
-  }
-  pub fn num_disbursed_between (&self, range: [Number; 2])->Number {
-    self.flow.num_disbursed_between (range)
-  }
-  
-  pub fn num_disbursed_before (&self, time: Number)->Number {
-    self.flow.num_disbursed_before (time)
-  }
-  pub fn last_disbursement_before (&self, time: Number)->Option <Number> {
-    self.flow.last_disbursement_before (time)
-  }
-  pub fn nth_disbursement_time (&self, n: Number)->Option <Number> {
-    if n < 0 {return None;}
-    self.rate.nth_disbursement_time (n).map (| (time, index | + self.start_time)
-  }
-}*/
+
 
 /*
 
