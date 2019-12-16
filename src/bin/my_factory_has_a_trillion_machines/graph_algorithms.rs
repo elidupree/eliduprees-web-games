@@ -72,7 +72,9 @@ impl Map {
   
   pub fn future (&self, output_edges: & OutputEdges, topological_ordering: & [usize])->MapFuture {
     let mut result = MapFuture {
-      machines: self.machines.iter().map (|_| MachineFuture::default()).collect(),
+      machines: self.machines.iter().map (|machine| MachineFuture{
+        inputs: (0..machine.machine_type.num_inputs()).map(|_| None).collect(),
+      }).collect(),
       dumped: Default::default(),
     };
     

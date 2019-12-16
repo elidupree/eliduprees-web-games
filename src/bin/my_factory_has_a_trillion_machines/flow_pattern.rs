@@ -155,8 +155,8 @@ impl <T: FlowCollection> FlowCollection for [T] {
     if rate == 0 {return None}
     
     // TODO: I'm guessing there's a more efficient way to do this…
-    let mut min = (n*RATE_DIVISOR).div_floor (&rate) - self.len() as Number;
-    let mut max = min + self.len() as Number*2;
+    let mut min = self.iter().filter_map (| flow | flow.nth_disbursement(0).map(|a|a.0)).min().unwrap();
+    let mut max = self.iter().filter_map (| flow | flow.nth_disbursement(0).map(|a|a.0)).max().unwrap() + (n*RATE_DIVISOR).div_floor (&rate) + self.len() as Number;
     assert! (self.num_disbursed_before (min) <= n);
     assert! (self.num_disbursed_before (max) > n);
     while min + 1 < max {

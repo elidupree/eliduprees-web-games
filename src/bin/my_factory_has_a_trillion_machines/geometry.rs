@@ -34,6 +34,13 @@ impl TransformedBy for Vector {
     self + isomorphism.translation
   }
 }
+impl TransformedBy for Vector2 <f64> { 
+  fn transformed_by (mut self, isomorphism: GridIsomorphism)->Self {
+    if isomorphism.flip { self[0] *= -1.0; }
+    self = self.rotate_90 (isomorphism.rotation);
+    self + isomorphism.translation.to_f64()
+  }
+}
 impl TransformedBy for Facing { 
   fn transformed_by (mut self, isomorphism: GridIsomorphism)->Self {
     if isomorphism.flip { self = (4-self) % 4 }

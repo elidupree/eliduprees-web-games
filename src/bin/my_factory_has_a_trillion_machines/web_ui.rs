@@ -4,20 +4,23 @@ use stdweb;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::hash::{Hash, Hasher};
-use std::collections::HashMap;
+//use std::collections::HashMap;
 use std::cmp::{min,max};
-use std::iter;
-use arrayvec::ArrayVec;
+//use std::iter;
+//use arrayvec::ArrayVec;
 use stdweb::unstable::TryInto;
-use stdweb::web::ArrayBuffer;
+//use stdweb::web::ArrayBuffer;
 use siphasher::sip::SipHasher;
 use nalgebra::Vector2;
 use num::Integer;
 
 use geometry::{Number, Vector, Facing, GridIsomorphism, Rotate90, TransformedBy};
-use machine_data::{self, Inputs, Material, MachineType, MachineTypeTrait, MachineState, StatefulMachine, Map, Game, MAX_COMPONENTS, TIME_TO_MOVE_MATERIAL};
+use machine_data::{self, //Inputs,
+Material, MachineObservedInputs, MachineType, //MachineTypeTrait,
+MachineState, StatefulMachine, Map, Game, //MAX_COMPONENTS,
+TIME_TO_MOVE_MATERIAL};
 use graph_algorithms::MapFuture;
-use misc;
+//use misc;
 //use modules::{self, Module};
 
 
@@ -86,6 +89,9 @@ fn machine_color(machine: & StatefulMachine)->[f32; 3] {
 }
 
 fn canvas_position (position: Vector)->Vector2 <f32> {
+  Vector2::new (position [0] as f32/60.0, position [1] as f32/60.0)
+}
+fn canvas_position_from_f64 (position: Vector2 <f64>)->Vector2 <f32> {
   Vector2::new (position [0] as f32/60.0, position [1] as f32/60.0)
 }
 fn tile_size()->Vector2 <f32> {
@@ -452,31 +458,32 @@ fn mouse_up(state: &mut State) {
 
 fn draw_machines (state: & State, machines: & [StatefulMachine], isomorphism: GridIsomorphism) {
     for machine in machines {
-      let drawn = machine.machine_type.drawn_machine(& machine.map_state);
-      let size = Vector2::new(tile_size()[0] * drawn.size[0] as f32/2.0, tile_size()[1] * drawn.size[1] as f32/2.0);
+      let radius = machine.machine_type.radius() ;
+      let size = Vector2::new(tile_size()[0] *(radius*2) as f32/2.0, tile_size()[1] *(radius*2) as f32/2.0);
       let machine_isomorphism = machine.state.position*isomorphism;
       draw_rectangle (
         canvas_position (machine_isomorphism.translation),
         size,
-        machine_color (machine), "rounded-rectangle-transparent", drawn.position.rotation
+        machine_color (machine), "rounded-rectangle-transparent", 0
       );
       draw_rectangle (
         canvas_position (machine_isomorphism.translation),
         size,
-        machine_color (machine), &drawn.icon, drawn.position.rotation.transformed_by(isomorphism)
+        machine_color (machine), machine.machine_type.icon(), machine_isomorphism.rotation
       );
     }
     for machine in machines {
       if machine.machine_type.radius() > 1 {
         for (input_location, expected_material) in machine.input_locations ().into_iter().zip (machine.machine_type. input_materials()) {
+          let pos = canvas_position ((input_location.position + Vector::new(1, 0).rotate_90(input_location.facing)).transformed_by(isomorphism));
           draw_rectangle (
-            canvas_position (input_location.position.transformed_by(isomorphism)),
+            pos,
             tile_size(),
             machine_color (machine), "input", input_location.facing.transformed_by(isomorphism)
           );
           if let Some(material) = expected_material {
             draw_rectangle (
-              canvas_position (input_location.position.transformed_by(isomorphism)),
+              pos,
               tile_size()*0.8,
               machine_color (machine), material.icon(), 0
             );
@@ -488,7 +495,7 @@ fn draw_machines (state: & State, machines: & [StatefulMachine], isomorphism: Gr
       if machine.machine_type.radius() > 1 {
         for output_location in machine.output_locations () {
           draw_rectangle (
-            canvas_position ((output_location.position - Vector::new(2, 0).rotate_90(output_location.facing)).transformed_by(isomorphism)),
+            canvas_position ((output_location.position - Vector::new(1, 0).rotate_90(output_location.facing)).transformed_by(isomorphism)),
             tile_size(),
             machine_color (machine), "input", output_location.facing.rotate_90(2).transformed_by(isomorphism)
           );
@@ -510,7 +517,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
   let fractional_time = state.start_game_time as f64 + (now() - state.start_ui_time)*TIME_TO_MOVE_MATERIAL as f64*2.0;
   state.current_game_time = fractional_time as Number;
   
-  if (js! {return window.loaded_sprites === undefined;}.try_into().unwrap()) {
+  if js! {return window.loaded_sprites === undefined;}.try_into().unwrap() {
     return;
   }
   
@@ -523,69 +530,17 @@ fn do_frame(state: & Rc<RefCell<State>>) {
     
     draw_machines (state, &state.game.map.machines, Default::default());
     for (machine, future) in state.game.map.machines.iter().zip (&state.future.machines) {
-      let materials_states = iter::once (&machine.materials_state).chain (future.changes.iter().map (| (time, state) | {
-        assert!(*time == state.last_flow_change);
-        state
-      }));
-      let mut future_output_patterns: Inputs <Vec<_>> = (0..machine.machine_type.num_outputs()).map(|_| Vec::new()).collect();
-      for (materials, next) in misc::with_optional_next (materials_states) {
-        //if state.mouse_pressed {println!(" {:?} ", (&materials, &next));}
-        let end_time = match next {None => Number::max_value(), Some (state) => state.last_flow_change};
-        assert!(end_time >= materials.last_flow_change, "{:?} > {:?}", materials, next) ;
-        if end_time == materials.last_flow_change {continue;}
-        assert_eq!(materials, &future.materials_state_at(materials.last_flow_change, & machine.materials_state));
-        assert_eq!(materials, &future.materials_state_at(end_time-1, & machine.materials_state));
-        for (collector, patterns) in future_output_patterns.iter_mut().zip (machine.machine_type.future_output_patterns (& materials, & future.inputs_at (materials.last_flow_change))) {
-          for (time, pattern) in patterns {
-            if time < end_time {
-              collector.push ((time, pattern)) ;
-            }
-          }
-        }
-      }
-      //if state.mouse_pressed {println!(" {:?} ", future_output_patterns);}
-      //let relevant_output_patterns = future_output_patterns.into_iter().map (| list | list.into_iter().rev().find(|(time,_pattern)| *time <= state.current_game_time).unwrap().1).collect();
-      let start_time = state.current_game_time;
-      let end_time = start_time + TIME_TO_MOVE_MATERIAL;
-      for ((output_location, output_facing), patterns) in machine.machine_type.output_locations (& machine.map_state).into_iter().zip (future_output_patterns) {
-        for (pattern_index, (pattern_start_time, (pattern, pattern_material))) in patterns.iter().enumerate() {
-          let pattern_end_time = patterns.get (pattern_index + 1).map_or_else (Number::max_value, | (time,_pattern) | *time) ;
-          if *pattern_start_time >= end_time || pattern_end_time <= start_time { continue; }
-          
-          let soon_disbursements = pattern.num_disbursed_between ([max (*pattern_start_time, start_time), min(pattern_end_time, end_time)]);
-          if soon_disbursements > 1 {
-            eprintln!(" Warning: things released more frequently than permitted {:?} ", soon_disbursements);
-          }
-          if soon_disbursements > 0 {
-            let time = pattern.last_disbursement_before (state.current_game_time + TIME_TO_MOVE_MATERIAL).unwrap();
-            assert!(time >= start_time) ;
-            let progress = ((TIME_TO_MOVE_MATERIAL - 1 - (time - start_time)) as f32 + fractional_time.fract() as f32) / TIME_TO_MOVE_MATERIAL as f32;
-            let offset = if let Some(output_facing) = output_facing {
-              Vector2::new (tile_size() [0]*(progress - 1.0), 0.0).rotate_90 (output_facing)
-            }
-            else {
-              Vector2::new (tile_size() [0]*progress*1.2, -tile_size() [1]*progress*1.6)
-            };
-            draw_rectangle (
-              canvas_position (output_location) + offset,
+      let inputs = MachineObservedInputs {
+        input_flows: & future.inputs,
+        start_time: machine.state.last_disturbed_time,
+      };
+      let visuals = machine.machine_type.momentary_visuals (inputs, state.current_game_time);
+      for (location, material) in & visuals.materials {
+        draw_rectangle (
+              canvas_position_from_f64 (location.transformed_by (machine.state.position)),
               tile_size()*0.6,
-              [0.0,0.0,0.0], pattern_material.icon(), Facing::default()
+              [0.0,0.0,0.0], material.icon(), Facing::default()
             );
-          }
-        }
-      }
-    }
-    for (machine, future) in state.game.map.machines.iter().zip (&state.future.machines) {
-      for (storage_location, (storage_amount, storage_material)) in machine.machine_type.displayed_storage (& machine.map_state, & future.materials_state_at(state.current_game_time, & machine.materials_state),& future.inputs_at (state.current_game_time), state.current_game_time) {
-        for index in 0..min (3, storage_amount) {
-          let mut position = canvas_position (storage_location);
-          position [1] += tile_size() [1]*index as f32*0.1;
-          draw_rectangle (
-            position,
-            tile_size()*0.6,
-            [0.0,0.0,0.0], storage_material.icon(), Facing::default()
-          );
-        }
       }
     }
     js!{ $("#inventory").empty();}
