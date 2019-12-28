@@ -86,20 +86,20 @@ pub trait MachineTypeTrait {
   fn momentary_visuals(&self, inputs: MachineObservedInputs, time: Number)->MachineMomentaryVisuals {MachineMomentaryVisuals {materials: Vec::new(), operating_state: MachineOperatingState::Operating}}
 }
 
-macro_rules! machine_type_enum {
+macro_rules! machine_type_info_enum {
   ($($Variant: ident,)*) => {
   
 
 #[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
-pub enum MachineType {
+pub enum MachineTypeInfo {
   $($Variant ($Variant),)*
 }
 
-impl Deref for MachineType {
+impl Deref for MachineTypeInfo {
   type Target = dyn MachineTypeTrait;
   fn deref(&self)-> &(dyn MachineTypeTrait + 'static) {
     match self {
-      $(MachineType::$Variant (value) => value,)*
+      $(MachineTypeInfo::$Variant (value) => value,)*
     }
   }
 }
@@ -107,9 +107,15 @@ impl Deref for MachineType {
   };
 }
 
-machine_type_enum! {
+machine_type_info_enum! {
   Distributor, Assembler, //Mine, ModuleMachine, // Conveyor,
 }
+
+#[derive (Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
+pub enum MachineTypeId {
+  Preset (usize),
+}
+
 
 #[derive (Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
 pub struct InputLocation {
@@ -191,8 +197,8 @@ impl AssemblerOutput {
   }
 }
 
-pub fn conveyor()->MachineType {
-  MachineType::Distributor(Distributor{
+pub fn conveyor()->MachineTypeInfo {
+  MachineTypeInfo::Distributor(Distributor{
     info: StandardMachineInfo::new ("Conveyor", "conveyor", 1, vec![(1, Material::Iron)]),
     inputs: inputs! [
       InputLocation::new (-1, 0, 0),
@@ -205,8 +211,8 @@ pub fn conveyor()->MachineType {
   })
 }
 
-pub fn splitter()->MachineType {
-  MachineType::Distributor(Distributor{
+pub fn splitter()->MachineTypeInfo {
+  MachineTypeInfo::Distributor(Distributor{
     info: StandardMachineInfo::new ("Splitter", "splitter", 1, vec![(1, Material::Iron)]),
     inputs: inputs! [
       InputLocation::new (-1, 0, 0),
@@ -218,8 +224,8 @@ pub fn splitter()->MachineType {
   })
 }
 
-pub fn iron_smelter()->MachineType {
-  MachineType::Assembler (Assembler {
+pub fn iron_smelter()->MachineTypeInfo {
+  MachineTypeInfo::Assembler (Assembler {
     info: StandardMachineInfo::new ("Iron smelter", "machine", 3, vec![(5, Material::Iron)]),
     inputs: inputs! [
       AssemblerInput::new (-3, 0, 0, Material::IronOre, 3),
@@ -231,8 +237,8 @@ pub fn iron_smelter()->MachineType {
   })
 }
 
-pub fn iron_mine()->MachineType {
-  MachineType::Assembler (Assembler {
+pub fn iron_mine()->MachineTypeInfo {
+  MachineTypeInfo::Assembler (Assembler {
     info: StandardMachineInfo::new ("Iron mine", "mine", 3, vec![(50, Material::Iron)]),
     inputs: inputs! [],
     outputs: inputs! [
@@ -497,20 +503,11 @@ impl MachineTypeTrait for Assembler {
 
 #[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
 pub struct StatefulMachine {
-  pub machine_type: MachineType,
+  pub machine_type: MachineTypeId,
   pub state: MachineState,
 }
 
-impl StatefulMachine {
-  pub fn input_locations <'a> (& 'a self)->impl Iterator <Item = InputLocation> + 'a {
-    let position = self.state.position;
-    self.machine_type.relative_input_locations().into_iter().map (move | location | location.transformed_by (position))
-  }
-  pub fn output_locations <'a> (& 'a self)->impl Iterator <Item = InputLocation> + 'a {
-    let position = self.state.position;
-    self.machine_type.relative_output_locations().into_iter().map (move | location | location.transformed_by (position))
-  }
-}
+
 
 /*
 
@@ -546,8 +543,40 @@ pub struct Map {
 }
 
 #[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+pub struct MachineTypesInfo {
+  pub presets: Vec<MachineTypeInfo>,
+}
+
+impl MachineTypeInfo {
+  pub fn input_locations <'a> (& 'a self, position: GridIsomorphism)->impl Iterator <Item = InputLocation> + 'a {
+    self.relative_input_locations().into_iter().map (move | location | location.transformed_by (position))
+  }
+  pub fn output_locations <'a> (& 'a self, position: GridIsomorphism)->impl Iterator <Item = InputLocation> + 'a {
+    self.relative_output_locations().into_iter().map (move | location | location.transformed_by (position))
+  }
+
+}
+
+impl MachineTypesInfo {
+  pub fn get(&self, id: MachineTypeId)->& MachineTypeInfo {
+    match id {
+      MachineTypeId::Preset(index) => self.presets.get(index).unwrap(),
+    }
+  }
+  
+  pub fn input_locations <'a> (& 'a self, machine: &StatefulMachine)->impl Iterator <Item = InputLocation> + 'a {
+    self.get (machine.machine_type).input_locations (machine.state.position)
+  }
+  pub fn output_locations <'a> (& 'a self, machine: &StatefulMachine)->impl Iterator <Item = InputLocation> + 'a {
+    self.get (machine.machine_type).output_locations (machine.state.position)
+  }
+
+}
+
+#[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub struct Game {
   pub map: Map,
+  pub machine_types_info: MachineTypesInfo,
   pub last_change_time: Number,
   pub inventory_before_last_change: HashMap <Material, Number>,
 }
