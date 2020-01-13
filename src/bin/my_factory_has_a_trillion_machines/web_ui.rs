@@ -279,11 +279,12 @@ fn edit_in_smallest_module<F: FnOnce(GridIsomorphism, &mut Vec<StatefulMachine>)
   callback (isomorphism, machines)
 }
 
-fn build_machine (state: &mut State, machine_type: MachineType, position: GridIsomorphism) {
+fn build_machine (state: &mut State, machine_type_id: MachineTypeId, position: GridIsomorphism) {
   let machine_state =MachineState {position, last_disturbed_time: state.current_game_time};
-  if in_smallest_module (&state.game.map.machines, Default::default(), (machine_state.position.translation, machine_type.radius()), | isomorphism, machines| {
+  let machine_type_info = state.game.machine_types_info.get (machine_type_id);
+  if in_smallest_module (&state.game.map.machines, Default::default(), (machine_state.position.translation, machine_type_info .radius()), | isomorphism, machines| {
     if machines.iter().any (| machine | {
-      let radius = machine.machine_type.radius() + machine_type.radius();
+      let radius = state.game.machine_types_info.get (machine.machine_type).radius() + machine_type_info.radius();
       let offset = (machine_state.position / (isomorphism*machine.state.position)).translation;
       offset[0].abs() < radius && offset[1].abs() < radius
     }) {
@@ -297,17 +298,17 @@ fn build_machine (state: &mut State, machine_type: MachineType, position: GridIs
     return;
   }
   let inventory = state.game.inventory_at (& state.future, state.current_game_time);
-  for (amount, material) in machine_type.cost() {
+  for (amount, material) in machine_type_info.cost() {
     if inventory.get(&material).map_or (true, | storage | storage <amount) {
       return;
     }
   }
   prepare_to_change_map (state);
-  for (amount, material) in machine_type.cost() {
+  for (amount, material) in machine_type_info.cost() {
     *state.game.inventory_before_last_change.get_mut(&material).unwrap() -= amount;
   }
-  edit_in_smallest_module(&mut state.game.map.machines, Default::default(), (machine_state.position.translation, machine_type.radius()), | isomorphism, machines| machines.push (StatefulMachine {
-    machine_type,
+  edit_in_smallest_module(&mut state.game.map.machines, Default::default(), (machine_state.position.translation, machine_type_info.radius()), | isomorphism, machines| machines.push (StatefulMachine {
+    machine_type: machine_type_id,
     state: MachineState{position: machine_state.position/isomorphism, .. machine_state},
   }));
   recalculate_future (state) ;
@@ -327,9 +328,9 @@ fn recalculate_future (state: &mut State) {
   let ordering = state.game.map.topological_ordering_of_noncyclic_machines(& output_edges);
   state.future = state.game.map.future (& output_edges, & ordering);
      
-  js!{
+  /*js!{
     $("#json").val (@{serde_json::to_string_pretty (&state.game).unwrap()});
-  }
+  }*/
 }
 
 fn exact_facing (vector: Vector)->Option <Facing> {
@@ -534,7 +535,7 @@ fn do_frame(state: & Rc<RefCell<State>>) {
         input_flows: & future.inputs,
         start_time: machine.state.last_disturbed_time,
       };
-      let visuals = machine.machine_type.momentary_visuals (inputs, state.current_game_time);
+      let visuals = state.game.machine_types_info.get (machine.machine_type).momentary_visuals (inputs, state.current_game_time);
       for (location, material) in & visuals.materials {
         draw_rectangle (
               canvas_position_from_f64 (location.transformed_by (machine.state.position)),
