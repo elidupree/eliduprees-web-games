@@ -43,7 +43,7 @@ fn main() {
 
 #[cfg (not(target_os = "emscripten"))]
 fn main() {
-  println!( "Non-emscripten builds don't do anything right now");
+  //println!( "Non-emscripten builds don't do anything right now");
   /*MachinesGraph::new (vec![
     (material_generator(), None, & []),
   ]).simulate_future();
@@ -63,4 +63,10 @@ fn main() {
    (merger(), None, & [(11, 0)]),
    (consumer(), None, & []),
  ]).simulate_future();*/
+ 
+ let game: machine_data::Game = serde_json::from_reader (std::io::BufReader::new(std::fs::File::open ("../data/test.json").unwrap())).unwrap();
+ let output_edges = game.map.output_edges(& game.machine_types_info) ;
+ let ordering = game.map.topological_ordering_of_noncyclic_machines (& output_edges);
+ let future = game.map.future (& game.machine_types_info, & output_edges, & ordering);
+ println!("{:?}", future);
 }
