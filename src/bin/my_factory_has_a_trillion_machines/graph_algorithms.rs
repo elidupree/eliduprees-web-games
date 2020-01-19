@@ -5,7 +5,7 @@ use arrayvec::ArrayVec;
 
 use geometry::{Number};
 use flow_pattern::{MaterialFlow, FlowCollection};
-use machine_data::{Inputs, Material, Map, Game, InputLocation, MachineObservedInputs, MachineTypesInfo, MAX_COMPONENTS};
+use machine_data::{Inputs, Material, Map, Game, InputLocation, MachineObservedInputs, MachineTypesInfo, StatefulMachine, MAX_COMPONENTS};
 
 pub type OutputEdges = ArrayVec<[Inputs<Option<(usize, usize)>>; MAX_COMPONENTS]>;
 #[derive (Debug)]
@@ -37,6 +37,40 @@ impl Map {
         })
       }).collect()
     }).collect()
+  }
+  
+  pub fn build_machines (&mut self, types_info: &mut MachineTypesInfo, machines: impl IntoIterator <Item = StatefulMachine>, now: Number) {
+    let old_length = self.machines.len();
+    self.machines.extend (machines);
+    let mut disturbed = Vec::with_capacity (self.machines.len());
+    disturbed.extend (old_length..self.machines.len());
+    self.disturb_downstream (types_info, &self.output_edges (types_info), disturbed, now);
+  }
+  
+  /*pub fn remove_machines (&mut self, types_info: &mut MachineTypesInfo, machines: Vec<usize>, now: Number) {
+    let indices =
+    self.machines.extend (machines);
+    let mut disturbed = Vec::with_capacity (self.machines.len());
+    disturbed.extend (old_length..self.machines.len());
+    self.disturb_downstream (types_info, self.output_edges (types_info), disturbed, now);
+  }*/
+  
+  pub fn disturb_downstream (&mut self, types_info: &mut MachineTypesInfo, output_edges: & OutputEdges, starting_points: Vec<usize>, now: Number) {
+    let mut stack = starting_points;
+    let mut visited: Vec<bool> = vec![false; self.machines.len()];
+    while let Some (index) = stack.pop() {
+      let machine = &mut self.machines [index];
+      machine.state.last_disturbed_time = now;
+      /*if let MachineTypeInfo::ModuleMachine (machine) = types_info.get (machine.machine_type) {
+        self.canonicalize_module (types_info, machine);
+      }*/
+      for &(destination_machine_index,_) in output_edges [index].iter().flatten() {
+        if !visited [destination_machine_index] {
+          visited [destination_machine_index] = true;
+          stack.push (destination_machine_index);
+        }
+      }
+    }
   }
   
   pub fn topological_ordering_of_noncyclic_machines (&self, output_edges: & OutputEdges)->Vec<usize> {
