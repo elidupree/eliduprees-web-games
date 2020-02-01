@@ -47,13 +47,28 @@ impl Map {
     self.disturb_downstream (types_info, &self.output_edges (types_info), disturbed, now);
   }
   
-  /*pub fn remove_machines (&mut self, types_info: &mut MachineTypesInfo, machines: Vec<usize>, now: Number) {
-    let indices =
-    self.machines.extend (machines);
+  pub fn remove_machines (&mut self, types_info: &mut MachineTypesInfo, machines: Vec<usize>, now: Number) {
     let mut disturbed = Vec::with_capacity (self.machines.len());
-    disturbed.extend (old_length..self.machines.len());
-    self.disturb_downstream (types_info, self.output_edges (types_info), disturbed, now);
-  }*/
+    disturbed.extend_from_slice (& machines);
+    self.disturb_downstream (types_info, & self.output_edges (types_info), disturbed, now);
+    let mut index = 0;
+    self.machines.retain (| machine | {
+      let result = !machines.contains (& index);
+      index += 1;
+      result
+    });
+  }
+  
+  pub fn modify_machines (&mut self, types_info: &mut MachineTypesInfo, machines: Vec<usize>, now: Number, mut modify: impl FnMut (&mut StatefulMachine)) {
+    let mut disturbed = Vec::with_capacity (self.machines.len());
+    disturbed.extend_from_slice (& machines);
+    self.disturb_downstream (types_info, & self.output_edges (types_info), disturbed, now);
+    for (index, machine) in self.machines.iter_mut().enumerate() {
+      if machines.contains (& index) {
+        (modify) (machine);
+      }
+    }
+  }
   
   pub fn disturb_downstream (&mut self, types_info: &mut MachineTypesInfo, output_edges: & OutputEdges, starting_points: Vec<usize>, now: Number) {
     let mut stack = starting_points;

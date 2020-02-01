@@ -250,8 +250,8 @@ fn current_mode ()->String {
 }
 
 // TODO reduce duplicate code id 394342002
-fn in_smallest_module<F: FnOnce(GridIsomorphism, &[StatefulMachine])->R, R> (machines: &[StatefulMachine], isomorphism: GridIsomorphism, (position, radius): (Vector, Number), callback: F)->R {
-  for machine in machines.iter() {
+fn in_smallest_module<F: FnOnce(GridIsomorphism, & Map)->R, R> (map: &Map, isomorphism: GridIsomorphism, (position, radius): (Vector, Number), callback: F)->R {
+  for machine in map.machines.iter() {
     /*if let MachineType::ModuleMachine(module_machine) = &machine.machine_type {
       let machine_isomorphism = machine.state.position*isomorphism;
       let relative_position = position - machine_isomorphism.translation;
@@ -261,11 +261,11 @@ fn in_smallest_module<F: FnOnce(GridIsomorphism, &[StatefulMachine])->R, R> (mac
       }
     }*/
   }
-  callback (isomorphism, machines)
+  callback (isomorphism, map)
 }
 // TODO reduce duplicate code id 394342002
-fn edit_in_smallest_module<F: FnOnce(GridIsomorphism, &mut Vec<StatefulMachine>)->R, R> (machines: &mut Vec <StatefulMachine>, isomorphism: GridIsomorphism, (position, radius): (Vector, Number), callback: F)->R {
-  for machine in machines.iter_mut() {
+fn edit_in_smallest_module<F: FnOnce(GridIsomorphism, &mut Map)->R, R> (map: &mut Map, isomorphism: GridIsomorphism, (position, radius): (Vector, Number), callback: F)->R {
+  for machine in map.machines.iter_mut() {
     /*if let MachineType::ModuleMachine(module_machine) = &mut machine.machine_type {
       let machine_isomorphism = machine.state.position*isomorphism;
       let relative_position = position - machine_isomorphism.translation;
@@ -278,21 +278,21 @@ fn edit_in_smallest_module<F: FnOnce(GridIsomorphism, &mut Vec<StatefulMachine>)
       }
     }*/
   }
-  callback (isomorphism, machines)
+  callback (isomorphism, map)
 }
 
 fn build_machine (state: &mut State, machine_type_id: MachineTypeId, position: GridIsomorphism) {
   let machine_state =MachineState {position, last_disturbed_time: state.current_game_time};
   let machine_type_info = state.game.machine_types_info.get (machine_type_id);
-  if in_smallest_module (&state.game.map.machines, Default::default(), (machine_state.position.translation, machine_type_info .radius()), | isomorphism, machines| {
-    if machines.iter().any (| machine | {
+  if in_smallest_module (&state.game.map, Default::default(), (machine_state.position.translation, machine_type_info .radius()), | isomorphism, map | {
+    if map.machines.iter().any (| machine | {
       let radius = state.game.machine_types_info.get (machine.machine_type).radius() + machine_type_info.radius();
       let offset = (machine_state.position / (isomorphism*machine.state.position)).translation;
       offset[0].abs() < radius && offset[1].abs() < radius
     }) {
       return true;
     }
-    /*if machines.len() == machines.capacity() {
+    /*if map.machines.len() == map.machines.capacity() {
       return true;
     }*/
     false
@@ -305,28 +305,30 @@ fn build_machine (state: &mut State, machine_type_id: MachineTypeId, position: G
       return;
     }
   }
-  prepare_to_change_map (state);
+
   let machine_type_info = state.game.machine_types_info.get (machine_type_id);
   for (amount, material) in machine_type_info.cost() {
     *state.game.inventory_before_last_change.get_mut(&material).unwrap() -= amount;
   }
-  edit_in_smallest_module(&mut state.game.map.machines, Default::default(), (machine_state.position.translation, machine_type_info.radius()), | isomorphism, machines| machines.push (StatefulMachine {
-    machine_type: machine_type_id,
-    state: MachineState{position: machine_state.position/isomorphism, .. machine_state},
-  }));
+  let radius = machine_type_info.radius();
+  let machine_types_info = &mut state.game.machine_types_info;
+  let now = state.current_game_time;
+  edit_in_smallest_module(&mut state.game.map, Default::default(), (machine_state.position.translation, radius), | isomorphism, map | {
+    map.build_machines (
+      machine_types_info,
+      vec![StatefulMachine {
+        machine_type: machine_type_id,
+        state: MachineState{position: machine_state.position/isomorphism, .. machine_state}
+      }],
+      now,
+    );
+  });
   recalculate_future (state) ;
 }
 
-fn prepare_to_change_map(state: &mut State) {
+fn recalculate_future (state: &mut State) {
   state.game.inventory_before_last_change = state.game.inventory_at (& state.future, state.current_game_time) ;
   state.game.last_change_time = state.current_game_time;
-  for (machine, future) in state.game.map.machines.iter_mut().zip (& state.future.machines) {
-    // TODO: only the downstream machines
-    machine.state.last_disturbed_time = state.current_game_time;
-  }
-}
-
-fn recalculate_future (state: &mut State) {
   let output_edges = state.game.map.output_edges(& state.game.machine_types_info);
   let ordering = state.game.map.topological_ordering_of_noncyclic_machines(& output_edges);
   state.future = state.game.map.future (& state.game.machine_types_info, & output_edges, & ordering);
@@ -399,8 +401,12 @@ fn mouse_move (state: &mut State, position: MousePosition) {
     if let Some(previous) = state.mouse.previous_position {
       if drag.click_type == REGULAR_CLICK && (hovering_area (state, previous).0 == hovering_area (state, drag.original_position).0 || current_mode() == "Conveyor") {
         if let Some(index) = state.game.map.machines.iter().position(|machine| previous.overlaps_machine (&state.game.machine_types_info, machine)) {
-          prepare_to_change_map (state) ;
-          state.game.map.machines[index].state.position.rotation = facing;
+          state.game.map.modify_machines (
+            &mut state.game.machine_types_info,
+            vec![index],
+            state.current_game_time,
+            | machine | machine.state.position.rotation = facing,
+          );
           recalculate_future (state) ;
         }
       }
@@ -434,18 +440,28 @@ fn mouse_maybe_held(state: &mut State) {
     }
     
     if drag.click_type == (ClickType {buttons: 2,..Default::default()}) {
-      if in_smallest_module (&state.game.map.machines, Default::default(), hover, | isomorphism, machines| machines.iter().position(|machine| inside_machine (& state.game.machine_types_info, position.tile_center.transformed_by(isomorphism.inverse()), machine)).is_some()) {
-        prepare_to_change_map (state);
-        let machine_types_info = &state.game.machine_types_info;
-        let cost = edit_in_smallest_module (&mut state.game.map.machines, Default::default(), hover, | isomorphism, machines| {
-          let index = machines.iter().position(|machine| inside_machine (& machine_types_info, position.tile_center.transformed_by(isomorphism.inverse()), machine)).unwrap();
-          let cost = machine_types_info.get (machines[index].machine_type).cost().to_owned();
-          machines.remove(index);
-          cost
-        });
-        for (amount, material) in cost {
-          *state.game.inventory_before_last_change.get_mut(&material).unwrap() += amount;
+      let machine_types_info = &mut state.game.machine_types_info;
+      let inventory = &mut state.game.inventory_before_last_change;
+      let now = state.current_game_time;
+      let deleting = in_smallest_module (&state.game.map, Default::default(), hover, | isomorphism, map | {
+        if let Some(deleted_index) = map.machines.iter().position(|machine| inside_machine (&machine_types_info, position.tile_center.transformed_by(isomorphism.inverse()), machine)) {
+          let cost = machine_types_info.get (map.machines[deleted_index].machine_type).cost();
+          for (amount, material) in cost {
+            *inventory.get_mut(&material).unwrap() += amount;
+          }
+          true
         }
+        else {false}
+      });
+      if deleting {
+        edit_in_smallest_module (&mut state.game.map, Default::default(), hover, | isomorphism, map | {
+          let index = map.machines.iter().position(|machine| inside_machine (&machine_types_info, position.tile_center.transformed_by(isomorphism.inverse()), machine)).unwrap();
+          map.remove_machines (
+            machine_types_info,
+            vec![index],
+            now,
+          );
+        });
         recalculate_future (state) ;
       }
     }
