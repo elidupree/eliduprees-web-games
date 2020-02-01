@@ -5,7 +5,7 @@ use arrayvec::ArrayVec;
 
 use geometry::{Number};
 use flow_pattern::{MaterialFlow, FlowCollection};
-use machine_data::{Inputs, Material, Map, Game, InputLocation, MachineObservedInputs, MachineTypesInfo, StatefulMachine, MAX_COMPONENTS};
+use machine_data::{Inputs, Material, Map, Game, InputLocation, MachineObservedInputs, MachineTypes, StatefulMachine, MAX_COMPONENTS};
 
 pub type OutputEdges = ArrayVec<[Inputs<Option<(usize, usize)>>; MAX_COMPONENTS]>;
 #[derive (Debug)]
@@ -22,11 +22,11 @@ pub struct MachineFuture {
 
 
 impl Map {
-  pub fn output_edges (&self, types_info: &MachineTypesInfo)->OutputEdges {
+  pub fn output_edges (&self, machine_types: &MachineTypes)->OutputEdges {
     self.machines.iter().map (| machine | {
-      types_info.output_locations(machine).map (| output_location | {
+      machine_types.output_locations(machine).map (| output_location | {
         self.machines.iter().enumerate().find_map(| (machine2_index, machine2) | {
-          types_info.input_locations(machine2).enumerate().find_map(| (input_index, input_location) | {
+          machine_types.input_locations(machine2).enumerate().find_map(| (input_index, input_location) | {
             if input_location == output_location {
               Some((machine2_index, input_index))
             }
@@ -39,18 +39,18 @@ impl Map {
     }).collect()
   }
   
-  pub fn build_machines (&mut self, types_info: &mut MachineTypesInfo, machines: impl IntoIterator <Item = StatefulMachine>, now: Number) {
+  pub fn build_machines (&mut self, machine_types: &mut MachineTypes, machines: impl IntoIterator <Item = StatefulMachine>, now: Number) {
     let old_length = self.machines.len();
     self.machines.extend (machines);
     let mut disturbed = Vec::with_capacity (self.machines.len());
     disturbed.extend (old_length..self.machines.len());
-    self.disturb_downstream (types_info, &self.output_edges (types_info), disturbed, now);
+    self.disturb_downstream (machine_types, &self.output_edges (machine_types), disturbed, now);
   }
   
-  pub fn remove_machines (&mut self, types_info: &mut MachineTypesInfo, machines: Vec<usize>, now: Number) {
+  pub fn remove_machines (&mut self, machine_types: &mut MachineTypes, machines: Vec<usize>, now: Number) {
     let mut disturbed = Vec::with_capacity (self.machines.len());
     disturbed.extend_from_slice (& machines);
-    self.disturb_downstream (types_info, & self.output_edges (types_info), disturbed, now);
+    self.disturb_downstream (machine_types, & self.output_edges (machine_types), disturbed, now);
     let mut index = 0;
     self.machines.retain (| machine | {
       let result = !machines.contains (& index);
@@ -59,10 +59,10 @@ impl Map {
     });
   }
   
-  pub fn modify_machines (&mut self, types_info: &mut MachineTypesInfo, machines: Vec<usize>, now: Number, mut modify: impl FnMut (&mut StatefulMachine)) {
+  pub fn modify_machines (&mut self, machine_types: &mut MachineTypes, machines: Vec<usize>, now: Number, mut modify: impl FnMut (&mut StatefulMachine)) {
     let mut disturbed = Vec::with_capacity (self.machines.len());
     disturbed.extend_from_slice (& machines);
-    self.disturb_downstream (types_info, & self.output_edges (types_info), disturbed, now);
+    self.disturb_downstream (machine_types, & self.output_edges (machine_types), disturbed, now);
     for (index, machine) in self.machines.iter_mut().enumerate() {
       if machines.contains (& index) {
         (modify) (machine);
@@ -70,14 +70,14 @@ impl Map {
     }
   }
   
-  pub fn disturb_downstream (&mut self, types_info: &mut MachineTypesInfo, output_edges: & OutputEdges, starting_points: Vec<usize>, now: Number) {
+  pub fn disturb_downstream (&mut self, machine_types: &mut MachineTypes, output_edges: & OutputEdges, starting_points: Vec<usize>, now: Number) {
     let mut stack = starting_points;
     let mut visited: Vec<bool> = vec![false; self.machines.len()];
     while let Some (index) = stack.pop() {
       let machine = &mut self.machines [index];
       machine.state.last_disturbed_time = now;
-      /*if let MachineTypeInfo::ModuleMachine (machine) = types_info.get (machine.machine_type) {
-        self.canonicalize_module (types_info, machine);
+      /*if let MachineType::ModuleMachine (machine) = machine_types.get (machine.type_id) {
+        self.canonicalize_module (machine_types, machine);
       }*/
       for &(destination_machine_index,_) in output_edges [index].iter().flatten() {
         if !visited [destination_machine_index] {
@@ -120,10 +120,10 @@ impl Map {
     result
   }
   
-  pub fn future (&self, types_info: &MachineTypesInfo, output_edges: & OutputEdges, topological_ordering: & [usize])->MapFuture {
+  pub fn future (&self, machine_types: &MachineTypes, output_edges: & OutputEdges, topological_ordering: & [usize])->MapFuture {
     let mut result = MapFuture {
       machines: self.machines.iter().map (|machine| MachineFuture{
-        inputs: (0..types_info.get(machine.machine_type).num_inputs()).map(|_| None).collect(),
+        inputs: (0..machine_types.get(machine.type_id).num_inputs()).map(|_| None).collect(),
       }).collect(),
       dumped: Default::default(),
     };
@@ -134,7 +134,7 @@ impl Map {
         input_flows: & result.machines [machine_index].inputs,
         start_time: machine.state.last_disturbed_time,
       };
-      let machine_type = types_info.get(machine.machine_type);
+      let machine_type = machine_types.get(machine.type_id);
       let outputs = machine_type.output_flows (inputs);
       //println!("{:?}\n{:?}\n{:?}\n\n", machine, inputs , outputs);
       for ((flow, destination), location) in outputs.into_iter().zip (& output_edges [machine_index]).zip (machine_type.output_locations(machine.state.position)) {
