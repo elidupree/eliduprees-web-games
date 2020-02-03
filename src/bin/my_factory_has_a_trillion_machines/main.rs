@@ -6,6 +6,7 @@ extern crate eliduprees_web_games;
 #[cfg (target_os = "emscripten")]
 #[macro_use]
 extern crate stdweb;
+extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 #[macro_use]

@@ -16,7 +16,7 @@ use num::Integer;
 
 use geometry::{Number, Vector, Facing, GridIsomorphism, Rotate90, TransformedBy};
 use machine_data::{self, //Inputs,
-Material, MachineObservedInputs, MachineType, MachineTypes, MachineTypeId, //MachineTypeTrait,
+Material, MachineObservedInputs, MachineType, MachineTypes, MachineTypeTrait, MachineMomentaryVisuals, MachineTypeId, //MachineTypeTrait,
 MachineState, StatefulMachine, Map, Game, //MAX_COMPONENTS,
 TIME_TO_MOVE_MATERIAL};
 use graph_algorithms::MapFuture;
@@ -563,7 +563,12 @@ fn do_frame(state: & Rc<RefCell<State>>) {
         input_flows: & future.inputs,
         start_time: machine.state.last_disturbed_time,
       };
-      let visuals = state.game.machine_types.get (machine.type_id).momentary_visuals (inputs, state.current_game_time);
+      let visuals = match & future.future {
+        Ok (future) => state.game.machine_types.get (machine.type_id).momentary_visuals (inputs, future, state.current_game_time),
+        Err (operating_state) => MachineMomentaryVisuals {
+          operating_state: operating_state.clone(), materials: Vec::new(),
+        },
+      };
       for (location, material) in & visuals.materials {
         draw_rectangle (
               canvas_position_from_f64 (location.transformed_by (machine.state.position)),

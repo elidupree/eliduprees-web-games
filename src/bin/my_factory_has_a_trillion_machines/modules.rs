@@ -11,25 +11,16 @@ use machine_data::{Inputs, MachineType, Material, MachineTypeTrait, MachineMapSt
 
 #[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
 pub struct ModuleType {
-  pub name: String,
-  pub icon: String,
-  pub radius: Number,
+  pub info: StandardMachineInfo,
   pub inner_radius: Number,
-  pub cost: Vec<(Number, Material)>,
-  pub inputs: Inputs <(Vector, Facing)>,
-  pub outputs: Inputs <(Vector, Facing)>,
+  pub inputs: Inputs <ModuleInput>,
+  pub outputs: Inputs <ModuleInput>,
 }
 
 #[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
 pub struct ModuleInput {
-  pub material: Option <Material>,
-  pub ideal_rate: Number,
-}
-
-#[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
-pub struct ModuleOutput {
-  pub material: Option <Material>,
-  pub ideal_rate: Number,
+  pub outer_location: InputLocation,
+  pub inner_location: InputLocation,
 }
 
 
@@ -37,8 +28,6 @@ pub struct ModuleOutput {
 pub struct Module {
   pub module_type: ModuleType,
   pub cost: Vec<(Number, Material)>,
-  pub inputs: Inputs <ModuleInput>,
-  pub outputs: Inputs <ModuleOutput>,
   pub map: Map,
 }
 
@@ -48,24 +37,94 @@ pub struct ModuleMachine {
 }
 
 pub fn basic_module()->MachineType {
+  fn input(index: Number, x: Number)->ModuleInput {
+    ModuleInput {
+      outer_location: InputLocation::new (x + x.signum(), -3 + index*2, 0),
+      inner_location: InputLocation::new (x - x.signum(), -3 + index*2, 0),
+    }
+  }
+
   MachineType::ModuleMachine(ModuleMachine {
     module: Rc::new (Module {
       module_type: ModuleType {
-        name: "Basic module".to_string(),
-        icon: "rounded-rectangle-solid".to_string(),
-        radius: 20,
+        info: StandardMachineInfo::new ("Basic module", "rounded-rectangle-solid", 20, vec![(20, Material::Iron)])
         inner_radius: 18,
-        cost: vec![(20, Material::Iron)],
-        inputs: inputs![],
-        outputs: inputs![],
+        inputs: (0..4).map(|i| input(i, -19)).collect(),
+        outputs: (0..4).map(|i| input(i, 19)).collect(),
       },
       cost: vec![(20, Material::Iron)],
-      inputs: inputs![],
-      outputs: inputs![],
-      map: Map{machines: ArrayVec::new(), last_change_time: 0},
+      map: Map{machines: ArrayVec::new()},
     })
   })
 }
+
+
+
+
+
+impl MachineTypeTrait for Module {
+  // basic information
+  fn name (&self)->& str {& self.module_type.info.name}
+  fn cost (&self)->& [(Number, Material)] {& self.module_type.info.cost}
+  fn num_inputs (&self)->usize {self.module_type.inputs.len()}
+  fn num_outputs (&self)->usize {self.module_type.outputs.len()}
+  fn radius (&self)->Number {self.module_type.info.radius}
+  fn icon(&self) ->& str {& self.module_type.info.icon}
+  
+  fn relative_input_locations (&self)->Inputs <InputLocation> {self.module_type.inputs.iter().map (| locations | locations.outer_location).collect()}
+  fn relative_output_locations (&self)->Inputs <InputLocation> {self.module_type.outputs.iter().map (| locations | locations.outer_location).collect()}
+  fn input_materials (&self)->Inputs <Option <Material>> {self.inputs.iter().map (|_| None).collect()}
+  
+  fn output_flows(&self, inputs: MachineObservedInputs)->Inputs <Option<MaterialFlow>> {
+    match self.future_info (inputs) {
+      DistributorFutureInfo::Failure (_) => self.inputs.iter().map (|_| None).collect(),
+      DistributorFutureInfo::Success (info) => {
+        let material = info.material;
+        info.outputs.into_iter().map (| flow | Some (MaterialFlow {material, flow})).collect()
+      }
+    }
+  }
+  fn momentary_visuals(&self, inputs: MachineObservedInputs, time: Number)->MachineMomentaryVisuals {
+    match self.future_info (inputs) {
+      DistributorFutureInfo::Failure (failure) => MachineMomentaryVisuals {materials: Vec::new(), operating_state: failure},
+      DistributorFutureInfo::Success (info) => {
+        let output_disbursements_since_start = info.outputs.num_disbursed_between ([inputs.start_time, time]);
+        let mut materials = Vec::with_capacity(self.inputs.len() - 1) ;
+        //let mut operating_state = MachineOperatingState::WaitingForInput;
+        let output_rate = info.outputs.rate();
+        let input_rate = inputs.input_flows.rate();
+        let cropped_inputs: Inputs <_> = inputs.input_flows.iter().map (| material_flow | material_flow.map (| material_flow | CroppedFlow {flow: material_flow.flow, crop_start: material_flow.last_disbursement_time_leq (info.output_availability_start).unwrap()})).collect();
+        for output_index_since_start in output_disbursements_since_start .. {
+          //input_rate may be greater than output_rate; if it is, we sometimes want to skip forward in the sequence. Note that if input_rate == output_rate, this uses the same index for both. Round down so as to use earlier inputs
+          //TODO: wonder if there's a nice-looking way to make sure the deletions are distributed evenly over the inputs? (Right now when there is a simple 2-1 merge, everything from one side is deleted and everything from the other side goes through)
+          let input_index_since_start = output_index_since_start*input_rate/output_rate;
+          let (output_time, output_index) = info.outputs.nth_disbursement_geq_time (output_index_since_start, inputs.start_time).unwrap();
+          let (input_time, input_index) = cropped_inputs.nth_disbursement_geq_time (input_index_since_start, inputs.start_time).unwrap();
+          if input_time > time {break}
+          //assert!(n <= previous_disbursements + self.inputs.len() + self.outputs.len() - 1);
+          // TODO: smoother movement
+          let input_location = self.inputs [input_index].position.to_f64 ();
+          let output_location = self.outputs [output_index].position.to_f64 ();
+          let output_fraction = (time - input_time) as f64/(output_time - input_time) as f64;
+          //println!("{:?}", (output_index_since_start, input_index_since_start, time, input_time, output_time, input_location, output_location, output_fraction));
+          let location = input_location*(1.0 - output_fraction) + output_location*output_fraction;
+          materials.push ((location, info.material));
+        }
+        
+        MachineMomentaryVisuals {
+          operating_state: if output_disbursements_since_start > 0 {MachineOperatingState::Operating} else {MachineOperatingState::WaitingForInput},
+          materials,
+        }
+      }
+    }
+  }
+}
+
+
+
+
+
+
 
 impl Module {
   /*fn max_operating_rate (&self)->Number {

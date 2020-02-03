@@ -5,18 +5,19 @@ use arrayvec::ArrayVec;
 
 use geometry::{Number};
 use flow_pattern::{MaterialFlow, FlowCollection};
-use machine_data::{Inputs, Material, Map, Game, InputLocation, MachineObservedInputs, MachineTypes, StatefulMachine, MAX_COMPONENTS};
+use machine_data::{Inputs, Material, Map, Game, InputLocation, MachineObservedInputs, MachineFuture, MachineOperatingState, MachineTypes, MachineTypeTrait, StatefulMachine, MAX_COMPONENTS};
 
 pub type OutputEdges = ArrayVec<[Inputs<Option<(usize, usize)>>; MAX_COMPONENTS]>;
 #[derive (Debug)]
 pub struct MapFuture {
-  pub machines: Vec<MachineFuture>,
+  pub machines: Vec<MachineAndInputsFuture>,
   pub dumped: Vec<(InputLocation, MaterialFlow)>,
 }
 
-#[derive (Clone, PartialEq, Eq, Hash, Debug, Default)]
-pub struct MachineFuture {
+#[derive (Clone, PartialEq, Eq, Hash, Debug)]
+pub struct MachineAndInputsFuture {
   pub inputs: Inputs <Option <MaterialFlow>>,
+  pub future: Result <MachineFuture, MachineOperatingState>,
 }
 
 
@@ -122,8 +123,9 @@ impl Map {
   
   pub fn future (&self, machine_types: &MachineTypes, output_edges: & OutputEdges, topological_ordering: & [usize])->MapFuture {
     let mut result = MapFuture {
-      machines: self.machines.iter().map (|machine| MachineFuture{
+      machines: self.machines.iter().map (|machine| MachineAndInputsFuture {
         inputs: (0..machine_types.get(machine.type_id).num_inputs()).map(|_| None).collect(),
+        future: Err (MachineOperatingState::InCycle),
       }).collect(),
       dumped: Default::default(),
     };
@@ -135,7 +137,12 @@ impl Map {
         start_time: machine.state.last_disturbed_time,
       };
       let machine_type = machine_types.get(machine.type_id);
-      let outputs = machine_type.output_flows (inputs);
+      let future = machine_type.future (inputs) ;
+      let outputs = match & future {
+        Ok (future) => machine_type.output_flows (inputs, future),
+        Err (_) => inputs! [],
+      };
+      result.machines [machine_index].future = future;
       //println!("{:?}\n{:?}\n{:?}\n\n", machine, inputs , outputs);
       for ((flow, destination), location) in outputs.into_iter().zip (& output_edges [machine_index]).zip (machine_type.output_locations(machine.state.position)) {
         match destination {

@@ -2,6 +2,9 @@ use std::cmp::{min, max};
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::convert::TryFrom;
+use std::hash::Hash;
+use std::fmt::Debug;
+use serde::{Serialize, de::DeserializeOwned};
 use nalgebra::Vector2;
 
 use arrayvec::ArrayVec;
@@ -82,11 +85,13 @@ pub trait MachineTypeTrait {
   fn relative_output_locations (&self)->Inputs <InputLocation> {inputs![]}
   fn input_materials (&self)->Inputs <Option <Material>> {inputs![]}
   
-  fn output_flows(&self, inputs: MachineObservedInputs)->Inputs <Option<MaterialFlow>> {inputs![]}
-  fn momentary_visuals(&self, inputs: MachineObservedInputs, time: Number)->MachineMomentaryVisuals {MachineMomentaryVisuals {materials: Vec::new(), operating_state: MachineOperatingState::Operating}}
+  type Future: Clone + Eq + Hash + Serialize + DeserializeOwned + Debug;
+  fn future (&self, inputs: MachineObservedInputs)->Result <Self::Future, MachineOperatingState>;
+  fn output_flows(&self, inputs: MachineObservedInputs, future: &Self::Future)->Inputs <Option<MaterialFlow>> {inputs![]}
+  fn momentary_visuals(&self, inputs: MachineObservedInputs, future: &Self::Future, time: Number)->MachineMomentaryVisuals {MachineMomentaryVisuals {materials: Vec::new(), operating_state: MachineOperatingState::Operating}}
 }
 
-macro_rules! machine_type_enum {
+macro_rules! machine_type_enums {
   ($($Variant: ident,)*) => {
   
 
@@ -95,19 +100,54 @@ pub enum MachineType {
   $($Variant ($Variant),)*
 }
 
-impl Deref for MachineType {
-  type Target = dyn MachineTypeTrait;
-  fn deref(&self)-> &(dyn MachineTypeTrait + 'static) {
+
+#[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
+pub enum MachineFuture {
+  $($Variant (<$Variant as MachineTypeTrait>::Future),)*
+}
+
+
+impl MachineTypeTrait for MachineType {
+  fn name (&self)->& str {match self {$(MachineType::$Variant (value) => value.name(),)*}}
+  fn cost (&self)->& [(Number, Material)] {match self {$(MachineType::$Variant (value) => value.cost (),)*}}
+  fn num_inputs (&self)->usize {match self {$(MachineType::$Variant (value) => value.num_inputs (),)*}}
+  fn num_outputs (&self)->usize {match self {$(MachineType::$Variant (value) => value.num_outputs (),)*}}
+  fn radius (&self)->Number {match self {$(MachineType::$Variant (value) => value.radius (),)*}}
+  fn icon(&self) ->& str {match self {$(MachineType::$Variant (value) => value.icon (),)*}}
+  
+  fn relative_input_locations (&self)->Inputs <InputLocation> {match self {$(MachineType::$Variant (value) => value.relative_input_locations (),)*}}
+  fn relative_output_locations (&self)->Inputs <InputLocation> {match self {$(MachineType::$Variant (value) => value.relative_output_locations (),)*}}
+  fn input_materials (&self)->Inputs <Option <Material>> {match self {$(MachineType::$Variant (value) => value.input_materials (),)*}}
+  
+  type Future = MachineFuture;
+  
+  fn future (&self, inputs: MachineObservedInputs)->Result <Self::Future, MachineOperatingState> {
     match self {
-      $(MachineType::$Variant (value) => value,)*
+      $(MachineType::$Variant (value) => Ok(MachineFuture::$Variant (value.future (inputs)?)),)*
+    }
+  }
+  
+  fn output_flows(&self, inputs: MachineObservedInputs, future: &Self::Future)->Inputs <Option<MaterialFlow>> {
+    match (self, future) {
+      $((MachineType::$Variant (value), MachineFuture::$Variant (future)) => value.output_flows (inputs, future),)*
+      _=> panic!("Passed wrong future type to MachineType::output_flows()"),
+    }
+  }
+  
+  fn momentary_visuals(&self, inputs: MachineObservedInputs, future: &Self::Future, time: Number)->MachineMomentaryVisuals {
+    match (self, future) {
+      $((MachineType::$Variant (value), MachineFuture::$Variant (future)) => value.momentary_visuals (inputs, future, time),)*
+      _=> panic!("Passed wrong future type to MachineType::momentary_visuals()"),
     }
   }
 }
-  
+    
+
+
   };
 }
 
-machine_type_enum! {
+machine_type_enums! {
   Distributor, Assembler, //Mine, ModuleMachine, // Conveyor,
 }
 
@@ -257,13 +297,8 @@ pub struct MachineState {
 }
 
 
-
-enum DistributorFutureInfo {
-  Failure (MachineOperatingState),
-  Success (DistributorSuccessInfo),
-}
-
-struct DistributorSuccessInfo {
+#[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
+pub struct DistributorFuture {
   outputs: Inputs <FlowPattern>,
   output_availability_start: Number,
   material: Material,
@@ -271,42 +306,7 @@ struct DistributorSuccessInfo {
 
 
 
-impl Distributor {
-  fn future_info (&self, inputs: MachineObservedInputs)->DistributorFutureInfo {
-    let mut material_iterator = inputs.input_flows.iter().flatten().map (| material_flow | material_flow.material);
-    let material = match material_iterator.next() {
-      None => return DistributorFutureInfo::Failure (MachineOperatingState::InputMissing),
-      Some (material) => if material_iterator.all(| second | second == material) {
-        material
-      } else {return DistributorFutureInfo::Failure (MachineOperatingState::InputIncompatible)}
-    };
-    
-    
-    let total_input_rate = inputs.input_flows.rate();
-    
-    let num_outputs = Number::try_from (self.outputs.len()).unwrap();
-    let per_output_rate = min (RATE_DIVISOR/TIME_TO_MOVE_MATERIAL, total_input_rate/num_outputs);
-    if per_output_rate == 0 {
-      return DistributorFutureInfo::Failure (MachineOperatingState::InputTooInfrequent)
-    }
-    let total_output_rate = per_output_rate*num_outputs;
-    // the rounding here could theoretically be better, but this should be okay
-    let latency_between_outputs = (RATE_DIVISOR + total_output_rate - 1)/total_output_rate;
-    let output_availability_start = inputs.input_flows.iter().flatten().map (| material_flow | material_flow.first_disbursement_time_geq (inputs.start_time)).max ().unwrap();
-        
-    let first_output_start = output_availability_start + TIME_TO_MOVE_MATERIAL;
-        
-    let outputs = (0..self.outputs.len()).map (| index | FlowPattern::new (first_output_start + Number::try_from (index).unwrap()*latency_between_outputs, per_output_rate)
-    ).collect();
-    
-    DistributorFutureInfo::Success (DistributorSuccessInfo {
-      material, output_availability_start, outputs
-    })
-  }
-}
-
 impl MachineTypeTrait for Distributor {
-  // basic information
   fn name (&self)->& str {& self.info.name}
   fn cost (&self)->& [(Number, Material)] {& self.info.cost}
   fn num_inputs (&self)->usize {self.inputs.len()}
@@ -318,30 +318,57 @@ impl MachineTypeTrait for Distributor {
   fn relative_output_locations (&self)->Inputs <InputLocation> {self.outputs.clone()}
   fn input_materials (&self)->Inputs <Option <Material>> {self.inputs.iter().map (|_| None).collect()}
   
-  fn output_flows(&self, inputs: MachineObservedInputs)->Inputs <Option<MaterialFlow>> {
-    match self.future_info (inputs) {
-      DistributorFutureInfo::Failure (_) => self.inputs.iter().map (|_| None).collect(),
-      DistributorFutureInfo::Success (info) => {
-        let material = info.material;
-        info.outputs.into_iter().map (| flow | Some (MaterialFlow {material, flow})).collect()
-      }
+  type Future = DistributorFuture;
+  
+  fn future (&self, inputs: MachineObservedInputs)->Result <Self::Future, MachineOperatingState> {
+    let mut material_iterator = inputs.input_flows.iter().flatten().map (| material_flow | material_flow.material);
+    let material = match material_iterator.next() {
+      None => return Err(MachineOperatingState::InputMissing),
+      Some (material) => if material_iterator.all(| second | second == material) {
+        material
+      } else {return Err(MachineOperatingState::InputIncompatible)}
+    };
+    
+    
+    let total_input_rate = inputs.input_flows.rate();
+    
+    let num_outputs = Number::try_from (self.outputs.len()).unwrap();
+    let per_output_rate = min (RATE_DIVISOR/TIME_TO_MOVE_MATERIAL, total_input_rate/num_outputs);
+    if per_output_rate == 0 {
+      return Err(MachineOperatingState::InputTooInfrequent)
     }
+    let total_output_rate = per_output_rate*num_outputs;
+    // the rounding here could theoretically be better, but this should be okay
+    let latency_between_outputs = (RATE_DIVISOR + total_output_rate - 1)/total_output_rate;
+    let output_availability_start = inputs.input_flows.iter().flatten().map (| material_flow | material_flow.first_disbursement_time_geq (inputs.start_time)).max ().unwrap();
+        
+    let first_output_start = output_availability_start + TIME_TO_MOVE_MATERIAL;
+        
+    let outputs = (0..self.outputs.len()).map (| index | FlowPattern::new (first_output_start + Number::try_from (index).unwrap()*latency_between_outputs, per_output_rate)
+    ).collect();
+    
+    Ok (DistributorFuture {
+      material, output_availability_start, outputs
+    })
   }
-  fn momentary_visuals(&self, inputs: MachineObservedInputs, time: Number)->MachineMomentaryVisuals {
-    match self.future_info (inputs) {
-      DistributorFutureInfo::Failure (failure) => MachineMomentaryVisuals {materials: Vec::new(), operating_state: failure},
-      DistributorFutureInfo::Success (info) => {
-        let output_disbursements_since_start = info.outputs.num_disbursed_between ([inputs.start_time, time]);
+  
+  fn output_flows(&self, inputs: MachineObservedInputs, future: &Self::Future)->Inputs <Option<MaterialFlow>> {
+        let material = future.material;
+        future.outputs.iter().map (| & flow | Some (MaterialFlow {material, flow})).collect()
+  }
+  
+  fn momentary_visuals(&self, inputs: MachineObservedInputs, future: &Self::Future, time: Number)->MachineMomentaryVisuals {
+        let output_disbursements_since_start = future.outputs.num_disbursed_between ([inputs.start_time, time]);
         let mut materials = Vec::with_capacity(self.inputs.len() - 1) ;
         //let mut operating_state = MachineOperatingState::WaitingForInput;
-        let output_rate = info.outputs.rate();
+        let output_rate = future.outputs.rate();
         let input_rate = inputs.input_flows.rate();
-        let cropped_inputs: Inputs <_> = inputs.input_flows.iter().map (| material_flow | material_flow.map (| material_flow | CroppedFlow {flow: material_flow.flow, crop_start: material_flow.last_disbursement_time_leq (info.output_availability_start).unwrap()})).collect();
+        let cropped_inputs: Inputs <_> = inputs.input_flows.iter().map (| material_flow | material_flow.map (| material_flow | CroppedFlow {flow: material_flow.flow, crop_start: material_flow.last_disbursement_time_leq (future.output_availability_start).unwrap()})).collect();
         for output_index_since_start in output_disbursements_since_start .. {
           //input_rate may be greater than output_rate; if it is, we sometimes want to skip forward in the sequence. Note that if input_rate == output_rate, this uses the same index for both. Round down so as to use earlier inputs
           //TODO: wonder if there's a nice-looking way to make sure the deletions are distributed evenly over the inputs? (Right now when there is a simple 2-1 merge, everything from one side is deleted and everything from the other side goes through)
           let input_index_since_start = output_index_since_start*input_rate/output_rate;
-          let (output_time, output_index) = info.outputs.nth_disbursement_geq_time (output_index_since_start, inputs.start_time).unwrap();
+          let (output_time, output_index) = future.outputs.nth_disbursement_geq_time (output_index_since_start, inputs.start_time).unwrap();
           let (input_time, input_index) = cropped_inputs.nth_disbursement_geq_time (input_index_since_start, inputs.start_time).unwrap();
           if input_time > time {break}
           //assert!(n <= previous_disbursements + self.inputs.len() + self.outputs.len() - 1);
@@ -351,65 +378,24 @@ impl MachineTypeTrait for Distributor {
           let output_fraction = (time - input_time) as f64/(output_time - input_time) as f64;
           //println!("{:?}", (output_index_since_start, input_index_since_start, time, input_time, output_time, input_location, output_location, output_fraction));
           let location = input_location*(1.0 - output_fraction) + output_location*output_fraction;
-          materials.push ((location, info.material));
+          materials.push ((location, future.material));
         }
         
         MachineMomentaryVisuals {
           operating_state: if output_disbursements_since_start > 0 {MachineOperatingState::Operating} else {MachineOperatingState::WaitingForInput},
           materials,
         }
-      }
-    }
   }
 }
 
 
 
-
-
-
-enum AssemblerFutureInfo {
-  Failure (MachineOperatingState),
-  Success (AssemblerSuccessInfo),
-}
-
-struct AssemblerSuccessInfo {
+#[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
+pub struct AssemblerFuture {
   assembly_start_pattern: FlowPattern,
   outputs: Inputs <FlowPattern>,
 }
 
-
-
-impl Assembler {
-  fn future_info (&self, inputs: MachineObservedInputs)->AssemblerFutureInfo {
-    let mut assembly_rate = RATE_DIVISOR/self.assembly_duration;
-    let mut assembly_start = inputs.start_time;
-    for (input, material_flow) in self.inputs.iter().zip (inputs.input_flows) {
-      // TODO: don't make the priority between the failure types be based on input order
-      match material_flow {
-        None => return AssemblerFutureInfo::Failure (MachineOperatingState::InputMissing),
-        Some (material_flow) => {
-          if material_flow.material != input.material {
-            return AssemblerFutureInfo::Failure (MachineOperatingState::InputIncompatible)
-          }
-          assembly_rate = min (assembly_rate, material_flow.rate()/input.cost);
-          assembly_start = max (assembly_start, material_flow.nth_disbursement_time_geq (input.cost-1, inputs.start_time).unwrap() + TIME_TO_MOVE_MATERIAL);
-        }
-      }
-    }
-    
-    if assembly_rate == 0 {
-      return AssemblerFutureInfo::Failure (MachineOperatingState::InputTooInfrequent)
-    }
-    
-    let outputs = self.outputs.iter().map (| output | FlowPattern::new (assembly_start + self.assembly_duration + TIME_TO_MOVE_MATERIAL, assembly_rate*output.amount)).collect();
-    
-    AssemblerFutureInfo::Success (AssemblerSuccessInfo {
-      assembly_start_pattern: FlowPattern::new (assembly_start, assembly_rate),
-      outputs
-    })
-  }
-}
 
 
 
@@ -426,25 +412,46 @@ impl MachineTypeTrait for Assembler {
   fn relative_output_locations (&self)->Inputs <InputLocation> {self.outputs.iter().map (|a| a.location).collect()}
   fn input_materials (&self)->Inputs <Option <Material>> {self.inputs.iter().map (|a| Some(a.material)).collect()}
   
-  fn output_flows(&self, inputs: MachineObservedInputs)->Inputs <Option<MaterialFlow>> {
-    match self.future_info (inputs) {
-      AssemblerFutureInfo::Failure (_) => self.inputs.iter().map (|_| None).collect(),
-      AssemblerFutureInfo::Success (info) => {
-        info.outputs.into_iter().zip (& self.outputs).map (| (flow, output) | Some (MaterialFlow {material: output.material, flow})).collect()
+  type Future = AssemblerFuture;
+  
+  fn future (&self, inputs: MachineObservedInputs)->Result <Self::Future, MachineOperatingState> {
+    let mut assembly_rate = RATE_DIVISOR/self.assembly_duration;
+    let mut assembly_start = inputs.start_time;
+    for (input, material_flow) in self.inputs.iter().zip (inputs.input_flows) {
+      // TODO: don't make the priority between the failure types be based on input order
+      match material_flow {
+        None => return Err(MachineOperatingState::InputMissing),
+        Some (material_flow) => {
+          if material_flow.material != input.material {
+            return Err(MachineOperatingState::InputIncompatible)
+          }
+          assembly_rate = min (assembly_rate, material_flow.rate()/input.cost);
+          assembly_start = max (assembly_start, material_flow.nth_disbursement_time_geq (input.cost-1, inputs.start_time).unwrap() + TIME_TO_MOVE_MATERIAL);
+        }
       }
     }
+    
+    if assembly_rate == 0 {
+      return Err(MachineOperatingState::InputTooInfrequent)
+    }
+    
+    let outputs = self.outputs.iter().map (| output | FlowPattern::new (assembly_start + self.assembly_duration + TIME_TO_MOVE_MATERIAL, assembly_rate*output.amount)).collect();
+    
+    Ok(AssemblerFuture {
+      assembly_start_pattern: FlowPattern::new (assembly_start, assembly_rate),
+      outputs
+    })
   }
-  fn momentary_visuals(&self, inputs: MachineObservedInputs, time: Number)->MachineMomentaryVisuals {
-    match self.future_info (inputs) {
-      AssemblerFutureInfo::Failure (failure) => MachineMomentaryVisuals {materials: Vec::new(), operating_state: failure},
-      AssemblerFutureInfo::Success (info) => {
-        
-        let first_relevant_assembly_start_index = max(0, info.assembly_start_pattern.num_disbursed_between ([inputs.start_time, time - self.assembly_duration]) - 1);
+  fn output_flows(&self, inputs: MachineObservedInputs, future: &Self::Future)->Inputs <Option<MaterialFlow>> {
+        future.outputs.iter().zip (& self.outputs).map (| (& flow, output) | Some (MaterialFlow {material: output.material, flow})).collect()
+  }
+  fn momentary_visuals(&self, inputs: MachineObservedInputs, future: &Self::Future, time: Number)->MachineMomentaryVisuals {
+        let first_relevant_assembly_start_index = max(0, future.assembly_start_pattern.num_disbursed_between ([inputs.start_time, time - self.assembly_duration]) - 1);
         
         let mut materials = Vec::with_capacity(self.inputs.len() + self.outputs.len() - 1) ;
         //let mut operating_state = MachineOperatingState::WaitingForInput;
         for assembly_start_index in first_relevant_assembly_start_index.. {
-          let assembly_start_time = info.assembly_start_pattern.nth_disbursement_time_geq (assembly_start_index, inputs.start_time).unwrap();
+          let assembly_start_time = future.assembly_start_pattern.nth_disbursement_time_geq (assembly_start_index, inputs.start_time).unwrap();
           let assembly_finish_time = assembly_start_time + self.assembly_duration;
           let mut too_late = assembly_start_time >= time;
 
@@ -467,7 +474,7 @@ impl MachineTypeTrait for Assembler {
             }
           }
           else if assembly_finish_time <= time {
-            for (output, flow) in self.outputs.iter().zip (& info.outputs) {
+            for (output, flow) in self.outputs.iter().zip (& future.outputs) {
               let first_output_index = flow.num_disbursed_between ([inputs.start_time, assembly_finish_time + TIME_TO_MOVE_MATERIAL]);
               for which_output in 0..output.amount {
                 let output_index = first_output_index + which_output;
@@ -492,11 +499,9 @@ impl MachineTypeTrait for Assembler {
         }
         
         MachineMomentaryVisuals {
-          operating_state: if time >= info.assembly_start_pattern.start_time() - TIME_TO_MOVE_MATERIAL {MachineOperatingState::Operating} else {MachineOperatingState::WaitingForInput},
+          operating_state: if time >= future.assembly_start_pattern.start_time() - TIME_TO_MOVE_MATERIAL {MachineOperatingState::Operating} else {MachineOperatingState::WaitingForInput},
           materials,
         }
-      }
-    }
   }
 }
 
@@ -507,35 +512,6 @@ pub struct StatefulMachine {
   pub state: MachineState,
 }
 
-
-
-/*
-
-enum SingularComponentType {
-  Conveyor,
-  Producer,
-  Consumer,
-}
-
-enum ComponentType {
-  Singular (SingularComponentType),
-  Group (u16),
-}
-
-pub struct Component {
-  position: Vector2 <Number>,
-  scale: u8,
-  facing: Facing,
-  component_type: ComponentType,
-}
-
-pub struct Group {
-  size: Position,
-  components: ArrayVec <[Component; MAX_COMPONENTS]>,
-  average_color: [f64; 3],
-}
-
-*/
 
 #[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
 pub struct Map {
