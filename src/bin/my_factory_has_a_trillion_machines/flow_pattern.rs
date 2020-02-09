@@ -25,6 +25,12 @@ pub struct MaterialFlow {
 }
 
 #[derive (Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Default)]
+pub struct MaterialFlowRate {
+  pub material: Material,
+  pub flow: FlowRate,
+}
+
+#[derive (Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Default)]
 pub struct CroppedFlow <T> {
   pub flow: T,
   pub crop_start: Number,
@@ -137,6 +143,18 @@ impl FlowCollection for MaterialFlow {
 }
 
 impl Flow for MaterialFlow {}
+
+impl FlowCollection for MaterialFlowRate {
+  fn rate (&self)->Number {self.flow.rate()}
+  fn num_disbursed_before (&self, time: Number)->Number {
+    self.flow.num_disbursed_before (time)
+  }
+  fn nth_disbursement (&self, n: Number)->Option <(Number, usize)>{
+    self.flow.nth_disbursement (n)
+  }
+}
+
+impl Flow for MaterialFlowRate {}
 
 
 impl<T: FlowCollection> FlowCollection for Option<T> {

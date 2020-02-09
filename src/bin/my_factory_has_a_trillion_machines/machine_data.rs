@@ -13,6 +13,7 @@ use arrayvec::ArrayVec;
 use geometry::{Number, Vector, VectorExtension, Facing, GridIsomorphism, TransformedBy};
 use flow_pattern::{FlowPattern, MaterialFlow, CroppedFlow, RATE_DIVISOR, Flow, FlowCollection};
 //use modules::ModuleMachine;
+use modules::{Module};
 
 pub const MAX_COMPONENTS: usize = 256;
 pub const MAX_MACHINE_INPUTS: usize = 8;
@@ -86,7 +87,7 @@ pub trait MachineTypeTrait {
   fn input_materials (&self)->Inputs <Option <Material>> {inputs![]}
   
   type Future: Clone + Eq + Hash + Serialize + DeserializeOwned + Debug;
-  fn future (&self, inputs: MachineObservedInputs, module_futures: &mut ModuleFutures)->Result <Self::Future, MachineOperatingState>;
+  fn future (&self, inputs: MachineObservedInputs)->Result <Self::Future, MachineOperatingState>;
   fn output_flows(&self, inputs: MachineObservedInputs, future: &Self::Future)->Inputs <Option<MaterialFlow>> {inputs![]}
   fn momentary_visuals(&self, inputs: MachineObservedInputs, future: &Self::Future, time: Number)->MachineMomentaryVisuals {MachineMomentaryVisuals {materials: Vec::new(), operating_state: MachineOperatingState::Operating}}
 }
@@ -100,7 +101,7 @@ pub enum MachineType {
   $($Variant ($Variant),)*
 }
 
-#[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
+#[derive (Clone, PartialEq, Eq, Hash, Debug)]
 pub enum MachineTypeRef<'a> {
   $($Variant (&'a $Variant),)*
 }
@@ -118,9 +119,9 @@ impl MachineType {
 }
 
 
-impl MachineTypeTrait for MachineTypeRef {
+impl<'a> MachineTypeTrait for MachineTypeRef<'a> {
   fn name (&self)->& str {match self {$(MachineTypeRef::$Variant (value) => value.name(),)*}}
-  fn cost (&self)->& [(Number, Material)] {match self {$(MachineType::$Variant (value) => value.cost (),)*}}
+  fn cost (&self)->& [(Number, Material)] {match self {$(MachineTypeRef::$Variant (value) => value.cost (),)*}}
   fn num_inputs (&self)->usize {match self {$(MachineTypeRef::$Variant (value) => value.num_inputs (),)*}}
   fn num_outputs (&self)->usize {match self {$(MachineTypeRef::$Variant (value) => value.num_outputs (),)*}}
   fn radius (&self)->Number {match self {$(MachineTypeRef::$Variant (value) => value.radius (),)*}}
@@ -132,9 +133,9 @@ impl MachineTypeTrait for MachineTypeRef {
   
   type Future = MachineFuture;
   
-  fn future (&self, inputs: MachineObservedInputs, module_futures: &mut ModuleFutures)->Result <Self::Future, MachineOperatingState> {
+  fn future (&self, inputs: MachineObservedInputs)->Result <Self::Future, MachineOperatingState> {
     match self {
-      $(MachineTypeRef::$Variant (value) => Ok(MachineFuture::$Variant (value.future (inputs, module_futures)?)),)*
+      $(MachineTypeRef::$Variant (value) => Ok(MachineFuture::$Variant (value.future (inputs)?)),)*
     }
   }
   
@@ -165,6 +166,7 @@ machine_type_enums! {
 #[derive (Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
 pub enum MachineTypeId {
   Preset (usize),
+  Module (usize),
 }
 
 
@@ -198,7 +200,7 @@ pub struct AssemblerOutput {
   pub location: InputLocation,
 }
 
-#[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
+#[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Default)]
 pub struct StandardMachineInfo {
   pub name: String,
   pub icon: String,
@@ -331,7 +333,7 @@ impl MachineTypeTrait for Distributor {
   
   type Future = DistributorFuture;
   
-  fn future (&self, inputs: MachineObservedInputs, _module_futures: &mut ModuleFutures)->Result <Self::Future, MachineOperatingState> {
+  fn future (&self, inputs: MachineObservedInputs)->Result <Self::Future, MachineOperatingState> {
     let mut material_iterator = inputs.input_flows.iter().flatten().map (| material_flow | material_flow.material);
     let material = match material_iterator.next() {
       None => return Err(MachineOperatingState::InputMissing),
@@ -425,7 +427,7 @@ impl MachineTypeTrait for Assembler {
   
   type Future = AssemblerFuture;
   
-  fn future (&self, inputs: MachineObservedInputs, _module_futures: &mut ModuleFutures)->Result <Self::Future, MachineOperatingState> {
+  fn future (&self, inputs: MachineObservedInputs)->Result <Self::Future, MachineOperatingState> {
     let mut assembly_rate = RATE_DIVISOR/self.assembly_duration;
     let mut assembly_start = inputs.start_time;
     for (input, material_flow) in self.inputs.iter().zip (inputs.input_flows) {
@@ -524,7 +526,7 @@ pub struct StatefulMachine {
 }
 
 
-#[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
+#[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Default)]
 pub struct Map {
   pub machines: Vec <StatefulMachine>,
 }
@@ -535,11 +537,12 @@ pub struct MachineTypes {
   pub modules: Vec<Module>,
 }
 
-impl MachineType {
-  pub fn input_locations <'a> (& 'a self, position: GridIsomorphism)->impl Iterator <Item = InputLocation> + 'a {
-    self.relative_input_locations().into_iter().map (move | location | location.transformed_by (position))
+impl<'a> MachineTypeRef<'a> {
+  pub fn input_locations (&self, position: GridIsomorphism)->impl Iterator <Item = InputLocation> {
+    let foo: Inputs <InputLocation> = self.relative_input_locations();
+    foo.into_iter().map (move | location | location.transformed_by (position))
   }
-  pub fn output_locations <'a> (& 'a self, position: GridIsomorphism)->impl Iterator <Item = InputLocation> + 'a {
+  pub fn output_locations (&self, position: GridIsomorphism)->impl Iterator <Item = InputLocation> {
     self.relative_output_locations().into_iter().map (move | location | location.transformed_by (position))
   }
 
@@ -553,10 +556,10 @@ impl MachineTypes {
     }
   }
   
-  pub fn input_locations <'a> (& 'a self, machine: &StatefulMachine)->impl Iterator <Item = InputLocation> + 'a {
+  pub fn input_locations(&self, machine: &StatefulMachine)->impl Iterator <Item = InputLocation> {
     self.get (machine.type_id).input_locations (machine.state.position)
   }
-  pub fn output_locations <'a> (& 'a self, machine: &StatefulMachine)->impl Iterator <Item = InputLocation> + 'a {
+  pub fn output_locations(&self, machine: &StatefulMachine)->impl Iterator <Item = InputLocation> {
     self.get (machine.type_id).output_locations (machine.state.position)
   }
 

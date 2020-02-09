@@ -5,10 +5,11 @@ use arrayvec::ArrayVec;
 
 use geometry::{Number};
 use flow_pattern::{MaterialFlow, FlowCollection};
-use machine_data::{Inputs, Material, Map, Game, InputLocation, MachineObservedInputs, MachineFuture, MachineOperatingState, MachineTypes, MachineTypeTrait, StatefulMachine, MAX_COMPONENTS};
+use machine_data::{Inputs, Material, Map, Game, InputLocation, MachineObservedInputs, MachineFuture, MachineOperatingState, MachineTypes, MachineTypeRef, MachineTypeId, MachineTypeTrait, StatefulMachine, MAX_COMPONENTS};
+use modules::{CanonicalModuleInputs};
 
 pub type OutputEdges = ArrayVec<[Inputs<Option<(usize, usize)>>; MAX_COMPONENTS]>;
-#[derive (Debug)]
+#[derive (Clone, PartialEq, Eq, Hash, Debug)]
 pub struct MapFuture {
   pub machines: Vec<MachineAndInputsFuture>,
   pub dumped: Vec<(InputLocation, MaterialFlow)>,
@@ -21,8 +22,14 @@ pub struct MachineAndInputsFuture {
   pub future: Result <MachineFuture, MachineOperatingState>,
 }
 
+#[derive (Clone, PartialEq, Eq, Debug)]
+pub struct ModuleFuture {
+  output_edges: OutputEdges,
+  topological_ordering: Vec<usize>,
+  future_variations: HashMap <CanonicalModuleInputs, MapFuture>,
+}
 
-pub type ModuleFutures = Vec<HashMap <CanonicalModuleInputs, ModuleFuture>>;
+pub type ModuleFutures = HashMap <MachineTypeId, ModuleFuture>;
 
 impl Map {
   pub fn output_edges (&self, machine_types: &MachineTypes)->OutputEdges {
@@ -100,7 +107,7 @@ impl Map {
       }
       machine_types.modules.push(new_module);
       
-      self.machines [machine_index].type_id = MachineType::ModuleMachine (new_module_index);
+      self.machines [machine_index].type_id = MachineTypeId::Module(new_module_index);
     }
   }
   
@@ -140,7 +147,7 @@ impl Map {
     let mut result = MapFuture {
       machines: self.machines.iter().map (|machine| MachineAndInputsFuture {
         inputs: machine_types.input_locations (machine).map(| input_location | {
-          fiat_inputs.iter().find (| (location,_) | location == input_location).map (| (_, flow) | flow)
+          fiat_inputs.iter().find (| (location,_) | *location == input_location).map (| (_, flow) | *flow)
         }).collect(),
         future: Err (MachineOperatingState::InCycle),
       }).collect(),
@@ -154,31 +161,45 @@ impl Map {
         start_time: machine.state.last_disturbed_time,
       };
       let machine_type = machine_types.get(machine.type_id);
-      let future: &MachineFuture = match machine.type_id {
-        MachineTypeId::Module (module_index) => {
-          let canonical_inputs = canonical_module_inputs (inputs);
-          // hack (see the struct definition):
-          result.machines [machine_index].future = Err (MachineOperatingState::Operating);
-          match module_futures [module_index].get (& canonical_inputs) {
+      let future = machine_type.future (inputs);
+      
+      
+      let outputs = match (machine_type, &future) {
+        (MachineTypeRef::Module(module), Ok (MachineFuture::Module (module_machine_future))) => {
+          let module_future = module_futures.entry (machine.type_id).or_insert_with (|| {
+            let output_edges = module.map.output_edges(machine_types);
+            let topological_ordering = module.map.topological_ordering_of_noncyclic_machines (&output_edges);
+            ModuleFuture {
+              output_edges,
+              topological_ordering,
+              future_variations: HashMap::new(),
+            }
+          });
+          let variation = match module_futures.future_variations.get (&module_machine_future.canonical_inputs) {
             Some (existing_future) => existing_future,
             None => {
-              let future = machine_type.future (inputs);
-              match module_futures [module_index].entry (canonical_inputs) {
-                hash_map::Entry::OccupiedEntry (_) => panic!("some sort of recursive module problem happened"),
+              // note: we have to drop module_future here so we can use module_futures mutably in the recursive call
+              // this drop can be implicit, but I'm being explicit for clarity
+              // cloning is unfortunate; I could consider refactoring the data structure again to avoid this, but it's nowhere near a performance bottleneck
+              let output_edges = module_future.output_edges.clone();
+              let ordering = module_future.topological_ordering.clone();
+              std::mem::drop(module_future);
+              
+              let fiat_inputs: Vec<_> = module.relative_input_locations().into_iter().zip (inputs.inputs).collect();
+              let future = module.map.future (machine_types, & output_edges, & ordering, module_futures, & fiat_inputs);
+              
+              match module_futures.get_mut (machine.type_id).unwrap().entry (canonical_inputs) {
+                hash_map::Entry::OccupiedEntry (_) => unreachable!("A module's future was modified during calculation of its submodules' futures. Did a module get put inside itself somehow?"),
                 hash_map::Entry::VacantEntry (entry) => entry.insert (future)
               }
             }
-          })
+          }
+          module.module_output_flows(inputs, future, Some(variation))
         },
-        _ => {
-          result.machines [machine_index].future = machine_type.future (inputs);
-          &result.machines [machine_index].future
-        },
+        (_, Ok (future)) => machine_type.output_flows (inputs, future),
+        (_, Err (_)) => inputs! [],
       };
-      let outputs = match future {
-        Ok (future) => machine_type.output_flows (inputs, future),
-        Err (_) => inputs! [],
-      };
+      
       //println!("{:?}\n{:?}\n{:?}\n\n", machine, inputs , outputs);
       for ((flow, destination), location) in outputs.into_iter().zip (& output_edges [machine_index]).zip (machine_type.output_locations(machine.state.position)) {
         match destination {

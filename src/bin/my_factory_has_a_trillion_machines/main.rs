@@ -68,6 +68,6 @@ fn main() {
  let game: machine_data::Game = serde_json::from_reader (std::io::BufReader::new(std::fs::File::open ("../data/test.json").unwrap())).unwrap();
  let output_edges = game.map.output_edges(& game.machine_types) ;
  let ordering = game.map.topological_ordering_of_noncyclic_machines (& output_edges);
- let future = game.map.future (& game.machine_types, & output_edges, & ordering);
+ let future = game.map.future (& game.machine_types, & output_edges, & ordering, &mut graph_algorithms::ModuleFutures::default(), &[]);
  println!("{:?}", future);
 }
