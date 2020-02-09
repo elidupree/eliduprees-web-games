@@ -16,10 +16,10 @@ use num::Integer;
 
 use geometry::{Number, Vector, Facing, GridIsomorphism, Rotate90, TransformedBy};
 use machine_data::{self, //Inputs,
-Material, MachineObservedInputs, MachineType, MachineTypes, MachineTypeTrait, MachineMomentaryVisuals, MachineTypeId, //MachineTypeTrait,
+Material, MachineObservedInputs, MachineType, MachineTypeRef, MachineFuture, MachineTypes, MachineTypeTrait, MachineMomentaryVisuals, MachineTypeId, //MachineTypeTrait,
 MachineState, StatefulMachine, Map, Game, //MAX_COMPONENTS,
 TIME_TO_MOVE_MATERIAL};
-use graph_algorithms::MapFuture;
+use graph_algorithms::{ModuleFutures, MapFuture};
 //use misc;
 //use modules::{self, Module};
 
@@ -155,7 +155,7 @@ fn inside_machine (machine_types: & MachineTypes, position: Vector, machine: & S
 pub fn run_game() {
 
       
-  let mut game=Game{map:Map {machines: Vec::new(), },last_change_time: 0, inventory_before_last_change: Default::default(), machine_types: MachineTypes {presets: machine_presets()}};
+  let mut game=Game{map:Map {machines: Vec::new(), },last_change_time: 0, inventory_before_last_change: Default::default(), machine_types: MachineTypes {presets: machine_presets(), modules: Vec::new()}};
   game.inventory_before_last_change.insert (Material::Iron, 100);
   let output_edges = game.map.output_edges(& game.machine_types);
   let ordering = game.map.topological_ordering_of_noncyclic_machines(& output_edges);
@@ -231,11 +231,11 @@ pub fn run_game() {
       .on("mousemove", mouse_callback (@{mousemove_callback}));
   }
   
-  for name in state.borrow().game.machine_types.presets.iter().map(| machine_type | machine_type.name()).chain (vec![]) {
-    let id = format! ("Machine_choice_{}", name);
+  for name in state.borrow().game.machine_types.presets.iter().map(| machine_type | machine_type.as_ref().name().to_owned()).chain (vec![]) {
+    let id = format! ("Machine_choice_{}", &name);
     js!{
-      $("<input>", {type: "radio", id:@{& id}, name: "machine_choice", value: @{name}, checked:@{name == "Iron mine"}}).appendTo ($("#app"));
-      $("<label>", {for:@{& id}, text: @{name}}).appendTo ($("#app"));
+      $("<input>", {type: "radio", id:@{& id}, name: "machine_choice", value: @{&name}, checked:@{name == "Iron mine"}}).appendTo ($("#app"));
+      $("<label>", {for:@{& id}, text: @{&name}}).appendTo ($("#app"));
     }
   }
   
@@ -301,7 +301,7 @@ fn build_machine (state: &mut State, machine_type_id: MachineTypeId, position: G
   }) {
     return;
   }
-  let inventory = state.game.inventory_at (& state.future, state.current_game_time);
+  let inventory = state.game.inventory_at (& state.map_future, state.current_game_time);
   for (amount, material) in machine_type.cost() {
     if inventory.get(&material).map_or (true, | storage | storage <amount) {
       return;
@@ -329,12 +329,12 @@ fn build_machine (state: &mut State, machine_type_id: MachineTypeId, position: G
 }
 
 fn recalculate_future (state: &mut State) {
-  state.game.inventory_before_last_change = state.game.inventory_at (& state.future, state.current_game_time) ;
+  state.game.inventory_before_last_change = state.game.inventory_at (& state.map_future, state.current_game_time) ;
   state.game.last_change_time = state.current_game_time;
   let output_edges = state.game.map.output_edges(& state.game.machine_types);
   let ordering = state.game.map.topological_ordering_of_noncyclic_machines(& output_edges);
   state.module_futures = ModuleFutures::default();
-  state.map_future = state.game.map.future (& state.game.machine_types, & output_edges, & ordering, &mut state.module_futures), &[]);
+  state.map_future = state.game.map.future (& state.game.machine_types, & output_edges, & ordering, &mut state.module_futures, &[]);
      
   /*js!{
     $("#json").val (@{serde_json::to_string_pretty (&state.game).unwrap()});
@@ -352,10 +352,10 @@ fn exact_facing (vector: Vector)->Option <Facing> {
 }
 
 fn hovering_area (state: & State, position: MousePosition)->(Vector, Number) {
-  if let Some(machine_type) = state.game.machine_types.presets.iter().find (| machine_type | machine_type.name() == current_mode()) {
+  if let Some(machine_type) = state.game.machine_types.presets.iter().find (| machine_type | machine_type.as_ref().name() == current_mode()) {
     (
-      if machine_type.radius().is_even() { position.nearest_lines } else {position.tile_center},
-      machine_type.radius(),
+      if machine_type.as_ref().radius().is_even() { position.nearest_lines } else {position.tile_center},
+      machine_type.as_ref().radius(),
     )
   }
   else {
@@ -448,7 +448,8 @@ fn mouse_maybe_held(state: &mut State) {
       let now = state.current_game_time;
       let deleting = in_smallest_module (&state.game.map, Default::default(), hover, | isomorphism, map | {
         if let Some(deleted_index) = map.machines.iter().position(|machine| inside_machine (&machine_types, position.tile_center.transformed_by(isomorphism.inverse()), machine)) {
-          let cost = machine_types.get (map.machines[deleted_index].type_id).cost();
+          let machine_type = machine_types.get (map.machines[deleted_index].type_id);
+          let cost = machine_type.cost();
           for (amount, material) in cost {
             *inventory.get_mut(&material).unwrap() += amount;
           }
@@ -474,7 +475,7 @@ fn mouse_maybe_held(state: &mut State) {
 fn mouse_up(state: &mut State) {
   if let Some(drag) = state.mouse.drag.clone() {
     if drag.click_type == REGULAR_CLICK && !drag.moved {
-      if let Some(preset_index) = state.game.machine_types.presets.iter().position(| machine_type | machine_type.name() == current_mode()) {
+      if let Some(preset_index) = state.game.machine_types.presets.iter().position(| machine_type | machine_type.as_ref().name() == current_mode()) {
         build_machine (state, MachineTypeId::Preset (preset_index), GridIsomorphism { translation: hovering_area (state, drag.original_position).0, ..Default::default()});
       }
     }
@@ -485,7 +486,7 @@ fn mouse_up(state: &mut State) {
 
 
 
-fn draw_map(state: & State, map: &Map, map_future: &MapFuture, isomorphism: GridIsomorphism, start_time: Number) {
+fn draw_map(state: & State, map: &Map, map_future: &MapFuture, isomorphism: GridIsomorphism, time: Number) {
     for machine in &map.machines {
       let machine_type = state.game.machine_types.get (machine.type_id);
       let radius = machine_type.radius() ;
@@ -540,15 +541,16 @@ fn draw_map(state: & State, map: &Map, map_future: &MapFuture, isomorphism: Grid
         input_flows: & machine_future.inputs,
         start_time: machine.state.last_disturbed_time,
       };
+      let machine_isomorphism = machine.state.position*isomorphism;
       let visuals = match & machine_future.future {
         Ok (future) => {
           let machine_type = state.game.machine_types.get (machine.type_id);
-          match (machine_type, machine_future) {
-            (MachineTypeRef::Module (module), MachineFuture::Module(module_machine_future)) => {
-              let variation = state.module_futures.get(machine.type_id).unwrap().variations.get(module_machine_future.canonical_inputs);
-              module.module_momentary_visuals (inputs, module_machine_future, state.current_game_time - start_time, variation)
+          match (machine_type, &machine_future.future) {
+            (MachineTypeRef::Module (module), Ok(MachineFuture::Module(module_machine_future))) => {
+              let variation = state.module_futures.get(& machine.type_id).unwrap().future_variations.get(& module_machine_future.canonical_inputs).unwrap();
+              module.module_momentary_visuals (inputs, module_machine_future, time, variation)
             }
-            _ => machine_type.momentary_visuals (inputs, future, state.current_game_time - start_time),
+            _ => machine_type.momentary_visuals (inputs, future, time),
           }
         }
         Err (operating_state) => MachineMomentaryVisuals {
@@ -557,7 +559,7 @@ fn draw_map(state: & State, map: &Map, map_future: &MapFuture, isomorphism: Grid
       };
       for (location, material) in & visuals.materials {
         draw_rectangle (
-              canvas_position_from_f64 (location.transformed_by (machine.state.position)),
+              canvas_position_from_f64 (location.transformed_by (machine_isomorphism)),
               tile_size()*0.6,
               [0.0,0.0,0.0], material.icon(), Facing::default()
             );
@@ -566,11 +568,11 @@ fn draw_map(state: & State, map: &Map, map_future: &MapFuture, isomorphism: Grid
     
     for (machine, machine_future) in map.machines.iter().zip (&map_future.machines) {
       let machine_type = state.game.machine_types.get (machine.type_id);
-      match (machine_type, machine_future) {
-        (MachineTypeRef::Module (module), MachineFuture::Module(module_machine_future)) => {
+      match (machine_type, &machine_future.future) {
+        (MachineTypeRef::Module (module), Ok(MachineFuture::Module(module_machine_future))) => {
           let machine_isomorphism = machine.state.position*isomorphism;
-          let variation = state.module_futures.get(machine.type_id).unwrap().variations.get(module_machine_future.canonical_inputs);
-          draw_map(state, &module.map, &variation, machine_isomorphism, start_time + module_machine_future.start_time);
+          let variation = state.module_futures.get(& machine.type_id).unwrap().future_variations.get(& module_machine_future.canonical_inputs).unwrap();
+          draw_map(state, &module.map, &variation, machine_isomorphism, time - module_machine_future.start_time);
         }
         _ => ()
       }
@@ -594,28 +596,10 @@ fn do_frame(state: & Rc<RefCell<State>>) {
   
     //target.clear_color(1.0, 1.0, 1.0, 1.0);
     
-    draw_machines (state, &state.game.map.machines, Default::default());
-    for (machine, future) in state.game.map.machines.iter().zip (&state.future.machines) {
-      let inputs = MachineObservedInputs {
-        input_flows: & future.inputs,
-        start_time: machine.state.last_disturbed_time,
-      };
-      let visuals = match & future.future {
-        Ok (future) => state.game.machine_types.get (machine.type_id).momentary_visuals (inputs, future, state.current_game_time),
-        Err (operating_state) => MachineMomentaryVisuals {
-          operating_state: operating_state.clone(), materials: Vec::new(),
-        },
-      };
-      for (location, material) in & visuals.materials {
-        draw_rectangle (
-              canvas_position_from_f64 (location.transformed_by (machine.state.position)),
-              tile_size()*0.6,
-              [0.0,0.0,0.0], material.icon(), Facing::default()
-            );
-      }
-    }
+    draw_map(state, &state.game.map, & state.map_future, Default::default(), state.current_game_time);
+    
     js!{ $("#inventory").empty();}
-    for (material, amount) in state.game.inventory_at (& state.future, state.current_game_time) {
+    for (material, amount) in state.game.inventory_at (& state.map_future, state.current_game_time) {
       js!{ $("#inventory").append(@{format!("{:?}: {}", material, amount)});}
     }
 }

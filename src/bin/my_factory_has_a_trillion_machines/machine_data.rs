@@ -1,6 +1,5 @@
 use std::cmp::{min, max};
 use std::collections::HashMap;
-use std::ops::Deref;
 use std::convert::TryFrom;
 use std::hash::Hash;
 use std::fmt::Debug;
@@ -101,7 +100,7 @@ pub enum MachineType {
   $($Variant ($Variant),)*
 }
 
-#[derive (Clone, PartialEq, Eq, Hash, Debug)]
+#[derive (Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum MachineTypeRef<'a> {
   $($Variant (&'a $Variant),)*
 }
@@ -365,7 +364,7 @@ impl MachineTypeTrait for Distributor {
     })
   }
   
-  fn output_flows(&self, inputs: MachineObservedInputs, future: &Self::Future)->Inputs <Option<MaterialFlow>> {
+  fn output_flows(&self, _inputs: MachineObservedInputs, future: &Self::Future)->Inputs <Option<MaterialFlow>> {
         let material = future.material;
         future.outputs.iter().map (| & flow | Some (MaterialFlow {material, flow})).collect()
   }
@@ -455,7 +454,7 @@ impl MachineTypeTrait for Assembler {
       outputs
     })
   }
-  fn output_flows(&self, inputs: MachineObservedInputs, future: &Self::Future)->Inputs <Option<MaterialFlow>> {
+  fn output_flows(&self, _inputs: MachineObservedInputs, future: &Self::Future)->Inputs <Option<MaterialFlow>> {
         future.outputs.iter().zip (& self.outputs).map (| (& flow, output) | Some (MaterialFlow {material: output.material, flow})).collect()
   }
   fn momentary_visuals(&self, inputs: MachineObservedInputs, future: &Self::Future, time: Number)->MachineMomentaryVisuals {
@@ -539,8 +538,7 @@ pub struct MachineTypes {
 
 impl<'a> MachineTypeRef<'a> {
   pub fn input_locations (&self, position: GridIsomorphism)->impl Iterator <Item = InputLocation> {
-    let foo: Inputs <InputLocation> = self.relative_input_locations();
-    foo.into_iter().map (move | location | location.transformed_by (position))
+    self.relative_input_locations().into_iter().map (move | location | location.transformed_by (position))
   }
   pub fn output_locations (&self, position: GridIsomorphism)->impl Iterator <Item = InputLocation> {
     self.relative_output_locations().into_iter().map (move | location | location.transformed_by (position))

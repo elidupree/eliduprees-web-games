@@ -132,6 +132,12 @@ impl FlowCollection for FlowPattern {
 
 impl Flow for FlowPattern {}
 
+impl MaterialFlow {
+  pub fn delayed_by (&self, delay: Number)->MaterialFlow {
+    MaterialFlow {material:self.material, flow:self.flow.delayed_by(delay)}
+  }
+}
+
 impl FlowCollection for MaterialFlow {
   fn rate (&self)->Number {self.flow.rate()}
   fn num_disbursed_before (&self, time: Number)->Number {

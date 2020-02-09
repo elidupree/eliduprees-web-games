@@ -6,7 +6,7 @@ use std::rc::Rc;
 use std::collections::VecDeque;
 
 use geometry::{Number, Vector, Facing, VectorExtension};
-use flow_pattern::{FlowPattern, Flow, FlowCollection, MaterialFlow, MaterialFlowRate, RATE_DIVISOR};
+use flow_pattern::{FlowPattern, Flow, FlowRate, FlowCollection, MaterialFlow, MaterialFlowRate, RATE_DIVISOR};
 use machine_data::{Inputs, MachineType, Material, StandardMachineInfo, MachineMomentaryVisuals, MachineObservedInputs, MachineOperatingState, InputLocation, MachineTypeId, MachineTypeTrait, MachineTypes, StatefulMachine, Map, MAX_COMPONENTS, Game, TIME_TO_MOVE_MATERIAL};
 use graph_algorithms::{MapFuture};
 
@@ -61,15 +61,15 @@ pub fn basic_module()->MachineType {
 pub type CanonicalModuleInputs = Inputs <Option <MaterialFlowRate>>;
 #[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
 pub struct ModuleMachineFuture {
-  canonical_inputs: CanonicalModuleInputs,
-  start_time: Number,
+  pub canonical_inputs: CanonicalModuleInputs,
+  pub start_time: Number,
 }
 
 pub fn canonical_module_input (input: MaterialFlow)->Option <MaterialFlowRate> {
   const STANDARD_RATE: Number = RATE_DIVISOR / TIME_TO_MOVE_MATERIAL;
   
   // TODO: somehow decide on a more principled choice of rates
-  const PERMITTED_RATES: & 'static Number = [
+  const PERMITTED_RATES: &[Number] = &[
     STANDARD_RATE / 96,
     STANDARD_RATE / 64,
     STANDARD_RATE / 48,
@@ -98,7 +98,7 @@ pub fn canonical_module_input (input: MaterialFlow)->Option <MaterialFlowRate> {
     Err (index) => PERMITTED_RATES [index.checked_sub (1)?],
   };
   
-  MaterialFlowRate {material: input.material, rate: FlowRate::new (rounded_down)}
+  Some(MaterialFlowRate {material: input.material, flow: FlowRate::new (rounded_down)})
 }
 
 
@@ -109,7 +109,7 @@ impl Module {
     }).collect()
   }
   
-  pub fn module_output_flows(&self, inputs: MachineObservedInputs, module_machine_future: & ModuleMachineFuture, variation: & MapFuture)->Inputs <Option<MaterialFlow>> {
+  pub fn module_output_flows(&self, _inputs: MachineObservedInputs, module_machine_future: & ModuleMachineFuture, variation: & MapFuture)->Inputs <Option<MaterialFlow>> {
     self.internal_outputs(variation).into_iter().map (| output | output.map(|output| output.delayed_by (module_machine_future.start_time))).collect()
   }
   
@@ -118,7 +118,7 @@ impl Module {
     let mut materials = Vec::with_capacity(self.module_type.inputs.len() + self.module_type.outputs.len());
     let mut operating_state = MachineOperatingState::WaitingForInput;
     
-    for (input_index, (exact_input, canonical_input)) in inputs.input_flows.iter().zip (module_machine_future.canonical_inputs).enumerate() {
+    for (input_index, (exact_input, canonical_input)) in inputs.input_flows.iter().zip (&module_machine_future.canonical_inputs).enumerate() {
       if let (Some (exact_input), Some(canonical_input)) = (exact_input, canonical_input) {let output_disbursements_since_start = canonical_input.num_disbursed_before (inner_time);
       if output_disbursements_since_start > 0 {operating_state = MachineOperatingState::Operating}
             
@@ -183,11 +183,11 @@ impl MachineTypeTrait for Module {
     })
   }
   
-  fn output_flows(&self, inputs: MachineObservedInputs, future: &Self::Future)->Inputs <Option<MaterialFlow>> {
+  fn output_flows(&self, _inputs: MachineObservedInputs, _future: &Self::Future)->Inputs <Option<MaterialFlow>> {
     panic!("called Module::output_flows(); I'm using a hack where, for modules, you must use Module::module_output_flows instead");
   }
   
-  fn momentary_visuals(&self, inputs: MachineObservedInputs, future: &Self::Future, time: Number)->MachineMomentaryVisuals {
+  fn momentary_visuals(&self, _inputs: MachineObservedInputs, _future: &Self::Future, _time: Number)->MachineMomentaryVisuals {
     panic!("called Module::momentary_visuals(); I'm using a hack where, for modules, you must use Module::module_momentary_visuals instead");
   }
 }
@@ -206,10 +206,12 @@ impl<'a> ModuleCollector <'a> {
   fn find_machine (&mut self, id: MachineTypeId) {
     if let MachineTypeId::Module (module_index) = id {
       let module = & self.machine_types.modules [module_index];
+      let next_index = &mut self.next_index;
+      let map_queue = &mut self.map_queue;
       let new_id = *self.found_modules.entry (module).or_insert_with (|| {
-        let result = MachineTypeId::Module (self.next_index);
-        self.next_index += 1;
-        self.map_queue.push_back (&module.map);
+        let result = MachineTypeId::Module (*next_index);
+        *next_index += 1;
+        map_queue.push_back (&module.map);
         result
       });
       self.new_ids [module_index] = Some (new_id);
@@ -217,17 +219,17 @@ impl<'a> ModuleCollector <'a> {
   }
   
   fn new(game: &'a Game) -> ModuleCollector<'a> {
-    let collector = ModuleCollector {
+    let mut collector = ModuleCollector {
       machine_types: & game.machine_types,
       found_modules: HashMap::with_capacity (game.machine_types.modules.len()),
       next_index: 0,
       map_queue: VecDeque::with_capacity (game.machine_types.modules.len()),
-      new_ids: vec![None; self.machine_types.modules.len()) 
-    }
+      new_ids: vec![None; game.machine_types.modules.len()],
+    };
     collector.map_queue.push_back (& game.map);
     for (index, preset) in game.machine_types.presets.iter().enumerate() {
       if let MachineType::Module (module) = preset {
-        self.found_modules.insert (module, MachineTypeId::Preset (index));
+        collector.found_modules.insert (module, MachineTypeId::Preset (index));
       }
     }
     collector
@@ -250,16 +252,16 @@ impl Game {
     let new_ids = collector.new_ids;
     let new_count = collector.next_index;
     
-    let new_modules: Vec<Module> = (0..new_count).map (|_| Module::default()).collect();
-    for (module, new_id) in std::mem::replace(&mut self.machine_types.modules, Default::default()).into_iter().zip (new_ids) {
+    let mut new_modules: Vec<Module> = (0..new_count).map (|_| Module::default()).collect();
+    for (module, new_id) in std::mem::replace(&mut self.machine_types.modules, Default::default()).into_iter().zip (&new_ids) {
       if let Some(MachineTypeId::Module (new_module_index)) = new_id {
-        new_modules [new_module_index] = module;
+        new_modules [*new_module_index] = module;
       }
     }
     self.machine_types.modules = new_modules;
     
     for map in std::iter::once (&mut self.map).chain (self.machine_types.modules.iter_mut().map (| module | &mut module.map)) {
-      for machine in map.machines {
+      for machine in &mut map.machines {
         if let MachineTypeId::Module (module_index) = machine.type_id {
           machine.type_id = new_ids [module_index].unwrap();
         }
