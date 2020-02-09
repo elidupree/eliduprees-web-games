@@ -86,7 +86,7 @@ pub trait MachineTypeTrait {
   fn input_materials (&self)->Inputs <Option <Material>> {inputs![]}
   
   type Future: Clone + Eq + Hash + Serialize + DeserializeOwned + Debug;
-  fn future (&self, inputs: MachineObservedInputs)->Result <Self::Future, MachineOperatingState>;
+  fn future (&self, inputs: MachineObservedInputs, module_futures: &mut ModuleFutures)->Result <Self::Future, MachineOperatingState>;
   fn output_flows(&self, inputs: MachineObservedInputs, future: &Self::Future)->Inputs <Option<MaterialFlow>> {inputs![]}
   fn momentary_visuals(&self, inputs: MachineObservedInputs, future: &Self::Future, time: Number)->MachineMomentaryVisuals {MachineMomentaryVisuals {materials: Vec::new(), operating_state: MachineOperatingState::Operating}}
 }
@@ -100,43 +100,54 @@ pub enum MachineType {
   $($Variant ($Variant),)*
 }
 
+#[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
+pub enum MachineTypeRef<'a> {
+  $($Variant (&'a $Variant),)*
+}
+
 
 #[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
 pub enum MachineFuture {
   $($Variant (<$Variant as MachineTypeTrait>::Future),)*
 }
 
+impl MachineType {
+  pub fn as_ref(&self) -> MachineTypeRef {
+    match self {$(MachineType::$Variant (value) => MachineTypeRef::$Variant (value),)*}
+  }
+}
 
-impl MachineTypeTrait for MachineType {
-  fn name (&self)->& str {match self {$(MachineType::$Variant (value) => value.name(),)*}}
+
+impl MachineTypeTrait for MachineTypeRef {
+  fn name (&self)->& str {match self {$(MachineTypeRef::$Variant (value) => value.name(),)*}}
   fn cost (&self)->& [(Number, Material)] {match self {$(MachineType::$Variant (value) => value.cost (),)*}}
-  fn num_inputs (&self)->usize {match self {$(MachineType::$Variant (value) => value.num_inputs (),)*}}
-  fn num_outputs (&self)->usize {match self {$(MachineType::$Variant (value) => value.num_outputs (),)*}}
-  fn radius (&self)->Number {match self {$(MachineType::$Variant (value) => value.radius (),)*}}
-  fn icon(&self) ->& str {match self {$(MachineType::$Variant (value) => value.icon (),)*}}
+  fn num_inputs (&self)->usize {match self {$(MachineTypeRef::$Variant (value) => value.num_inputs (),)*}}
+  fn num_outputs (&self)->usize {match self {$(MachineTypeRef::$Variant (value) => value.num_outputs (),)*}}
+  fn radius (&self)->Number {match self {$(MachineTypeRef::$Variant (value) => value.radius (),)*}}
+  fn icon(&self) ->& str {match self {$(MachineTypeRef::$Variant (value) => value.icon (),)*}}
   
-  fn relative_input_locations (&self)->Inputs <InputLocation> {match self {$(MachineType::$Variant (value) => value.relative_input_locations (),)*}}
-  fn relative_output_locations (&self)->Inputs <InputLocation> {match self {$(MachineType::$Variant (value) => value.relative_output_locations (),)*}}
-  fn input_materials (&self)->Inputs <Option <Material>> {match self {$(MachineType::$Variant (value) => value.input_materials (),)*}}
+  fn relative_input_locations (&self)->Inputs <InputLocation> {match self {$(MachineTypeRef::$Variant (value) => value.relative_input_locations (),)*}}
+  fn relative_output_locations (&self)->Inputs <InputLocation> {match self {$(MachineTypeRef::$Variant (value) => value.relative_output_locations (),)*}}
+  fn input_materials (&self)->Inputs <Option <Material>> {match self {$(MachineTypeRef::$Variant (value) => value.input_materials (),)*}}
   
   type Future = MachineFuture;
   
-  fn future (&self, inputs: MachineObservedInputs)->Result <Self::Future, MachineOperatingState> {
+  fn future (&self, inputs: MachineObservedInputs, module_futures: &mut ModuleFutures)->Result <Self::Future, MachineOperatingState> {
     match self {
-      $(MachineType::$Variant (value) => Ok(MachineFuture::$Variant (value.future (inputs)?)),)*
+      $(MachineTypeRef::$Variant (value) => Ok(MachineFuture::$Variant (value.future (inputs, module_futures)?)),)*
     }
   }
   
   fn output_flows(&self, inputs: MachineObservedInputs, future: &Self::Future)->Inputs <Option<MaterialFlow>> {
     match (self, future) {
-      $((MachineType::$Variant (value), MachineFuture::$Variant (future)) => value.output_flows (inputs, future),)*
+      $((MachineTypeRef::$Variant (value), MachineFuture::$Variant (future)) => value.output_flows (inputs, future),)*
       _=> panic!("Passed wrong future type to MachineType::output_flows()"),
     }
   }
   
   fn momentary_visuals(&self, inputs: MachineObservedInputs, future: &Self::Future, time: Number)->MachineMomentaryVisuals {
     match (self, future) {
-      $((MachineType::$Variant (value), MachineFuture::$Variant (future)) => value.momentary_visuals (inputs, future, time),)*
+      $((MachineTypeRef::$Variant (value), MachineFuture::$Variant (future)) => value.momentary_visuals (inputs, future, time),)*
       _=> panic!("Passed wrong future type to MachineType::momentary_visuals()"),
     }
   }
@@ -148,7 +159,7 @@ impl MachineTypeTrait for MachineType {
 }
 
 machine_type_enums! {
-  Distributor, Assembler, //Mine, ModuleMachine, // Conveyor,
+  Distributor, Assembler, Module, //Mine, ModuleMachine, // Conveyor,
 }
 
 #[derive (Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
@@ -320,7 +331,7 @@ impl MachineTypeTrait for Distributor {
   
   type Future = DistributorFuture;
   
-  fn future (&self, inputs: MachineObservedInputs)->Result <Self::Future, MachineOperatingState> {
+  fn future (&self, inputs: MachineObservedInputs, _module_futures: &mut ModuleFutures)->Result <Self::Future, MachineOperatingState> {
     let mut material_iterator = inputs.input_flows.iter().flatten().map (| material_flow | material_flow.material);
     let material = match material_iterator.next() {
       None => return Err(MachineOperatingState::InputMissing),
@@ -414,7 +425,7 @@ impl MachineTypeTrait for Assembler {
   
   type Future = AssemblerFuture;
   
-  fn future (&self, inputs: MachineObservedInputs)->Result <Self::Future, MachineOperatingState> {
+  fn future (&self, inputs: MachineObservedInputs, _module_futures: &mut ModuleFutures)->Result <Self::Future, MachineOperatingState> {
     let mut assembly_rate = RATE_DIVISOR/self.assembly_duration;
     let mut assembly_start = inputs.start_time;
     for (input, material_flow) in self.inputs.iter().zip (inputs.input_flows) {
@@ -521,6 +532,7 @@ pub struct Map {
 #[derive (Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub struct MachineTypes {
   pub presets: Vec<MachineType>,
+  pub modules: Vec<Module>,
 }
 
 impl MachineType {
@@ -534,9 +546,10 @@ impl MachineType {
 }
 
 impl MachineTypes {
-  pub fn get(&self, id: MachineTypeId)->& MachineType {
+  pub fn get(&self, id: MachineTypeId)->MachineTypeRef {
     match id {
-      MachineTypeId::Preset(index) => self.presets.get(index).unwrap(),
+      MachineTypeId::Preset(index) => self.presets.get(index).unwrap().as_ref(),
+      MachineTypeId::Module(index) => MachineTypeRef::Module(self.modules.get(index).unwrap()),
     }
   }
   

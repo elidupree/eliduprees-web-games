@@ -7,6 +7,7 @@ use std::rc::Rc;
 use geometry::{Number, Vector, Facing};
 use flow_pattern::{FlowPattern, RATE_DIVISOR};
 use machine_data::{Inputs, MachineType, Material, MachineTypeTrait, MachineMapState, MachineMaterialsState, StatefulMachine, Map, DrawnMachine, MAX_COMPONENTS};
+use graph_algorithms::{MapFuture};
 
 
 #[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
@@ -32,9 +33,13 @@ pub struct Module {
 }
 
 #[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
-pub struct ModuleMachine {
-  pub module: Rc<Module>,
+pub struct ModuleFuture {
+  map: MapFuture,
+  outputs: Inputs <MaterialFlow>,
 }
+
+
+
 
 pub fn basic_module()->MachineType {
   fn input(index: Number, x: Number)->ModuleInput {
@@ -60,6 +65,57 @@ pub fn basic_module()->MachineType {
 
 
 
+pub struct CanonicalModuleInputs {
+  inputs: Inputs <Option <MaterialFlowRate>>,
+}
+
+pub fn canonical_module_input (input: MaterialFlow)->Option <MaterialFlowRate> {
+  const STANDARD_RATE = RATE_DIVISOR / TIME_TO_MOVE_MATERIAL;
+  
+  // TODO: somehow decide on a more principled choice of rates
+  const PERMITTED_RATES: & 'static Number = [
+    STANDARD_RATE / 96,
+    STANDARD_RATE / 64,
+    STANDARD_RATE / 48,
+    STANDARD_RATE / 36,
+    STANDARD_RATE / 32,
+    STANDARD_RATE / 24,
+    STANDARD_RATE / 16,
+    STANDARD_RATE / 12,
+    STANDARD_RATE / 8,
+    STANDARD_RATE / 6,
+    STANDARD_RATE / 5,
+    STANDARD_RATE / 4,
+    STANDARD_RATE / 3,
+    STANDARD_RATE * 2 / 5,
+    STANDARD_RATE / 2,
+    STANDARD_RATE * 2 / 3,
+    STANDARD_RATE * 3 / 5,
+    STANDARD_RATE * 3 / 4,
+    STANDARD_RATE * 4 / 5,
+    STANDARD_RATE,
+  ];
+  
+  let rounded_down = match PERMITTED_RATES.binary_search(& input.rate()) {
+    Ok (index) => PERMITTED_RATES [index],
+    // something smaller than the minimum permitted rate can't flow at all and returns None
+    Err (index) => PERMITTED_RATES [index.checked_sub (1)?],
+  };
+  
+  MaterialFlowRate {material: input.material, rate: FlowRate::new (rounded_down)}
+}
+
+pub fn canonical_module_inputs (inputs: MachineObservedInputs)->(Number, CanonicalModuleInputs) {
+  let output_availability_start = inputs.input_flows.iter().flatten().map (| material_flow | material_flow.first_disbursement_time_geq (inputs.start_time)).max ().unwrap() + TIME_TO_MOVE_MATERIAL;
+  (
+    output_availability_start,
+    CanonicalModuleInputs {
+      inputs: inputs.input_flows.iter().map (| material_flow | material_flow.and_then (canonical_module_input)).collect()
+    }
+  )
+}
+
+
 
 
 impl MachineTypeTrait for Module {
@@ -75,52 +131,149 @@ impl MachineTypeTrait for Module {
   fn relative_output_locations (&self)->Inputs <InputLocation> {self.module_type.outputs.iter().map (| locations | locations.outer_location).collect()}
   fn input_materials (&self)->Inputs <Option <Material>> {self.inputs.iter().map (|_| None).collect()}
   
-  fn output_flows(&self, inputs: MachineObservedInputs)->Inputs <Option<MaterialFlow>> {
-    match self.future_info (inputs) {
-      DistributorFutureInfo::Failure (_) => self.inputs.iter().map (|_| None).collect(),
-      DistributorFutureInfo::Success (info) => {
-        let material = info.material;
-        info.outputs.into_iter().map (| flow | Some (MaterialFlow {material, flow})).collect()
+  
+  type Future = ModuleFuture;
+  
+  fn future (&self, inputs: MachineObservedInputs, module_futures: &mut ModuleFutures)->Result <Self::Future, MachineOperatingState> {
+    // note: the graph algorithms rely on this to be dependent only on the canonical inputs, so in THIS function, we shadow `inputs` (and discard the start time) to prevent accidentally relying on the noncanonical values
+    let (_, inputs) = canonical_module_inputs (inputs);
+    
+    let output_edges = self.map.output_edges(& game.machine_types) ;
+    let ordering = self.map.topological_ordering_of_noncyclic_machines (& output_edges);
+    let fiat_inputs: Vec<_> = self.relative_input_locations().into_iter().zip (inputs.inputs).collect();
+    let future = self.map.future (& game.machine_types, & output_edges, & ordering, module_futures, & fiat_inputs);
+        
+    Ok (ModuleFuture {
+      map: future,
+      outputs: self.relative_output_locations ().map (| output_location | {
+        future.map.dumped.iter().find (| (location,_) | location == output_location).map (| (_, flow) | *flow)
+      })
+    })
+  }
+  
+  fn output_flows(&self, inputs: MachineObservedInputs, future: &Self::Future)->Inputs <Option<MaterialFlow>> {
+    // TODO: the fact that this line gets repeated in all 3 functions means that it should be handled the way we now handle Future for the other machine types, but in modules it is currently hacked to use the Future associated type for the shared module future
+    let (module_start,_) = canonical_module_inputs (inputs);
+    future.outputs.map (| output | output.delayed_by (module_start)).collect()
+  }
+  
+  fn momentary_visuals(&self, inputs: MachineObservedInputs, future: &Self::Future, time: Number)->MachineMomentaryVisuals {
+    let (module_start, canonical_inputs) = canonical_module_inputs (inputs);
+    let inner_time = time - module_start;
+    let mut materials = Vec::with_capacity(self.module_type.inputs.len() + self.module_type.outputs.len()) ;
+    
+    for (input_index, (exact_input, canonical_input)) in inputs.input_flows.iter().zip (canonical_inputs.inputs).enumerate() {
+      let output_disbursements_since_start = canonical_input.num_disbursed_before (inner_time);
+      
+      // TODO: wait, surely each of these can only have one moving material at a time? So it shouldn't need to be a loop?
+      for output_disbursement_index in output_disbursements_since_start .. {
+        let output_time = canonical_input.nth_disbursement_time(output_disbursement_index) + module_start;
+        let input_time = exact_input.last_disbursement_time_leq (input_time - TIME_TO_MOVE_MATERIAL).unwrap();
+        if input_time > time {break}
+        let output_fraction = (time - input_time) as f64/(output_time - input_time) as f64;
+        let input_location = self.module_type.inputs [input_index].outer_location.to_f64 ();
+        let output_location = self.module_type.inputs [input_index].inner_location.to_f64 ();
+        let location = input_location*(1.0 - output_fraction) + output_location*output_fraction;
+        materials.push ((location, future.material));
       }
     }
-  }
-  fn momentary_visuals(&self, inputs: MachineObservedInputs, time: Number)->MachineMomentaryVisuals {
-    match self.future_info (inputs) {
-      DistributorFutureInfo::Failure (failure) => MachineMomentaryVisuals {materials: Vec::new(), operating_state: failure},
-      DistributorFutureInfo::Success (info) => {
-        let output_disbursements_since_start = info.outputs.num_disbursed_between ([inputs.start_time, time]);
-        let mut materials = Vec::with_capacity(self.inputs.len() - 1) ;
-        //let mut operating_state = MachineOperatingState::WaitingForInput;
-        let output_rate = info.outputs.rate();
-        let input_rate = inputs.input_flows.rate();
-        let cropped_inputs: Inputs <_> = inputs.input_flows.iter().map (| material_flow | material_flow.map (| material_flow | CroppedFlow {flow: material_flow.flow, crop_start: material_flow.last_disbursement_time_leq (info.output_availability_start).unwrap()})).collect();
-        for output_index_since_start in output_disbursements_since_start .. {
-          //input_rate may be greater than output_rate; if it is, we sometimes want to skip forward in the sequence. Note that if input_rate == output_rate, this uses the same index for both. Round down so as to use earlier inputs
-          //TODO: wonder if there's a nice-looking way to make sure the deletions are distributed evenly over the inputs? (Right now when there is a simple 2-1 merge, everything from one side is deleted and everything from the other side goes through)
-          let input_index_since_start = output_index_since_start*input_rate/output_rate;
-          let (output_time, output_index) = info.outputs.nth_disbursement_geq_time (output_index_since_start, inputs.start_time).unwrap();
-          let (input_time, input_index) = cropped_inputs.nth_disbursement_geq_time (input_index_since_start, inputs.start_time).unwrap();
-          if input_time > time {break}
-          //assert!(n <= previous_disbursements + self.inputs.len() + self.outputs.len() - 1);
-          // TODO: smoother movement
-          let input_location = self.inputs [input_index].position.to_f64 ();
-          let output_location = self.outputs [output_index].position.to_f64 ();
-          let output_fraction = (time - input_time) as f64/(output_time - input_time) as f64;
-          //println!("{:?}", (output_index_since_start, input_index_since_start, time, input_time, output_time, input_location, output_location, output_fraction));
-          let location = input_location*(1.0 - output_fraction) + output_location*output_fraction;
-          materials.push ((location, info.material));
-        }
-        
-        MachineMomentaryVisuals {
-          operating_state: if output_disbursements_since_start > 0 {MachineOperatingState::Operating} else {MachineOperatingState::WaitingForInput},
-          materials,
-        }
+    
+    for (output_index, canonical_output) in future.outputs.iter().enumerate() {
+      let disbursements_since_start = canonical_output.num_disbursed_before (inner_time - TIME_TO_MOVE_MATERIAL);
+      
+      for disbursement_index in disbursements_since_start .. {
+        let input_time = canonical_output.nth_disbursement_time(disbursement_index) + module_start;
+        if input_time > time {break}
+        let output_time = input_time + TIME_TO_MOVE_MATERIAL;
+        let output_fraction = (time - input_time) as f64/(output_time - input_time) as f64;
+        let input_location = self.module_type.outputs [output_index].inner_location.to_f64 ();
+        let output_location = self.module_type.outputs [output_index].outer_location.to_f64 ();
+        let location = input_location*(1.0 - output_fraction) + output_location*output_fraction;
+        materials.push ((location, future.material));
       }
+    }
+    
+    MachineMomentaryVisuals {
+      operating_state: if output_disbursements_since_start > 0 {MachineOperatingState::Operating} else {MachineOperatingState::WaitingForInput},
+      materials,
     }
   }
 }
 
 
+
+struct ModuleCollector <'a> {
+  machine_types: & 'a MachineTypes,
+  found_modules: HashMap <& 'a Module, MachineTypeId>,
+  next_index: usize,
+  map_queue: VecDeque<&'a Map>,
+  new_ids: Vec<Option <MachineTypeId>>,
+}
+
+impl ModuleCollector <'a> {
+  fn find_machine (&mut self, id: MachineTypeId) {
+    if let MachineTypeId::Module (module_index) = id {
+      let new_id = *self.found_modules.entry (module).or_insert_with (|| {
+        let result = MachineTypeId::Module (self.next_index);
+        self.next_index += 1;
+        self.map_queue.push_back (&module.map);
+        result
+      });
+      self.new_ids [module_index] = new_id;
+    }
+  }
+  
+  fn new(game: &'a Game) -> ModuleCollector<'a> {
+    let collector = ModuleCollector {
+      machine_types: & game.machine_types,
+      found_modules: HashMap::with_capacity (game.machine_types.modules.len()),
+      next_index: 0,
+      map_queue: VecDeque::with_capacity (game.machine_types.modules.len()),
+      new_ids: vec![None; self.machine_types.modules.len()) 
+    }
+    collector.map_queue.push_back (& game.map);
+    for (index, preset) in game.machine_types.presets.iter().enumerate() {
+      if let MachineType::Module (module) = preset {
+        self.found_modules.insert (module, MachineTypeId::Preset (index));
+      }
+    }
+    collector
+  }
+  
+  fn run(&mut self) {
+    while let Some (map) = self.map_queue.pop () {
+      for machine in & map.machines {
+        self.find_machine (machine.type_id);
+      }
+    }
+  }
+}
+
+impl Game {
+  /// Deduplicate modules, remove unused modules, and put them in a canonical ordering based on the order of machines on the maps.
+  pub fn cleanup_modules (&mut self) {
+    let mut collector = ModuleCollector::new (self);
+    collector.run();
+    let new_ids = collector.new_ids;
+    let new_count = collector.next_index;
+    
+    let new_modules = (0..new_count).map (|_| Module::default());
+    for (module, new_id) in std::mem::take (self.machine_types.modules).into_iter().zip (new_indices) {
+      if let Some(MachineTypeId::Module (new_module_index)) = new_id {
+        new_modules [new_module_index] = module;
+      }
+    }
+    self.machine_types.modules = new_modules;
+    
+    for map in iter::once (&mut self.map).chain (self.machine_types.modules.iter_mut().map (| module | &mut module.map)) {
+      for machine in map.machines {
+        if let MachineTypeId::Module (module_index) = machine.type_id {
+          machine.type_id = new_ids [module_index];
+        }
+      }
+    }
+  }
+}
 
 
 

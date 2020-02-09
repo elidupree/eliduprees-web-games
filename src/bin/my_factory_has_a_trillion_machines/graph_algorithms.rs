@@ -17,10 +17,12 @@ pub struct MapFuture {
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
 pub struct MachineAndInputsFuture {
   pub inputs: Inputs <Option <MaterialFlow>>,
+  // Hack: only non-module machines have their futures stored here; operating modules are listed as Err (Operating)
   pub future: Result <MachineFuture, MachineOperatingState>,
 }
 
 
+pub type ModuleFutures = Vec<HashMap <CanonicalModuleInputs, ModuleFuture>>;
 
 impl Map {
   pub fn output_edges (&self, machine_types: &MachineTypes)->OutputEdges {
@@ -77,8 +79,8 @@ impl Map {
     while let Some (index) = stack.pop() {
       let machine = &mut self.machines [index];
       machine.state.last_disturbed_time = now;
-      /*if let MachineType::ModuleMachine (machine) = machine_types.get (machine.type_id) {
-        self.canonicalize_module (machine_types, machine);
+      /*if let MachineType::ModuleMachine (module_index) = machine_types.get (machine.type_id) {
+        self.canonicalize_module (machine_types, index, module_index);
       }*/
       for &(destination_machine_index,_) in output_edges [index].iter().flatten() {
         if !visited [destination_machine_index] {
@@ -86,6 +88,19 @@ impl Map {
           stack.push (destination_machine_index);
         }
       }
+    }
+  }
+  
+  pub fn canonicalize_module (&mut self, machine_types: &mut MachineTypes, machine_index: usize, module_index: usize) {
+    if machine_types.modules [module_index].map.machines.iter().any (| machine | machine.state.last_disturbed_time != 0) {
+      let new_module = machine_types.modules [module_index].clone();
+      let new_module_index = machine_types.modules.len();
+      for machine in &mut new_module.map.machines {
+        machine.state.last_disturbed_time = 0;
+      }
+      machine_types.modules.push(new_module);
+      
+      self.machines [machine_index].type_id = MachineType::ModuleMachine (new_module_index);
     }
   }
   
@@ -121,10 +136,12 @@ impl Map {
     result
   }
   
-  pub fn future (&self, machine_types: &MachineTypes, output_edges: & OutputEdges, topological_ordering: & [usize])->MapFuture {
+  pub fn future (&self, machine_types: &MachineTypes, output_edges: & OutputEdges, topological_ordering: & [usize], module_futures: &mut ModuleFutures, fiat_inputs: & [(InputLocation, MaterialFlow)])->MapFuture {
     let mut result = MapFuture {
       machines: self.machines.iter().map (|machine| MachineAndInputsFuture {
-        inputs: (0..machine_types.get(machine.type_id).num_inputs()).map(|_| None).collect(),
+        inputs: machine_types.input_locations (machine).map(| input_location | {
+          fiat_inputs.iter().find (| (location,_) | location == input_location).map (| (_, flow) | flow)
+        }).collect(),
         future: Err (MachineOperatingState::InCycle),
       }).collect(),
       dumped: Default::default(),
@@ -137,12 +154,31 @@ impl Map {
         start_time: machine.state.last_disturbed_time,
       };
       let machine_type = machine_types.get(machine.type_id);
-      let future = machine_type.future (inputs) ;
-      let outputs = match & future {
+      let future: &MachineFuture = match machine.type_id {
+        MachineTypeId::Module (module_index) => {
+          let canonical_inputs = canonical_module_inputs (inputs);
+          // hack (see the struct definition):
+          result.machines [machine_index].future = Err (MachineOperatingState::Operating);
+          match module_futures [module_index].get (& canonical_inputs) {
+            Some (existing_future) => existing_future,
+            None => {
+              let future = machine_type.future (inputs);
+              match module_futures [module_index].entry (canonical_inputs) {
+                hash_map::Entry::OccupiedEntry (_) => panic!("some sort of recursive module problem happened"),
+                hash_map::Entry::VacantEntry (entry) => entry.insert (future)
+              }
+            }
+          })
+        },
+        _ => {
+          result.machines [machine_index].future = machine_type.future (inputs);
+          &result.machines [machine_index].future
+        },
+      };
+      let outputs = match future {
         Ok (future) => machine_type.output_flows (inputs, future),
         Err (_) => inputs! [],
       };
-      result.machines [machine_index].future = future;
       //println!("{:?}\n{:?}\n{:?}\n\n", machine, inputs , outputs);
       for ((flow, destination), location) in outputs.into_iter().zip (& output_edges [machine_index]).zip (machine_type.output_locations(machine.state.position)) {
         match destination {
