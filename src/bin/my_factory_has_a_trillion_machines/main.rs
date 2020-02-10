@@ -20,6 +20,37 @@ extern crate proptest;
 extern crate siphasher;
 extern crate itertools;
 
+#[cfg (target_os = "emscripten")]
+macro_rules! debug {
+  ($($stuff: tt)*) => {{
+    /*thread_local!{static DEBUG_LINES: std::cell::RefCell<usize> = std::cell::RefCell::new(0);}
+    DEBUG_LINES.with(|lines| {
+      let mut lines = lines.borrow_mut();
+      *lines += 1;
+      if (1f64 + (*lines) as f64/100f64).ln() as i32 > (1f64 + (*lines-1) as f64/100f64).ln() as i32 {
+        println!("UHh");
+        println!($($stuff)*);
+      }
+    });*/
+    let string = format!($($stuff)*);
+    js! {
+      window.debug_length = window.debug_length || 0;
+      if (window.debug_length < 10000) {
+        window.debug_length += @{string.len() as u32};
+        document.getElementById("debug").textContent += @{&string};
+        console.log(@{&string});
+      }
+    }
+  }}
+}
+
+#[cfg (not(target_os = "emscripten"))]
+macro_rules! debug {
+  ($($stuff: tt)*) => {
+    eprintln!($($stuff)*)
+  }
+}
+
 pub use eliduprees_web_games::*;
 // hack-ish: modules marked pub to suppress dead code warnings from builds with different conditional compilation
 pub mod misc;

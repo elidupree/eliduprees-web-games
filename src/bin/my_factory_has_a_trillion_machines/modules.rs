@@ -114,21 +114,30 @@ impl Module {
   }
   
   pub fn module_momentary_visuals(&self, inputs: MachineObservedInputs, module_machine_future: & ModuleMachineFuture, time: Number, variation: & MapFuture)->MachineMomentaryVisuals {
+    // This whole function is a buggy mess; TODO refactor it
     let inner_time = time - module_machine_future.start_time;
+    
     let mut materials = Vec::with_capacity(self.module_type.inputs.len() + self.module_type.outputs.len());
     let mut operating_state = MachineOperatingState::WaitingForInput;
     
+    if inner_time >= 0 {
+    let whoops = || {
+        debug!("{:?}", (inputs, module_machine_future, time, variation));
+        panic!();
+    };
+      
     for (input_index, (exact_input, canonical_input)) in inputs.input_flows.iter().zip (&module_machine_future.canonical_inputs).enumerate() {
       if let (Some (exact_input), Some(canonical_input)) = (exact_input, canonical_input) {
       
       let output_disbursements_since_start = canonical_input.num_disbursed_before (inner_time);
       if output_disbursements_since_start > 0 {operating_state = MachineOperatingState::Operating}
-            
+      
       // TODO: wait, surely each of these can only have one moving material at a time? So it shouldn't need to be a loop?
       for output_disbursement_index in output_disbursements_since_start .. {
-        let output_time = canonical_input.nth_disbursement_time(output_disbursement_index).unwrap() + module_machine_future.start_time;
-        assert!(output_time >= module_machine_future.start_time);
+        let output_time = canonical_input.nth_disbursement_time(output_disbursement_index).unwrap_or_else(whoops) + module_machine_future.start_time;
+        if(output_time < module_machine_future.start_time) {(whoops)();}
         let input_time = exact_input.last_disbursement_time_leq (output_time - TIME_TO_MOVE_MATERIAL).unwrap();
+        debug!("{:?}", (input_time, output_time, input_time-output_time));
         if input_time > time {break}
         let output_fraction = (time - input_time) as f64/(output_time - input_time) as f64;
         let input_location = self.module_type.inputs [input_index].outer_location.position.to_f64 ();
@@ -145,7 +154,7 @@ impl Module {
       let disbursements_since_start = canonical_output.num_disbursed_before (inner_time - TIME_TO_MOVE_MATERIAL);
       
       for disbursement_index in disbursements_since_start .. {
-        let input_time = canonical_output.nth_disbursement_time(disbursement_index).unwrap() + module_machine_future.start_time;
+        let input_time = canonical_output.nth_disbursement_time(disbursement_index).unwrap_or_else(whoops) + module_machine_future.start_time;
         if input_time > time {break}
         let output_time = input_time + TIME_TO_MOVE_MATERIAL;
         let output_fraction = (time - input_time) as f64/(output_time - input_time) as f64;
@@ -155,6 +164,7 @@ impl Module {
         materials.push ((location, canonical_output.material));
       }
       }
+    }
     }
     
     MachineMomentaryVisuals {
