@@ -119,12 +119,15 @@ impl Module {
     let mut operating_state = MachineOperatingState::WaitingForInput;
     
     for (input_index, (exact_input, canonical_input)) in inputs.input_flows.iter().zip (&module_machine_future.canonical_inputs).enumerate() {
-      if let (Some (exact_input), Some(canonical_input)) = (exact_input, canonical_input) {let output_disbursements_since_start = canonical_input.num_disbursed_before (inner_time);
+      if let (Some (exact_input), Some(canonical_input)) = (exact_input, canonical_input) {
+      
+      let output_disbursements_since_start = canonical_input.num_disbursed_before (inner_time);
       if output_disbursements_since_start > 0 {operating_state = MachineOperatingState::Operating}
             
       // TODO: wait, surely each of these can only have one moving material at a time? So it shouldn't need to be a loop?
       for output_disbursement_index in output_disbursements_since_start .. {
         let output_time = canonical_input.nth_disbursement_time(output_disbursement_index).unwrap() + module_machine_future.start_time;
+        assert!(output_time >= module_machine_future.start_time);
         let input_time = exact_input.last_disbursement_time_leq (output_time - TIME_TO_MOVE_MATERIAL).unwrap();
         if input_time > time {break}
         let output_fraction = (time - input_time) as f64/(output_time - input_time) as f64;
@@ -137,7 +140,9 @@ impl Module {
     }
     
     for (output_index, canonical_output) in self.internal_outputs (variation).iter().enumerate() {
-      if let Some(canonical_output) = canonical_output {let disbursements_since_start = canonical_output.num_disbursed_before (inner_time - TIME_TO_MOVE_MATERIAL);
+      if let Some(canonical_output) = canonical_output {
+      
+      let disbursements_since_start = canonical_output.num_disbursed_before (inner_time - TIME_TO_MOVE_MATERIAL);
       
       for disbursement_index in disbursements_since_start .. {
         let input_time = canonical_output.nth_disbursement_time(disbursement_index).unwrap() + module_machine_future.start_time;
@@ -176,7 +181,7 @@ impl MachineTypeTrait for Module {
   type Future = ModuleMachineFuture;
   
   fn future (&self, inputs: MachineObservedInputs)->Result <Self::Future, MachineOperatingState> {
-    let output_availability_start = inputs.input_flows.iter().flatten().map (| material_flow | material_flow.first_disbursement_time_geq (inputs.start_time)).max ().unwrap() + TIME_TO_MOVE_MATERIAL;
+    let output_availability_start = inputs.input_flows.iter().flatten().map (| material_flow | material_flow.first_disbursement_time_geq (inputs.start_time)).max ().unwrap_or(inputs.start_time) + TIME_TO_MOVE_MATERIAL;
     Ok(ModuleMachineFuture {
       canonical_inputs: inputs.input_flows.iter().map (| material_flow | material_flow.and_then (canonical_module_input)).collect(),
       start_time: output_availability_start,

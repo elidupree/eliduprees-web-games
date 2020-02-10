@@ -73,7 +73,7 @@ struct State {
   mouse: MouseState,
 }
 
-fn machine_presets()->Vec<MachineType> { vec![machine_data::conveyor(), machine_data::splitter(), machine_data::iron_smelter(), machine_data::iron_mine(), //modules::basic_module()
+fn machine_presets()->Vec<MachineType> { vec![machine_data::conveyor(), machine_data::splitter(), machine_data::iron_smelter(), machine_data::iron_mine(), modules::basic_module()
 ]}
 
 fn machine_color(machine: & StatefulMachine)->[f32; 3] {
