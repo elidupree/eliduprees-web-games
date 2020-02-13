@@ -88,6 +88,8 @@ pub trait MachineTypeTrait {
   type Future: Clone + Eq + Hash + Serialize + DeserializeOwned + Debug;
   fn future (&self, inputs: MachineObservedInputs)->Result <Self::Future, MachineOperatingState>;
   fn output_flows(&self, inputs: MachineObservedInputs, future: &Self::Future)->Inputs <Option<MaterialFlow>> {inputs![]}
+  
+  // Note: at the moment when a piece of material is handed off from one machine to another, the SOURCE machine is responsible for drawing it, and the destination machine should not draw it.
   fn momentary_visuals(&self, inputs: MachineObservedInputs, future: &Self::Future, time: Number)->MachineMomentaryVisuals {MachineMomentaryVisuals {materials: Vec::new(), operating_state: MachineOperatingState::Operating}}
 }
 

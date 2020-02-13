@@ -113,59 +113,48 @@ impl Module {
     self.internal_outputs(variation).into_iter().map (| output | output.map(|output| output.delayed_by (module_machine_future.start_time))).collect()
   }
   
-  pub fn module_momentary_visuals(&self, inputs: MachineObservedInputs, module_machine_future: & ModuleMachineFuture, time: Number, variation: & MapFuture)->MachineMomentaryVisuals {
-    // This whole function is a buggy mess; TODO refactor it
-    let inner_time = time - module_machine_future.start_time;
+  pub fn module_momentary_visuals(&self, inputs: MachineObservedInputs, module_machine_future: & ModuleMachineFuture, outer_time: Number, variation: & MapFuture)->MachineMomentaryVisuals {
+    let inner_time = outer_time - module_machine_future.start_time;
     
     let mut materials = Vec::with_capacity(self.module_type.inputs.len() + self.module_type.outputs.len());
     let mut operating_state = MachineOperatingState::WaitingForInput;
     
-    if inner_time >= 0 {
-    let whoops = || {
-        debug!("{:?}", (inputs, module_machine_future, time, variation));
-        panic!();
-    };
-      
-    for (input_index, (exact_input, canonical_input)) in inputs.input_flows.iter().zip (&module_machine_future.canonical_inputs).enumerate() {
-      if let (Some (exact_input), Some(canonical_input)) = (exact_input, canonical_input) {
-      
-      let output_disbursements_since_start = canonical_input.num_disbursed_before (inner_time);
-      if output_disbursements_since_start > 0 {operating_state = MachineOperatingState::Operating}
-      
-      // TODO: wait, surely each of these can only have one moving material at a time? So it shouldn't need to be a loop?
-      for output_disbursement_index in output_disbursements_since_start .. {
-        let output_time = canonical_input.nth_disbursement_time(output_disbursement_index).unwrap_or_else(whoops) + module_machine_future.start_time;
-        if(output_time < module_machine_future.start_time) {(whoops)();}
-        let input_time = exact_input.last_disbursement_time_leq (output_time - TIME_TO_MOVE_MATERIAL).unwrap();
-        debug!("{:?}", (input_time, output_time, input_time-output_time));
-        if input_time > time {break}
-        let output_fraction = (time - input_time) as f64/(output_time - input_time) as f64;
-        let input_location = self.module_type.inputs [input_index].outer_location.position.to_f64 ();
-        let output_location = self.module_type.inputs [input_index].inner_location.position.to_f64 ();
-        let location = input_location*(1.0 - output_fraction) + output_location*output_fraction;
-        materials.push ((location, canonical_input.material));
-      }
+    // Note: module_machine_future.start_time – the moment when inner_time is 0 – is the moment when they first set of materials arrives INSIDE the module, meaning that stuff is moving across the module boundary earlier than that.
+    
+    for (input_index, (outer_input, inner_input)) in inputs.input_flows.iter().zip (&module_machine_future.canonical_inputs).enumerate() {
+      if let (Some (outer_input), Some(inner_input)) = (outer_input, inner_input) {
+        let material_inner_output_time = inner_input.first_disbursement_time_geq (max(0, inner_time));
+        let material_outer_output_time = material_inner_output_time + module_machine_future.start_time;
+        let material_outer_input_time = outer_input.last_disbursement_time_leq(material_outer_output_time - TIME_TO_MOVE_MATERIAL).unwrap();
+       
+        // >, not >=; don't draw at the moment of input, fitting the general rule that the source machine draws the material
+        if outer_time > material_outer_input_time {
+          operating_state = MachineOperatingState::Operating;
+          let output_fraction = (outer_time - material_outer_input_time) as f64/(material_outer_output_time - material_outer_input_time) as f64;
+          let input_location = self.module_type.inputs [input_index].outer_location.position.to_f64 ();
+          let output_location = self.module_type.inputs [input_index].inner_location.position.to_f64 ();
+          let location = input_location*(1.0 - output_fraction) + output_location*output_fraction;
+          materials.push ((location, inner_input.material));
+        }
       }
     }
     
-    for (output_index, canonical_output) in self.internal_outputs (variation).iter().enumerate() {
-      if let Some(canonical_output) = canonical_output {
-      
-      let disbursements_since_start = canonical_output.num_disbursed_before (inner_time - TIME_TO_MOVE_MATERIAL);
-      
-      for disbursement_index in disbursements_since_start .. {
-        let input_time = canonical_output.nth_disbursement_time(disbursement_index).unwrap_or_else(whoops) + module_machine_future.start_time;
-        if input_time > time {break}
-        let output_time = input_time + TIME_TO_MOVE_MATERIAL;
-        let output_fraction = (time - input_time) as f64/(output_time - input_time) as f64;
-        let input_location = self.module_type.outputs [output_index].inner_location.position.to_f64 ();
-        let output_location = self.module_type.outputs [output_index].outer_location.position.to_f64 ();
-        let location = input_location*(1.0 - output_fraction) + output_location*output_fraction;
-        materials.push ((location, canonical_output.material));
-      }
+    for (output_index, inner_output) in self.internal_outputs (variation).iter().enumerate() {
+      if let Some(inner_output) = inner_output {
+        if let Some(material_inner_input_time) = inner_output.last_disbursement_time_lt(inner_time) {
+          let material_outer_input_time = material_inner_input_time + module_machine_future.start_time;
+          let material_outer_output_time = material_outer_input_time + TIME_TO_MOVE_MATERIAL;
+          if outer_time <= material_outer_output_time {
+            let output_fraction = (outer_time - material_outer_input_time) as f64/(material_outer_output_time - material_outer_input_time) as f64;
+            let input_location = self.module_type.outputs [output_index].inner_location.position.to_f64 ();
+            let output_location = self.module_type.outputs [output_index].outer_location.position.to_f64 ();
+            let location = input_location*(1.0 - output_fraction) + output_location*output_fraction;
+            materials.push ((location, inner_output.material));
+          }
+        }
       }
     }
-    }
+
     
     MachineMomentaryVisuals {
       operating_state,
