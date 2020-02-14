@@ -556,6 +556,13 @@ impl MachineTypes {
     }
   }
   
+  pub fn get_module (&self, id: MachineTypeId)->& Module {
+    match self.get (id) {
+      MachineTypeRef::Module (module) => module,
+      _=> panic!("get_module() given an id of a non-module machine ({:?})", id),
+    }
+  }
+  
   pub fn input_locations(&self, machine: &StatefulMachine)->impl Iterator <Item = InputLocation> {
     self.get (machine.type_id).input_locations (machine.state.position)
   }
