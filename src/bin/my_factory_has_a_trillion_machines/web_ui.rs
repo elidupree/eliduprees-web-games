@@ -156,7 +156,7 @@ pub fn run_game() {
 
       
   let mut game=Game{map:Map {machines: Vec::new(), },last_change_time: 0, inventory_before_last_change: Default::default(), machine_types: MachineTypes {presets: machine_presets(), modules: Vec::new()}};
-  game.inventory_before_last_change.insert (Material::Iron, 100);
+  game.inventory_before_last_change.insert (Material::Iron, 1000);
   let output_edges = game.map.output_edges(& game.machine_types);
   let ordering = game.map.topological_ordering_of_noncyclic_machines(& output_edges);
   let mut module_futures = ModuleFutures::default();

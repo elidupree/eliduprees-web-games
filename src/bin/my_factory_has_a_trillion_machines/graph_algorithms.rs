@@ -4,7 +4,7 @@ use std::collections::{hash_map, HashMap};
 use arrayvec::ArrayVec;
 
 use geometry::{Number};
-use flow_pattern::{MaterialFlow, FlowCollection};
+use flow_pattern::{MaterialFlow, FlowCollection, FlowPattern};
 use machine_data::{Inputs, Material, Map, Game, InputLocation, MachineObservedInputs, MachineFuture, MachineOperatingState, MachineTypes, MachineTypeRef, MachineTypeId, MachineTypeTrait, StatefulMachine, MAX_COMPONENTS};
 use modules::{CanonicalModuleInputs};
 
@@ -144,9 +144,11 @@ impl Map {
   }
   
   pub fn future (&self, machine_types: &MachineTypes, output_edges: & OutputEdges, topological_ordering: & [usize], module_futures: &mut ModuleFutures, fiat_inputs: & [(InputLocation, MaterialFlow)])->MapFuture {
+    //debug!("{:?}", fiat_inputs);
     let mut result = MapFuture {
       machines: self.machines.iter().map (|machine| MachineAndInputsFuture {
         inputs: machine_types.input_locations (machine).map(| input_location | {
+          //debug!("{:?}", (input_location, fiat_inputs.iter().find (| (location,_) | *location == input_location)));
           fiat_inputs.iter().find (| (location,_) | *location == input_location).map (| (_, flow) | *flow)
         }).collect(),
         future: Err (MachineOperatingState::InCycle),
@@ -183,7 +185,14 @@ impl Map {
               let output_edges = module_future.output_edges.clone();
               let ordering = module_future.topological_ordering.clone();
               
-              let fiat_inputs: Vec<_> = module.relative_input_locations().into_iter().zip (inputs.input_flows).filter_map(|(loc, flow)| flow.map(|f| (loc, f))).collect();
+              let fiat_inputs: Vec<_> = module.module_type.inputs.iter()
+                .map(|input| input.inner_location)
+                .zip (module_machine_future.canonical_inputs.iter())
+                .filter_map(|(loc, flow)|
+                  flow.map(|f|
+                    (loc, MaterialFlow{material: f.material, flow: FlowPattern::new(0, f.rate())})
+                  )
+                ).collect();
               let future = module.map.future (machine_types, & output_edges, & ordering, module_futures, & fiat_inputs);
               
               match module_futures.get_mut (&machine.type_id).unwrap().future_variations.entry (module_machine_future.canonical_inputs.clone()) {
