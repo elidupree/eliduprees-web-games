@@ -379,7 +379,8 @@ fn build_machine (state: &mut State, machine_type_id: MachineTypeId, position: G
   
   if map.machines.iter().any (| machine | {
     let radius = state.game.machine_types.get (machine.type_id).radius() + machine_type.radius();
-    let offset = (position / (isomorphism*machine.state.position)).translation;
+    //debug!("{:?}", (position, isomorphism, machine.state.position, isomorphism*machine.state.position, position / (machine.state.position*isomorphism)));
+    let offset = (position / (machine.state.position*isomorphism)).translation;
     offset[0].abs() < radius && offset[1].abs() < radius
   }) {
     // can't build – something is in the way
