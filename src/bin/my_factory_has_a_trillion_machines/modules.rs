@@ -104,8 +104,8 @@ pub fn canonical_module_input (input: MaterialFlow)->Option <MaterialFlowRate> {
 
 impl Module {
   fn internal_outputs(&self, variation: &MapFuture)->Inputs <Option <MaterialFlow>> {
-    self.relative_output_locations ().into_iter().map (| output_location | {
-      variation.dumped.iter().find (| (location,_) | *location == output_location).map (| (_, flow) | *flow)
+    self.module_type.outputs.iter().map (| output | {
+      variation.dumped.iter().find (| (location,_) | *location == output.inner_location).map (| (_, flow) | flow.delayed_by(TIME_TO_MOVE_MATERIAL))
     }).collect()
   }
   
