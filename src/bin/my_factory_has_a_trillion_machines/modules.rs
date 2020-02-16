@@ -105,12 +105,12 @@ pub fn canonical_module_input (input: MaterialFlow)->Option <MaterialFlowRate> {
 impl Module {
   fn internal_outputs(&self, variation: &MapFuture)->Inputs <Option <MaterialFlow>> {
     self.module_type.outputs.iter().map (| output | {
-      variation.dumped.iter().find (| (location,_) | *location == output.inner_location).map (| (_, flow) | flow.delayed_by(TIME_TO_MOVE_MATERIAL))
+      variation.dumped.iter().find (| (location,_) | *location == output.inner_location).map (| (_, flow) | *flow)
     }).collect()
   }
   
   pub fn module_output_flows(&self, _inputs: MachineObservedInputs, module_machine_future: & ModuleMachineFuture, variation: & MapFuture)->Inputs <Option<MaterialFlow>> {
-    self.internal_outputs(variation).into_iter().map (| output | output.map(|output| output.delayed_by (module_machine_future.start_time))).collect()
+    self.internal_outputs(variation).into_iter().map (| output | output.map(|output| output.delayed_by (module_machine_future.start_time + TIME_TO_MOVE_MATERIAL))).collect()
   }
   
   pub fn module_momentary_visuals(&self, inputs: MachineObservedInputs, module_machine_future: & ModuleMachineFuture, outer_time: Number, variation: & MapFuture)->MachineMomentaryVisuals {
