@@ -1,10 +1,12 @@
-#![feature (nll)]
+//#![feature (nll)]
 #![recursion_limit="256"]
 
 extern crate eliduprees_web_games;
 
+#[cfg (target_os = "emscripten")]
 #[macro_use]
 extern crate stdweb;
+extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 #[macro_use]
@@ -15,19 +17,49 @@ extern crate arrayvec;
 #[cfg (test)]
 #[macro_use]
 extern crate proptest;
-#[macro_use]
-extern crate glium;
 extern crate siphasher;
 extern crate itertools;
 
+#[cfg (target_os = "emscripten")]
+macro_rules! debug {
+  ($($stuff: tt)*) => {{
+    /*thread_local!{static DEBUG_LINES: std::cell::RefCell<usize> = std::cell::RefCell::new(0);}
+    DEBUG_LINES.with(|lines| {
+      let mut lines = lines.borrow_mut();
+      *lines += 1;
+      if (1f64 + (*lines) as f64/100f64).ln() as i32 > (1f64 + (*lines-1) as f64/100f64).ln() as i32 {
+        println!("UHh");
+        println!($($stuff)*);
+      }
+    });*/
+    let string = format!($($stuff)*);
+    js! {
+      window.debug_length = window.debug_length || 0;
+      if (window.debug_length < 10000) {
+        window.debug_length += @{string.len() as u32};
+        document.getElementById("debug").textContent += @{&string};
+        console.log(@{&string});
+      }
+    }
+  }}
+}
+
+#[cfg (not(target_os = "emscripten"))]
+macro_rules! debug {
+  ($($stuff: tt)*) => {
+    eprintln!($($stuff)*)
+  }
+}
+
 pub use eliduprees_web_games::*;
-mod misc;
-mod flow_pattern;
+// hack-ish: modules marked pub to suppress dead code warnings from builds with different conditional compilation
+pub mod misc;
+pub mod flow_pattern;
 #[macro_use]
-mod machine_data;
-mod geometry;
-mod modules;
-mod graph_algorithms;
+pub mod machine_data;
+pub mod geometry;
+pub mod modules;
+pub mod graph_algorithms;
 
 #[cfg (target_os = "emscripten")]
 mod web_ui;
@@ -43,7 +75,7 @@ fn main() {
 
 #[cfg (not(target_os = "emscripten"))]
 fn main() {
-  println!( "Non-emscripten builds don't do anything right now");
+  //println!( "Non-emscripten builds don't do anything right now");
   /*MachinesGraph::new (vec![
     (material_generator(), None, & []),
   ]).simulate_future();
@@ -63,4 +95,10 @@ fn main() {
    (merger(), None, & [(11, 0)]),
    (consumer(), None, & []),
  ]).simulate_future();*/
+ 
+ let game: machine_data::Game = serde_json::from_reader (std::io::BufReader::new(std::fs::File::open ("../data/test.json").unwrap())).unwrap();
+ let output_edges = game.map.output_edges(& game.machine_types) ;
+ let ordering = game.map.topological_ordering_of_noncyclic_machines (& output_edges);
+ let future = game.map.future (& game.machine_types, & output_edges, & ordering, &mut graph_algorithms::ModuleFutures::default(), &[]);
+ println!("{:?}", future);
 }

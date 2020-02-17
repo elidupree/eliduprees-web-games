@@ -2,11 +2,11 @@
 
 
 window.Module = window.Module || {};
-Module.canvas = document.getElementById ("canvas");
+//Module.canvas = document.getElementById ("canvas");
 Module.TOTAL_STACK = 128*1024*1024;
 Module.TOTAL_MEMORY = 256*1024*1024;
 
-
+window.context = document.getElementById("canvas").getContext('2d');
 
 var roundUpToPowerOfTwo = (n) => {
   console.assert(n >= 1 && n <= (1 << 30), "roundUpToPowerOfTwo range error");
@@ -34,6 +34,16 @@ Promise.all(images.map((image) =>
     img.addEventListener('error', () => reject([image [0], img]), false);
     img.src = image [1];
 }))).then(
+  (images) => {
+    window.loaded_sprites = {}
+    for(var img of images) {
+      window.loaded_sprites[img[0]] = img[1]
+    }
+  },
+  (img) => {
+    console.log("image loading failed: ", img[1].src);
+  });
+/*
   (images) => {
     var coords = {};
     var coord = 0;
@@ -91,5 +101,5 @@ Promise.all(images.map((image) =>
     canvas.height = textureinfo.height;
     canvas.getContext('2d').putImageData(new ImageData(textureinfo.rgba, textureinfo.width, textureinfo.height), 0, 0);
     document.getElementsByTagName('body')[0].appendChild(canvas);
-  });
+  });*/
   

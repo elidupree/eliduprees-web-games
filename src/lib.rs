@@ -1,5 +1,5 @@
 #![recursion_limit="256"]
-#![feature (slice_patterns, specialization)]
+//#![feature (slice_patterns, specialization)]
 
 #[macro_use]
 extern crate stdweb;
@@ -62,7 +62,7 @@ pub fn auto_constant <T> (name: & str, default: T)->T
 
 
 
-  pub trait StaticDowncast <T> {
+  /*pub trait StaticDowncast <T> {
     fn static_downcast (self)->T;
   }
   impl <T> StaticDowncast <T> for T {
@@ -73,7 +73,7 @@ pub fn auto_constant <T> (name: & str, default: T)->T
   }
   pub fn static_downcast <T, U> (input: T)->U {
     StaticDowncast::<U>::static_downcast (input)
-  }
+  }*/
 
 
 pub struct FrameCallbackInputs {

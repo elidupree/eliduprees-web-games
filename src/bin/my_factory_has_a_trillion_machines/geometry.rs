@@ -8,6 +8,13 @@ pub type Number = i64;
 pub type Vector = Vector2 <Number>;
 pub type Facing = u8;
 
+pub trait VectorExtension {
+  fn to_f64(&self)->Vector2 <f64>;
+}
+impl VectorExtension for Vector {
+  fn to_f64(&self)->Vector2 <f64> {Vector2::new (self [0] as f64, self [1] as f64)}
+}
+
 #[derive (Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Derivative)]
 #[derivative (Default)]
 pub struct GridIsomorphism {
@@ -25,6 +32,13 @@ impl TransformedBy for Vector {
     if isomorphism.flip { self[0] *= -1; }
     self = self.rotate_90 (isomorphism.rotation);
     self + isomorphism.translation
+  }
+}
+impl TransformedBy for Vector2 <f64> { 
+  fn transformed_by (mut self, isomorphism: GridIsomorphism)->Self {
+    if isomorphism.flip { self[0] *= -1.0; }
+    self = self.rotate_90 (isomorphism.rotation);
+    self + isomorphism.translation.to_f64()
   }
 }
 impl TransformedBy for Facing { 
@@ -60,7 +74,8 @@ impl Mul<GridIsomorphism> for GridIsomorphism {
 }
 impl Div<GridIsomorphism> for GridIsomorphism {
   type Output = GridIsomorphism; 
-  fn div (self, other: GridIsomorphism)->GridIsomorphism {
+  #[allow (clippy::suspicious_arithmetic_impl)]
+  fn div (self, other: GridIsomorphism)->GridIsomorphism {  
     self * other.inverse()
   }
 }
