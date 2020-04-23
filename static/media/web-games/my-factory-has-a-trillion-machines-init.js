@@ -1,5 +1,6 @@
 "use strict";
 
+window.leaflet = L;
 
 window.Module = window.Module || {};
 //Module.canvas = document.getElementById ("canvas");
@@ -103,3 +104,14 @@ Promise.all(images.map((image) =>
     document.getElementsByTagName('body')[0].appendChild(canvas);
   });*/
   
+  
+  
+window.leaflet_map = leaflet.map ('leaflet_map', {
+  crs: leaflet.CRS.Simple,
+  minZoom: -5,
+  center: [0, 0],
+  zoom: 5,
+});
+
+leaflet.marker ([0, 0]).addTo (leaflet_map).bindPopup ("thingy thingy").openPopup();
+

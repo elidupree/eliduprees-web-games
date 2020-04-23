@@ -14,7 +14,7 @@ use siphasher::sip::SipHasher;
 use nalgebra::Vector2;
 use num::Integer;
 
-use geometry::{Number, Vector, Facing, GridIsomorphism, Rotate90, TransformedBy};
+use geometry::{Number, Vector, Facing, GridIsomorphism, Rotate90, TransformedBy, VectorExtension};
 use machine_data::{self, //Inputs,
 Material, MachineObservedInputs, MachineType, MachineTypeRef, MachineFuture, MachineTypes, MachineTypeTrait, MachineMomentaryVisuals, MachineTypeId, //MachineTypeTrait,
 MachineState, StatefulMachine, Map, Game, //MAX_COMPONENTS,
@@ -89,14 +89,36 @@ fn machine_color(machine: & StatefulMachine)->[f32; 3] {
       ]
 }
 
+fn map_scale() -> f64 {
+  let foo = js!{ return leaflet_map.getZoomScale(leaflet_map.getZoom(), 0); }.try_into().unwrap();
+  foo
+}
+fn map_center() -> Vector2 <f64> {
+  let center_x = js!{ return leaflet_map.getCenter().lng; }.try_into().unwrap();
+  let center_y = js!{ return leaflet_map.getCenter().lat; }.try_into().unwrap();
+  Vector2::new (center_x, center_y)
+}
+fn canvas_size() -> Vector2 <f64> {
+  let x = js!{ return context.canvas.width; }.try_into().unwrap();
+  let y = js!{ return context.canvas.height; }.try_into().unwrap();
+  Vector2::new (x, y)
+}
 fn canvas_position (position: Vector)->Vector2 <f32> {
-  Vector2::new (position [0] as f32/60.0, position [1] as f32/60.0)
+  canvas_position_from_f64 (position.to_f64())
 }
 fn canvas_position_from_f64 (position: Vector2 <f64>)->Vector2 <f32> {
-  Vector2::new (position [0] as f32/60.0, position [1] as f32/60.0)
+  let scale = map_scale();
+  let center = map_center();
+  let relative = (position - center) * scale;
+  let canvas_center = canvas_size()*0.5;
+  Vector2::new (
+    (canvas_center[0] + relative[0]) as f32,
+    (canvas_center[1] - relative[1]) as f32,
+  )
 }
 fn tile_size()->Vector2 <f32> {
-  Vector2::new (1.0/30.0, 1.0/30.0)
+  let scale = map_scale()*2.0;
+  Vector2::new (scale as f32, scale as f32)
 }
 fn tile_position (visual: Vector2 <f64>)->MousePosition {
   MousePosition {
@@ -112,12 +134,13 @@ fn tile_position (visual: Vector2 <f64>)->MousePosition {
 }
 
 fn draw_rectangle (center: Vector2<f32>, size: Vector2<f32>, color: [f32; 3], sprite: & str, facing: Facing) {
-  let mut center = center;
-  center[1] = 1.0-center[1];
+  //let mut center = center;
+  //center[1] = 1.0-center[1];
   let corner = -size / 2.0;
+  debug!("{:?}", (center, size));
   js! {
     context.save();
-    context.scale(context.canvas.width, context.canvas.height);
+    //context.scale(context.canvas.width, context.canvas.height);
     context.translate (@{center [0]},@{center [1]});
     context.rotate (-Math.PI * @{facing} / 2);
     

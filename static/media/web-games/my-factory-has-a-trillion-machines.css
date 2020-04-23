@@ -1,5 +1,8 @@
-
-
 #app{
   color: #ccc;
+}
+
+#leaflet_map {
+  width: 800px;
+  height: 800px;
 }
