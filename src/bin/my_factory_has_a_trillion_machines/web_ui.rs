@@ -110,8 +110,14 @@ fn machine_color(machine: &StatefulMachine) -> [f32; 3] {
   ]
 }
 
-fn map_scale() -> f64 {
+fn map_canvas_scale() -> f64 {
   let result = js! { return leaflet_map.getZoomScale(leaflet_map.getZoom(), 0) * (window.devicePixelRatio || 1.0); }
+    .try_into()
+    .unwrap();
+  result
+}
+fn map_css_scale() -> f64 {
+  let result = js! { return leaflet_map.getZoomScale(leaflet_map.getZoom(), 0); }
     .try_into()
     .unwrap();
   result
@@ -134,7 +140,7 @@ fn canvas_position(position: Vector) -> Vector2<f32> {
   canvas_position_from_f64(position.to_f64())
 }
 fn canvas_position_from_f64(position: Vector2<f64>) -> Vector2<f32> {
-  let scale = map_scale();
+  let scale = map_canvas_scale();
   let center = map_center();
   let relative = (position - center) * scale;
   let canvas_center = canvas_size() * 0.5;
@@ -143,19 +149,20 @@ fn canvas_position_from_f64(position: Vector2<f64>) -> Vector2<f32> {
     (canvas_center[1] - relative[1]) as f32,
   )
 }
-fn tile_size() -> Vector2<f32> {
-  let scale = map_scale() * 2.0;
+fn tile_canvas_size() -> Vector2<f32> {
+  let scale = map_canvas_scale() * 2.0;
   Vector2::new(scale as f32, scale as f32)
 }
-fn tile_position(visual: Vector2<f64>) -> MousePosition {
+fn tile_position(css_position: Vector2<f64>, canvas_css_size: Vector2<f64>) -> MousePosition {
+  let world = map_center() + (css_position - canvas_css_size * 0.5) / map_css_scale();
   MousePosition {
     tile_center: Vector::new(
-      (visual[0] * 30.0).floor() as Number * 2 + 1,
-      (visual[1] * 30.0).floor() as Number * 2 + 1,
+      (world[0] * 0.5).floor() as Number * 2 + 1,
+      (world[1] * 0.5).floor() as Number * 2 + 1,
     ),
     nearest_lines: Vector::new(
-      (visual[0] * 30.0).round() as Number * 2,
-      (visual[1] * 30.0).round() as Number * 2,
+      (world[0] * 0.5).round() as Number * 2,
+      (world[1] * 0.5).round() as Number * 2,
     ),
   }
 }
@@ -272,41 +279,50 @@ pub fn run_game() {
 
   let mousedown_callback = {
     let state = state.clone();
-    move |x: f64, y: f64, click_type: ClickType| {
-      mouse_move(&mut state.borrow_mut(), tile_position(Vector2::new(x, y)));
+    move |x: f64, y: f64, width: f64, height: f64, click_type: ClickType| {
+      mouse_move(
+        &mut state.borrow_mut(),
+        tile_position(Vector2::new(x, y), Vector2::new(width, height)),
+      );
       mouse_down(&mut state.borrow_mut(), click_type);
     }
   };
   let mouseup_callback = {
     let state = state.clone();
-    move |x: f64, y: f64| {
-      mouse_move(&mut state.borrow_mut(), tile_position(Vector2::new(x, y)));
+    move |x: f64, y: f64, width: f64, height: f64| {
+      mouse_move(
+        &mut state.borrow_mut(),
+        tile_position(Vector2::new(x, y), Vector2::new(width, height)),
+      );
       mouse_up(&mut state.borrow_mut());
     }
   };
   let mousemove_callback = {
     let state = state.clone();
-    move |x: f64, y: f64| {
-      mouse_move(&mut state.borrow_mut(), tile_position(Vector2::new(x, y)));
+    move |x: f64, y: f64, width: f64, height: f64| {
+      mouse_move(
+        &mut state.borrow_mut(),
+        tile_position(Vector2::new(x, y), Vector2::new(width, height)),
+      );
     }
   };
 
   js! {
     window.mouse_coords = function (event) {
       var offset = canvas.getBoundingClientRect();
-      var x = (event.clientX - offset.left)/offset.width;
-      var y = 1.0 - (event.clientY - offset.top)/offset.height;
-      return [x,y];
+      var x = (event.clientX - offset.left);
+      var y = offset.height - (event.clientY - offset.top);
+      return [x,y,offset.width,offset.height];
     };
     window.mouse_callback = function (callback) {
       return function(event) {
-        var xy = mouse_coords(event);
-        (callback)(xy[0],xy[1]);
+        var xywh = mouse_coords(event);
+        (callback)(xywh[0],xywh[1],xywh[2],xywh[3]);
       }
     };
     window.mousedown_callback = function(event) {
-      var xy = mouse_coords(event);
-      (@{mousedown_callback})(xy[0],xy[1], {buttons: event.buttons, shift: event.shiftKey, ctrl: event.ctrlKey});
+      var xywh = mouse_coords(event);
+      (@{mousedown_callback})(xywh[0],xywh[1],xywh[2],xywh[3], {buttons: event.buttons, shift: event.shiftKey, ctrl: event.ctrlKey});
     };
   }
   js! {
@@ -811,8 +827,8 @@ fn draw_map(
     let machine_type = state.game.machine_types.get(machine.type_id);
     let radius = machine_type.radius();
     let size = Vector2::new(
-      tile_size()[0] * (radius * 2) as f32 / 2.0,
-      tile_size()[1] * (radius * 2) as f32 / 2.0,
+      tile_canvas_size()[0] * (radius * 2) as f32 / 2.0,
+      tile_canvas_size()[1] * (radius * 2) as f32 / 2.0,
     );
     let machine_isomorphism = machine.state.position * isomorphism;
     draw_rectangle(
@@ -844,7 +860,7 @@ fn draw_map(
         );
         draw_rectangle(
           pos,
-          tile_size(),
+          tile_canvas_size(),
           machine_color(machine),
           "input",
           input_location.facing.transformed_by(isomorphism),
@@ -852,7 +868,7 @@ fn draw_map(
         if let Some(material) = expected_material {
           draw_rectangle(
             pos,
-            tile_size() * 0.8,
+            tile_canvas_size() * 0.8,
             machine_color(machine),
             material.icon(),
             0,
@@ -870,7 +886,7 @@ fn draw_map(
             (output_location.position - Vector::new(1, 0).rotate_90(output_location.facing))
               .transformed_by(isomorphism),
           ),
-          tile_size(),
+          tile_canvas_size(),
           machine_color(machine),
           "input",
           output_location
@@ -913,7 +929,7 @@ fn draw_map(
     for (location, material) in &visuals.materials {
       draw_rectangle(
         canvas_position_from_f64(location.transformed_by(machine_isomorphism)),
-        tile_size() * 0.6,
+        tile_canvas_size() * 0.6,
         [0.0, 0.0, 0.0],
         material.icon(),
         Facing::default(),
