@@ -111,10 +111,10 @@ fn machine_color(machine: &StatefulMachine) -> [f32; 3] {
 }
 
 fn map_scale() -> f64 {
-  let foo = js! { return leaflet_map.getZoomScale(leaflet_map.getZoom(), 0); }
+  let result = js! { return leaflet_map.getZoomScale(leaflet_map.getZoom(), 0) * (window.devicePixelRatio || 1.0); }
     .try_into()
     .unwrap();
-  foo
+  result
 }
 fn map_center() -> Vector2<f64> {
   let center_x = js! { return leaflet_map.getCenter().lng; }
