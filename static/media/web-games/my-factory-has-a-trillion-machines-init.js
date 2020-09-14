@@ -109,6 +109,7 @@ Promise.all(images.map((image) =>
 window.leaflet_map = leaflet.map ('leaflet_map', {
   crs: leaflet.CRS.Simple,
   minZoom: -5,
+  //zoomAnimation: false,
   center: [0, 0],
   zoom: 5,
 });
