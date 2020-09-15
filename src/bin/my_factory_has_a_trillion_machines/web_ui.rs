@@ -1,18 +1,14 @@
 use super::*;
 
-use std::cell::RefCell;
-use std::hash::{Hash, Hasher};
-use std::rc::Rc;
-use stdweb;
-//use std::collections::HashMap;
-use std::cmp::{max, min};
-//use std::iter;
-//use arrayvec::ArrayVec;
-use stdweb::unstable::TryInto;
-//use stdweb::web::ArrayBuffer;
+use eliduprees_web_games::js_unwrap;
 use nalgebra::Vector2;
 use num::Integer;
 use siphasher::sip::SipHasher;
+use std::cell::RefCell;
+//use std::cmp::{max, min};
+use std::hash::{Hash, Hasher};
+use std::rc::Rc;
+use stdweb;
 
 use geometry::{Facing, GridIsomorphism, Number, Rotate90, TransformedBy, Vector, VectorExtension};
 use graph_algorithms::{MachineAndInputsFuture, MapFuture, ModuleFutures};
@@ -111,29 +107,19 @@ fn machine_color(machine: &StatefulMachine) -> [f32; 3] {
 }
 
 fn map_canvas_scale() -> f64 {
-  let result = js! { return leaflet_map.getZoomScale(leaflet_map.getZoom(), 0) * (window.devicePixelRatio || 1.0); }
-    .try_into()
-    .unwrap();
-  result
+  js_unwrap! { return leaflet_map.getZoomScale(leaflet_map.getZoom(), 0) * (window.devicePixelRatio || 1.0); }
 }
 fn map_css_scale() -> f64 {
-  let result = js! { return leaflet_map.getZoomScale(leaflet_map.getZoom(), 0); }
-    .try_into()
-    .unwrap();
-  result
+  js_unwrap! { return leaflet_map.getZoomScale(leaflet_map.getZoom(), 0); }
 }
 fn map_center() -> Vector2<f64> {
-  let center_x = js! { return leaflet_map.getCenter().lng; }
-    .try_into()
-    .unwrap();
-  let center_y = js! { return leaflet_map.getCenter().lat; }
-    .try_into()
-    .unwrap();
+  let center_x = js_unwrap! { return leaflet_map.getCenter().lng; };
+  let center_y = js_unwrap! { return leaflet_map.getCenter().lat; };
   Vector2::new(center_x, center_y)
 }
 fn canvas_size() -> Vector2<f64> {
-  let x = js! { return context.canvas.width; }.try_into().unwrap();
-  let y = js! { return context.canvas.height; }.try_into().unwrap();
+  let x = js_unwrap! { return context.canvas.width; };
+  let y = js_unwrap! { return context.canvas.height; };
   Vector2::new(x, y)
 }
 fn canvas_position(position: Vector) -> Vector2<f32> {
@@ -197,15 +183,6 @@ fn draw_rectangle(
     context.restore();
   };
   /*sprite_offset.rotate_90((4-facing)%4);*/
-}
-
-impl MousePosition {
-  fn overlaps_machine(&self, machine_types: &MachineTypes, machine: &StatefulMachine) -> bool {
-    let machine_type = machine_types.get(machine.type_id);
-    let radius = machine_type.radius();
-    let offset = machine.state.position.translation - self.tile_center;
-    offset[0].abs() < radius && offset[1].abs() < radius
-  }
 }
 
 fn inside_machine(
@@ -308,18 +285,6 @@ pub fn run_game() {
   };
 
   js! {
-    window.mouse_coords = function (event) {
-      var offset = canvas.getBoundingClientRect();
-      var x = (event.clientX - offset.left);
-      var y = offset.height - (event.clientY - offset.top);
-      return [x,y,offset.width,offset.height];
-    };
-    window.mouse_callback = function (callback) {
-      return function(event) {
-        var xywh = mouse_coords(event);
-        (callback)(xywh[0],xywh[1],xywh[2],xywh[3]);
-      }
-    };
     window.mousedown_callback = function(event) {
       var xywh = mouse_coords(event);
       (@{mousedown_callback})(xywh[0],xywh[1],xywh[2],xywh[3], {buttons: event.buttons, shift: event.shiftKey, ctrl: event.ctrlKey});
@@ -364,10 +329,7 @@ pub fn run_game() {
 }
 
 fn current_mode() -> String {
-  let foo = js! { return ($("input:radio[name=machine_choice]:checked").val()); }
-    .try_into()
-    .unwrap();
-  foo
+  js_unwrap! { return ($("input:radio[name=machine_choice]:checked").val()); }
 }
 
 //as the output of a convenience function, it's intentional that a bunch of this data is redundant
@@ -432,6 +394,7 @@ fn smallest_module_containing(
             module_id: machine.type_id,
             start_time,
           });
+          continue 'outer;
         }
       }
     }
@@ -499,39 +462,6 @@ impl ModuleInstancePath {
       MachineTypeId::Module(new_module_index);
   }
 }
-/*
-
-// TODO reduce duplicate code id 394342002
-fn in_smallest_module<F: FnOnce(GridIsomorphism, & Map)->R, R> (map: &Map, isomorphism: GridIsomorphism, (position, radius): (Vector, Number), callback: F)->R {
-  for machine in map.machines.iter() {
-    /*if let MachineType::ModuleMachine(module_machine) = &machine.type_id {
-      let machine_isomorphism = machine.state.position*isomorphism;
-      let relative_position = position - machine_isomorphism.translation;
-      let available_radius = module_machine.module.module_type.inner_radius - radius;
-      if relative_position[0].abs() <= available_radius && relative_position[1].abs() <= available_radius {
-        return in_smallest_module(&module_machine.module.map.machines, machine_isomorphism, (position, radius), callback);
-      }
-    }*/
-  }
-  callback (isomorphism, map)
-}
-// TODO reduce duplicate code id 394342002
-fn edit_in_smallest_module<F: FnOnce(GridIsomorphism, &mut Map)->R, R> (map: &mut Map, isomorphism: GridIsomorphism, (position, radius): (Vector, Number), callback: F)->R {
-  for machine in map.machines.iter_mut() {
-    /*if let MachineType::ModuleMachine(module_machine) = &mut machine.type_id {
-      let machine_isomorphism = machine.state.position*isomorphism;
-      let relative_position = position - machine_isomorphism.translation;
-      let available_radius = module_machine.module.module_type.inner_radius - radius;
-      if relative_position[0].abs() <= available_radius && relative_position[1].abs() <= available_radius {
-        let mut edited: Module = (*module_machine.module).clone();
-        let result = edit_in_smallest_module(&mut edited.map.machines, machine_isomorphism, (position, radius), callback);
-        module_machine.module = Rc::new(edited);
-        return result;
-      }
-    }*/
-  }
-  callback (isomorphism, map)
-}*/
 
 fn build_machine(state: &mut State, machine_type_id: MachineTypeId, position: GridIsomorphism) {
   let machine_type = state.game.machine_types.get(machine_type_id);
@@ -540,7 +470,6 @@ fn build_machine(state: &mut State, machine_type_id: MachineTypeId, position: Gr
 
   if map.machines.iter().any(|machine| {
     let radius = state.game.machine_types.get(machine.type_id).radius() + machine_type.radius();
-    //debug!("{:?}", (position, isomorphism, machine.state.position, isomorphism*machine.state.position, position / (machine.state.position*isomorphism)));
     let offset = (position / (machine.state.position * isomorphism)).translation;
     offset[0].abs() < radius && offset[1].abs() < radius
   }) {
@@ -569,8 +498,6 @@ fn build_machine(state: &mut State, machine_type_id: MachineTypeId, position: Gr
       .get_mut(&material)
       .unwrap() -= amount;
   }
-  let radius = machine_type.radius();
-  let machine_types = &mut state.game.machine_types;
   let inner_now = state.current_game_time - start_time;
 
   path.modify_map(&mut state.game, |machine_types, map, _, _| {
@@ -969,10 +896,7 @@ fn do_frame(state: &Rc<RefCell<State>>) {
     + (now() - state.start_ui_time) * TIME_TO_MOVE_MATERIAL as f64 * 2.0;
   state.current_game_time = fractional_time as Number;
 
-  if js! {return window.loaded_sprites === undefined;}
-    .try_into()
-    .unwrap()
-  {
+  if js_unwrap! {return window.loaded_sprites === undefined;} {
     return;
   }
 

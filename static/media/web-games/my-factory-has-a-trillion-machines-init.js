@@ -7,6 +7,8 @@ window.Module = window.Module || {};
 Module.TOTAL_STACK = 128*1024*1024;
 Module.TOTAL_MEMORY = 256*1024*1024;
 
+window.devicePixelRatio = window.devicePixelRatio || 1.0;
+
 window.context = document.getElementById("canvas").getContext('2d');
 
 var roundUpToPowerOfTwo = (n) => {
@@ -15,18 +17,31 @@ var roundUpToPowerOfTwo = (n) => {
 };
 
 var images = [
-["chest", "/media/web-games/factory-images/chest.png?rr"],
-["conveyor", "/media/web-games/factory-images/conveyor.png?rr"],
-["iron", "/media/web-games/factory-images/iron.png?rr"],
-["machine", "/media/web-games/factory-images/machine.png?rr"],
-["merger", "/media/web-games/factory-images/merger.png?rr"],
-["mine", "/media/web-games/factory-images/mine.png?rr"],
-["ore", "/media/web-games/factory-images/ore.png?rr"],
-["splitter", "/media/web-games/factory-images/splitter.png?rr"],
-["rounded-rectangle-solid", "/media/web-games/factory-images/rounded-rectangle-solid.png?rr"],
-["rounded-rectangle-transparent", "/media/web-games/factory-images/rounded-rectangle-transparent.png?rr"],
-["input", "/media/web-games/factory-images/input.png?rr"]
-]; 
+  ["chest", "/media/web-games/factory-images/chest.png?rr"],
+  ["conveyor", "/media/web-games/factory-images/conveyor.png?rr"],
+  ["iron", "/media/web-games/factory-images/iron.png?rr"],
+  ["machine", "/media/web-games/factory-images/machine.png?rr"],
+  ["merger", "/media/web-games/factory-images/merger.png?rr"],
+  ["mine", "/media/web-games/factory-images/mine.png?rr"],
+  ["ore", "/media/web-games/factory-images/ore.png?rr"],
+  ["splitter", "/media/web-games/factory-images/splitter.png?rr"],
+  ["rounded-rectangle-solid", "/media/web-games/factory-images/rounded-rectangle-solid.png?rr"],
+  ["rounded-rectangle-transparent", "/media/web-games/factory-images/rounded-rectangle-transparent.png?rr"],
+  ["input", "/media/web-games/factory-images/input.png?rr"]
+];
+
+window.mouse_coords = function (event) {
+  var offset = canvas.getBoundingClientRect();
+  var x = (event.clientX - offset.left);
+  var y = offset.height - (event.clientY - offset.top);
+  return [x,y,offset.width,offset.height];
+};
+window.mouse_callback = function (callback) {
+  return function(event) {
+    var xywh = mouse_coords(event);
+    (callback)(xywh[0],xywh[1],xywh[2],xywh[3]);
+  }
+};
 
 Promise.all(images.map((image) =>
   new Promise((resolve, reject) => {
