@@ -913,11 +913,12 @@ fn draw_map(
 }
 
 fn do_frame(state: &Rc<RefCell<State>>) {
+  if js_unwrap! {return window.loaded_sprites === undefined;} {
+    return;
+  }
+
   let mut state = state.borrow_mut();
   let state = &mut *state;
-  let fractional_time = state.start_game_time as f64
-    + (now() - state.start_ui_time) * TIME_TO_MOVE_MATERIAL as f64 * 2.0;
-  state.current_game_time = fractional_time as Number;
 
   for QueuedMouseMove {
     x,
@@ -932,9 +933,9 @@ fn do_frame(state: &Rc<RefCell<State>>) {
     );
   }
 
-  if js_unwrap! {return window.loaded_sprites === undefined;} {
-    return;
-  }
+  let fractional_time = state.start_game_time as f64
+    + (now() - state.start_ui_time) * TIME_TO_MOVE_MATERIAL as f64 * 2.0;
+  state.current_game_time = fractional_time as Number;
 
   js! {
     context.fillStyle = "white";
