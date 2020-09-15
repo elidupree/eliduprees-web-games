@@ -18,8 +18,10 @@ extern crate num;
 #[macro_use]
 extern crate proptest;
 extern crate itertools;
+extern crate live_prop_test;
 extern crate siphasher;
 
+#[allow(unused_macros)]
 #[cfg(any(target_arch = "wasm32", target_arch = "asmjs"))]
 macro_rules! debug {
   ($($stuff: tt)*) => {{
@@ -44,6 +46,7 @@ macro_rules! debug {
   }}
 }
 
+#[allow(unused_macros)]
 #[cfg(not(any(target_arch = "wasm32", target_arch = "asmjs")))]
 macro_rules! debug {
   ($($stuff: tt)*) => {
@@ -68,6 +71,19 @@ mod web_ui;
 fn main() {
   stdweb::initialize();
   println!("Starting emscripten build");
+
+  // borrowed from console_error_panic_hook
+  fn hook_impl(info: &std::panic::PanicInfo) {
+    let mut msg = info.to_string();
+    msg.push_str("\n\nStack:\n\n");
+    let stack: String = js_unwrap!(return Error().stack;);
+    msg.push_str(&stack);
+    msg.push_str("\n\n");
+    console!(error, msg);
+  }
+  std::panic::set_hook(Box::new(hook_impl));
+
+  live_prop_test::initialize();
 
   web_ui::run_game();
 }

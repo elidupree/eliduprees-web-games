@@ -1,3 +1,5 @@
+use arrayvec::ArrayVec;
+use live_prop_test::live_prop_test;
 use nalgebra::Vector2;
 use serde::{de::DeserializeOwned, Serialize};
 use std::cmp::{max, min};
@@ -5,8 +7,6 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt::Debug;
 use std::hash::Hash;
-
-use arrayvec::ArrayVec;
 
 use flow_pattern::{CroppedFlow, Flow, FlowCollection, FlowPattern, MaterialFlow, RATE_DIVISOR};
 use geometry::{Facing, GridIsomorphism, Number, TransformedBy, Vector, VectorExtension};
@@ -70,6 +70,7 @@ impl Material {
 }
 
 #[allow(unused)]
+#[live_prop_test]
 pub trait MachineTypeTrait {
   // basic information
   fn name(&self) -> &str;
@@ -82,6 +83,7 @@ pub trait MachineTypeTrait {
   fn num_outputs(&self) -> usize {
     0
   }
+  #[live_prop_test(postcondition = "result > 0")]
   fn radius(&self) -> Number {
     1
   }
@@ -89,18 +91,30 @@ pub trait MachineTypeTrait {
     ""
   }
 
+  #[live_prop_test(postcondition = "result.len() == self.num_inputs()")]
   fn relative_input_locations(&self) -> Inputs<InputLocation> {
     inputs![]
   }
+
+  #[live_prop_test(postcondition = "result.len() == self.num_outputs()")]
   fn relative_output_locations(&self) -> Inputs<InputLocation> {
     inputs![]
   }
+
+  #[live_prop_test(postcondition = "result.len() == self.num_inputs()")]
   fn input_materials(&self) -> Inputs<Option<Material>> {
     inputs![]
   }
 
   type Future: Clone + Eq + Hash + Serialize + DeserializeOwned + Debug;
+
+  #[live_prop_test(postcondition = "result != Err(MachineOperatingState::Operating)")]
   fn future(&self, inputs: MachineObservedInputs) -> Result<Self::Future, MachineOperatingState>;
+
+  #[live_prop_test(
+    precondition = "inputs.input_flows.len() == self.num_inputs()",
+    postcondition = "result.len() == self.num_outputs()"
+  )]
   fn output_flows(
     &self,
     inputs: MachineObservedInputs,
@@ -149,7 +163,7 @@ impl MachineType {
   }
 }
 
-
+#[live_prop_test(use_trait_tests)]
 impl<'a> MachineTypeTrait for MachineTypeRef<'a> {
   fn name (&self)->& str {match self {$(MachineTypeRef::$Variant (value) => value.name(),)*}}
   fn cost (&self)->& [(Number, Material)] {match self {$(MachineTypeRef::$Variant (value) => value.cost (),)*}}
@@ -360,6 +374,7 @@ pub struct DistributorFuture {
   material: Material,
 }
 
+#[live_prop_test(use_trait_tests)]
 impl MachineTypeTrait for Distributor {
   fn name(&self) -> &str {
     &self.info.name
@@ -527,6 +542,7 @@ pub struct AssemblerFuture {
   outputs: Inputs<FlowPattern>,
 }
 
+#[live_prop_test(use_trait_tests)]
 impl MachineTypeTrait for Assembler {
   // basic information
   fn name(&self) -> &str {

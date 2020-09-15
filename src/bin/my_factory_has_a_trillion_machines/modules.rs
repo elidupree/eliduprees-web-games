@@ -1,5 +1,6 @@
 #![allow(unused_imports)]
 use arrayvec::ArrayVec;
+use live_prop_test::live_prop_test;
 use std::cmp::{max, min};
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -222,6 +223,7 @@ impl Module {
   }
 }
 
+#[live_prop_test(use_trait_tests)]
 impl MachineTypeTrait for Module {
   // basic information
   fn name(&self) -> &str {
@@ -363,7 +365,7 @@ impl Game {
     let new_count = collector.next_index;
 
     let mut new_modules: Vec<Module> = (0..new_count).map(|_| Module::default()).collect();
-    for (module, new_id) in std::mem::replace(&mut self.machine_types.modules, Default::default())
+    for (module, new_id) in std::mem::take(&mut self.machine_types.modules)
       .into_iter()
       .zip(&new_ids)
     {
