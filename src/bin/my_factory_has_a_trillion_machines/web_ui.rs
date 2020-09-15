@@ -29,6 +29,8 @@ use machine_data::{
   StatefulMachine,
   TIME_TO_MOVE_MATERIAL,
 };
+use std::collections::VecDeque;
+use std::mem;
 //use misc;
 //use modules::{self, Module};
 
@@ -36,6 +38,14 @@ use machine_data::{
 struct MousePosition {
   tile_center: Vector,
   nearest_lines: Vector,
+}
+
+#[derive(Copy, Clone)]
+struct QueuedMouseMove {
+  x: f64,
+  y: f64,
+  width: f64,
+  height: f64,
 }
 
 #[derive(PartialEq, Eq, Clone, Deserialize)]
@@ -81,6 +91,7 @@ struct State {
   start_game_time: Number,
   current_game_time: Number,
   mouse: MouseState,
+  queued_mouse_moves: VecDeque<QueuedMouseMove>,
 }
 
 fn machine_presets() -> Vec<MachineType> {
@@ -232,6 +243,7 @@ pub fn run_game() {
     start_game_time: 0,
     current_game_time: 0,
     mouse: Default::default(),
+    queued_mouse_moves: VecDeque::new(),
   }));
 
   let json_callback = {
@@ -277,9 +289,14 @@ pub fn run_game() {
   let mousemove_callback = {
     let state = state.clone();
     move |x: f64, y: f64, width: f64, height: f64| {
-      mouse_move(
+      queue_mouse_move(
         &mut state.borrow_mut(),
-        tile_position(Vector2::new(x, y), Vector2::new(width, height)),
+        QueuedMouseMove {
+          x,
+          y,
+          width,
+          height,
+        },
       );
     }
   };
@@ -574,6 +591,12 @@ fn hovering_area(state: &State, position: MousePosition) -> (Vector, Number) {
   }
 }
 
+fn queue_mouse_move(state: &mut State, mouse_move: QueuedMouseMove) {
+  if state.queued_mouse_moves.len() >= 100 {
+    state.queued_mouse_moves.pop_front();
+  }
+  state.queued_mouse_moves.push_back(mouse_move);
+}
 fn mouse_move(state: &mut State, position: MousePosition) {
   let facing = match state.mouse.position {
     None => 0,
@@ -895,6 +918,19 @@ fn do_frame(state: &Rc<RefCell<State>>) {
   let fractional_time = state.start_game_time as f64
     + (now() - state.start_ui_time) * TIME_TO_MOVE_MATERIAL as f64 * 2.0;
   state.current_game_time = fractional_time as Number;
+
+  for QueuedMouseMove {
+    x,
+    y,
+    width,
+    height,
+  } in mem::take(&mut state.queued_mouse_moves)
+  {
+    mouse_move(
+      state,
+      tile_position(Vector2::new(x, y), Vector2::new(width, height)),
+    );
+  }
 
   if js_unwrap! {return window.loaded_sprites === undefined;} {
     return;
