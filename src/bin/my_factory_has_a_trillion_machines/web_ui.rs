@@ -314,9 +314,9 @@ pub fn run_game() {
     var physical_width = height*dpr;
     var physical_height = width*dpr;
     $("#canvas").css({width: width+"px", height:height+"px"})
-      .attr ("width", physical_width).attr ("height", physical_height)
-      .on("mousedown", mousedown_callback)
-      .on("contextmenu", function(e) {e.preventDefault()});
+      .attr ("width", physical_width).attr ("height", physical_height);
+    leaflet_map.on("mousedown", function(event) { mousedown_callback(event.originalEvent); });
+    //window.leaflet_map.on("contextmenu", function(e) {e.preventDefault()});
     $("body")
       .on("mouseup", mouse_callback (@{mouseup_callback}))
       .on("mousemove", mouse_callback (@{mousemove_callback}));
@@ -333,7 +333,15 @@ pub fn run_game() {
   {
     let id = format!("Machine_choice_{}", &name);
     js! {
-      $("<input>", {type: "radio", id:@{& id}, name: "machine_choice", value: @{&name}, checked:@{name == "Iron mine"}}).appendTo ($("#app"));
+      $("<input>", {type: "radio", id:@{& id}, name: "machine_choice", value: @{&name}, checked:@{name == "Iron mine"}})
+        .on("click", function(e) {
+          if (@{&name} === "Conveyor") {
+            leaflet_map.dragging.disable();
+          } else {
+            leaflet_map.dragging.enable();
+          }
+        })
+        .appendTo ($("#app"));
       $("<label>", {for:@{& id}, text: @{&name}}).appendTo ($("#app"));
     }
   }
