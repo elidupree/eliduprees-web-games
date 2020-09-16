@@ -69,6 +69,23 @@ impl Material {
   }
 }
 
+fn output_times_valid(
+  inputs: MachineObservedInputs,
+  outputs: &[Option<MaterialFlow>],
+) -> Result<(), String> {
+  for output in outputs {
+    if let Some(output) = output {
+      if output.flow.start_time() < inputs.start_time {
+        return Err(format!(
+          "output {:?} started before start time {}",
+          output, inputs.start_time
+        ));
+      }
+    }
+  }
+  Ok(())
+}
+
 #[allow(unused)]
 #[live_prop_test]
 pub trait MachineTypeTrait {
@@ -113,7 +130,8 @@ pub trait MachineTypeTrait {
 
   #[live_prop_test(
     precondition = "inputs.input_flows.len() == self.num_inputs()",
-    postcondition = "result.len() == self.num_outputs()"
+    postcondition = "result.len() == self.num_outputs()",
+    postcondition = "output_times_valid(inputs, &result)"
   )]
   fn output_flows(
     &self,
