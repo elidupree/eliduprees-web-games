@@ -12,6 +12,7 @@ extern crate serde_derive;
 #[macro_use]
 extern crate derivative;
 extern crate arrayvec;
+extern crate extend;
 extern crate nalgebra;
 extern crate num;
 #[cfg(test)]

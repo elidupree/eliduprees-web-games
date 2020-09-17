@@ -39,10 +39,19 @@ pub struct Module {
 }
 
 pub fn basic_module() -> MachineType {
-  fn input(index: Number, x: Number) -> ModuleInput {
+  fn y(index: Number) -> Number {
+    -3 + index * 2
+  }
+  fn input(index: Number) -> ModuleInput {
     ModuleInput {
-      outer_location: InputLocation::new(x + x.signum(), -3 + index * 2, 0),
-      inner_location: InputLocation::new(x - x.signum(), -3 + index * 2, 0),
+      outer_location: InputLocation::input(-20, y(index)),
+      inner_location: InputLocation::input(-18, y(index)),
+    }
+  }
+  fn output(index: Number) -> ModuleInput {
+    ModuleInput {
+      outer_location: InputLocation::output(20, y(index)),
+      inner_location: InputLocation::output(18, y(index)),
     }
   }
 
@@ -52,8 +61,8 @@ pub fn basic_module() -> MachineType {
     module_type: ModuleType {
       info: StandardMachineInfo::new("Basic module", "rounded-rectangle-solid", 20, cost.clone()),
       inner_radius: 18,
-      inputs: (0..4).map(|i| input(i, -19)).collect(),
-      outputs: (0..4).map(|i| input(i, 19)).collect(),
+      inputs: (0..4).map(input).collect(),
+      outputs: (0..4).map(output).collect(),
     },
     cost,
     map: Map {

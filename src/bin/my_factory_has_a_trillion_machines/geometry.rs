@@ -1,18 +1,43 @@
+use extend::ext;
 use nalgebra::Vector2;
 use std::ops::Neg;
-use std::ops::{Div, Mul};
+use std::ops::{Div, Mul, Sub};
 
 pub type Number = i64;
 
 pub type Vector = Vector2<Number>;
-pub type Facing = u8;
 
-pub trait VectorExtension {
-  fn to_f64(&self) -> Vector2<f64>;
-}
-impl VectorExtension for Vector {
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Default)]
+pub struct Facing(u8);
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Default)]
+pub struct Rotation(u8);
+
+#[ext(pub, name = VectorExtension)]
+impl Vector {
   fn to_f64(&self) -> Vector2<f64> {
     Vector2::new(self[0] as f64, self[1] as f64)
+  }
+  fn exact_facing(&self) -> Option<Facing> {
+    match (self[0].signum(), self[1].signum()) {
+      (1, 0) => Some(Facing(0)),
+      (0, 1) => Some(Facing(1)),
+      (-1, 0) => Some(Facing(2)),
+      (0, -1) => Some(Facing(3)),
+      _ => None,
+    }
+  }
+  fn closest_facing(&self) -> Option<Facing> {
+    if self[0] > self[1].abs() {
+      Some(Facing(0))
+    } else if self[1] > self[0].abs() {
+      Some(Facing(1))
+    } else if -self[0] > self[1].abs() {
+      Some(Facing(2))
+    } else if -self[1] > self[0].abs() {
+      Some(Facing(3))
+    } else {
+      None
+    }
   }
 }
 
@@ -21,8 +46,27 @@ impl VectorExtension for Vector {
 pub struct GridIsomorphism {
   #[derivative(Default(value = "Vector::new(0,0)"))]
   pub translation: Vector,
-  pub rotation: Facing,
+  pub rotation: Rotation,
   pub flip: bool,
+}
+
+impl Rotation {
+  // private method only used by GridIsomorphism to represent the canonical flip
+  fn canonical_flip(self) -> Rotation {
+    Rotation((4 - self.0) % 4)
+  }
+  pub fn quarter_turns_from_posx_towards_posy(self) -> u8 {
+    self.0
+  }
+}
+impl Facing {
+  // private method only used by GridIsomorphism to represent the canonical flip
+  fn canonical_flip(self) -> Facing {
+    Facing((4 - self.0) % 4)
+  }
+  pub fn unit_vector(self) -> Vector {
+    Vector::new(1, 0).rotate_90(self.0)
+  }
 }
 
 pub trait TransformedBy {
@@ -33,7 +77,7 @@ impl TransformedBy for Vector {
     if isomorphism.flip {
       self[0] *= -1;
     }
-    self = self.rotate_90(isomorphism.rotation);
+    self = self.rotate(isomorphism.rotation);
     self + isomorphism.translation
   }
 }
@@ -42,16 +86,16 @@ impl TransformedBy for Vector2<f64> {
     if isomorphism.flip {
       self[0] *= -1.0;
     }
-    self = self.rotate_90(isomorphism.rotation);
+    self = self.rotate(isomorphism.rotation);
     self + isomorphism.translation.to_f64()
   }
 }
 impl TransformedBy for Facing {
   fn transformed_by(mut self, isomorphism: GridIsomorphism) -> Self {
     if isomorphism.flip {
-      self = (4 - self) % 4
+      self = self.canonical_flip()
     }
-    self = self.rotate_90(isomorphism.rotation);
+    self = self.rotate(isomorphism.rotation);
     self
   }
 }
@@ -73,11 +117,11 @@ impl Mul<GridIsomorphism> for GridIsomorphism {
   fn mul(mut self, other: GridIsomorphism) -> GridIsomorphism {
     if other.flip {
       self.translation[0] *= -1;
-      self.rotation = (4 - self.rotation) % 4;
+      self.rotation = self.rotation.canonical_flip();
       self.flip = !self.flip;
     }
-    self.translation = self.translation.rotate_90(other.rotation);
-    self.rotation = self.rotation.rotate_90(other.rotation);
+    self.translation = self.translation.rotate(other.rotation);
+    self.rotation = self.rotation.rotate(other.rotation);
     self.translation += other.translation;
     self
   }
@@ -91,12 +135,22 @@ impl Div<GridIsomorphism> for GridIsomorphism {
 }
 impl GridIsomorphism {
   pub fn inverse(mut self) -> GridIsomorphism {
-    self.translation = (-self.translation).rotate_90((4 - self.rotation) % 4);
+    self.translation = (-self.translation).rotate(self.rotation.canonical_flip());
     if self.flip {
       self.translation[0] *= -1;
     } else {
-      self.rotation = (4 - self.rotation) % 4;
+      self.rotation = self.rotation.canonical_flip();
     }
+    self
+  }
+  pub fn with_rotation_changed_to_make_facing_transform_to(
+    mut self,
+    from: Facing,
+    to: Facing,
+  ) -> GridIsomorphism {
+    self.rotation = Rotation::default();
+    let from_flipped = from.transformed_by(self);
+    self.rotation = to - from_flipped;
     self
   }
 }
@@ -110,7 +164,7 @@ mod tests {
   fn grid_isomorphism_unit_tests() {
     let isomorphism = GridIsomorphism {
       translation: Vector::new(5, 4),
-      rotation: 1,
+      rotation: Rotation(1),
       flip: true,
     };
     let vector = Vector::new(2, 1);
@@ -122,6 +176,12 @@ mod tests {
     (-1000000i64..1000000i64, -1000000i64..1000000i64)
       .prop_map(|(x, y)| Vector::new(x, y))
       .boxed()
+  }
+  fn arbitrary_facing() -> BoxedStrategy<Facing> {
+    (0u8..4u8).prop_map(Facing).boxed()
+  }
+  fn arbitrary_rotation() -> BoxedStrategy<Rotation> {
+    (0u8..4u8).prop_map(Rotation).boxed()
   }
   /*
   prop_compose! {
@@ -135,7 +195,7 @@ mod tests {
   prop_compose! {
     fn arbitrary_isomorphism()(
       translation in arbitrary_vector(),
-      rotation in 0u8..4u8,
+      rotation in  arbitrary_rotation(),
       flip in any::<bool>()
     )->GridIsomorphism {
       GridIsomorphism {
@@ -165,7 +225,7 @@ mod tests {
       prop_assert_eq! (vector, vector.transformed_by(isomorphism).transformed_by(isomorphism.inverse()));
     }
     #[test]
-    fn randomly_test_grid_isomorphism_inverse_facing (isomorphism in arbitrary_isomorphism(), facing in 0u8..4u8) {
+    fn randomly_test_grid_isomorphism_inverse_facing (isomorphism in arbitrary_isomorphism(), facing in arbitrary_facing()) {
       prop_assert_eq! (facing, facing.transformed_by(isomorphism).transformed_by(isomorphism.inverse()));
     }
     #[test]
@@ -187,13 +247,16 @@ mod tests {
   }
 }
 
-pub trait Rotate90 {
-  fn rotate_90(self, facing: Facing) -> Self;
+pub trait Rotate: Sized {
+  fn rotate(self, rotation: Rotation) -> Self {
+    self.rotate_90(rotation.0)
+  }
+  fn rotate_90(self, quarters: u8) -> Self;
 }
 
-impl<T: ::nalgebra::Scalar + Neg<Output = T>> Rotate90 for Vector2<T> {
-  fn rotate_90(self, facing: Facing) -> Self {
-    match facing {
+impl<T: ::nalgebra::Scalar + Neg<Output = T>> Rotate for Vector2<T> {
+  fn rotate_90(self, quarters: u8) -> Self {
+    match quarters {
       0 => self,
       1 => Vector2::new(-self[1], self[0]),
       2 => Vector2::new(-self[0], -self[1]),
@@ -202,18 +265,29 @@ impl<T: ::nalgebra::Scalar + Neg<Output = T>> Rotate90 for Vector2<T> {
     }
   }
 }
-impl Rotate90 for Facing {
-  fn rotate_90(self, facing: Facing) -> Facing {
-    (self + facing) % 4
+impl Rotate for Rotation {
+  fn rotate_90(self, quarters: u8) -> Rotation {
+    Rotation((self.0 + quarters) % 4)
   }
 }
-impl<T: Rotate90, U: Rotate90> Rotate90 for (T, U) {
-  fn rotate_90(self, facing: Facing) -> Self {
-    (self.0.rotate_90(facing), self.1.rotate_90(facing))
+impl Rotate for Facing {
+  fn rotate_90(self, quarters: u8) -> Facing {
+    Facing((self.0 + quarters) % 4)
   }
 }
-impl<T: Rotate90> Rotate90 for Option<T> {
-  fn rotate_90(self, facing: Facing) -> Self {
-    self.map(|t| t.rotate_90(facing))
+impl<T: Rotate, U: Rotate> Rotate for (T, U) {
+  fn rotate_90(self, quarters: u8) -> Self {
+    (self.0.rotate_90(quarters), self.1.rotate_90(quarters))
+  }
+}
+impl<T: Rotate> Rotate for Option<T> {
+  fn rotate_90(self, quarters: u8) -> Self {
+    self.map(|t| t.rotate_90(quarters))
+  }
+}
+impl Sub<Facing> for Facing {
+  type Output = Rotation;
+  fn sub(self, other: Facing) -> Rotation {
+    Rotation((4 + self.0 - other.0) % 4)
   }
 }

@@ -10,7 +10,9 @@ use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use stdweb;
 
-use geometry::{Facing, GridIsomorphism, Number, Rotate90, TransformedBy, Vector, VectorExtension};
+use geometry::{
+  Facing, GridIsomorphism, Number, Rotate, Rotation, TransformedBy, Vector, VectorExtension,
+};
 use graph_algorithms::{MachineAndInputsFuture, MapFuture, ModuleFutures};
 use machine_data::{
   self, //Inputs,
@@ -187,7 +189,7 @@ fn draw_rectangle(
   size: Vector2<f32>,
   color: [f32; 3],
   sprite: &str,
-  facing: Facing,
+  rotation: Rotation,
 ) {
   //let mut center = center;
   //center[1] = 1.0-center[1];
@@ -197,7 +199,7 @@ fn draw_rectangle(
     context.save();
     //context.scale(context.canvas.width, context.canvas.height);
     context.translate (@{center [0]},@{center [1]});
-    context.rotate (-Math.PI * @{facing} / 2);
+    context.rotate (-(Math.PI*0.5) * @{rotation.quarter_turns_from_posx_towards_posy()});
 
     var sprite = loaded_sprites[@{sprite}];
 
@@ -586,16 +588,6 @@ fn recalculate_future(state: &mut State) {
   }*/
 }
 
-fn exact_facing(vector: Vector) -> Option<Facing> {
-  match (vector[0].signum(), vector[1].signum()) {
-    (1, 0) => Some(0),
-    (0, 1) => Some(1),
-    (-1, 0) => Some(2),
-    (0, -1) => Some(3),
-    _ => None,
-  }
-}
-
 fn hovering_area(state: &State, samples: &DomSamples, position: MousePosition) -> (Vector, Number) {
   if let Some(machine_type) = state
     .game
@@ -625,11 +617,11 @@ fn queue_mouse_move(state: &mut State, mouse_move: QueuedMouseMove) {
 }
 fn mouse_move(state: &mut State, samples: &DomSamples, position: MousePosition) {
   let facing = match state.mouse.position {
-    None => 0,
+    None => Facing::default(),
     Some(previous_position) => {
       let delta = hovering_area(state, samples, position).0
         - hovering_area(state, samples, previous_position).0;
-      match exact_facing(delta) {
+      match delta.exact_facing() {
         Some(facing) => facing,
         _ => loop {
           let difference = hovering_area(state, samples, position).0
@@ -682,9 +674,15 @@ fn mouse_move(state: &mut State, samples: &DomSamples, position: MousePosition) 
           .iter()
           .position(|machine| inside_machine(&state.game.machine_types, inner_position, machine))
         {
-          path.modify_map(&mut state.game, |machine_types, map, _, _| {
+          path.modify_map(&mut state.game, |machine_types, map, isomorphism, _| {
             map.modify_machines(machine_types, vec![rotated_index], inner_now, |machine| {
-              machine.state.position.rotation = facing
+              machine.state.position = machine
+                .state
+                .position
+                .with_rotation_changed_to_make_facing_transform_to(
+                  Facing::default().transformed_by(isomorphism),
+                  facing,
+                )
             });
           });
           recalculate_future(state);
@@ -706,11 +704,11 @@ fn mouse_down(state: &mut State, samples: &DomSamples, click_type: ClickType) {
 
 fn mouse_maybe_held(state: &mut State, samples: &DomSamples) {
   let facing = match (state.mouse.previous_position, state.mouse.position) {
-    (Some(first), Some(second)) => {
-      exact_facing(hovering_area(state, samples, second).0 - hovering_area(state, samples, first).0)
-        .unwrap_or(0)
-    }
-    _ => 0,
+    (Some(first), Some(second)) => (hovering_area(state, samples, second).0
+      - hovering_area(state, samples, first).0)
+      .exact_facing()
+      .unwrap_or_default(),
+    _ => Facing::default(),
   };
   if let Some(drag) = state.mouse.drag.clone() {
     let position = state.mouse.position.unwrap();
@@ -729,7 +727,7 @@ fn mouse_maybe_held(state: &mut State, samples: &DomSamples) {
         ),
         GridIsomorphism {
           translation: hover.0,
-          rotation: facing,
+          rotation: facing - Facing::default(),
           ..Default::default()
         },
       );
@@ -816,7 +814,7 @@ fn draw_map(
       size,
       machine_color(machine),
       "rounded-rectangle-transparent",
-      0,
+      Rotation::default(),
     );
     draw_rectangle(
       canvas_position(samples, machine_isomorphism.translation),
@@ -836,7 +834,7 @@ fn draw_map(
       {
         let pos = canvas_position(
           samples,
-          (input_location.position + Vector::new(1, 0).rotate_90(input_location.facing))
+          (input_location.position + input_location.facing.unit_vector())
             .transformed_by(isomorphism),
         );
         draw_rectangle(
@@ -844,7 +842,7 @@ fn draw_map(
           tile_canvas_size(samples),
           machine_color(machine),
           "input",
-          input_location.facing.transformed_by(isomorphism),
+          input_location.facing.transformed_by(isomorphism) - Facing::default(),
         );
         if let Some(material) = expected_material {
           draw_rectangle(
@@ -852,7 +850,7 @@ fn draw_map(
             tile_canvas_size(samples) * 0.8,
             machine_color(machine),
             material.icon(),
-            0,
+            Rotation::default(),
           );
         }
       }
@@ -865,7 +863,7 @@ fn draw_map(
         draw_rectangle(
           canvas_position(
             samples,
-            (output_location.position - Vector::new(1, 0).rotate_90(output_location.facing))
+            (output_location.position - output_location.facing.unit_vector())
               .transformed_by(isomorphism),
           ),
           tile_canvas_size(samples),
@@ -874,7 +872,8 @@ fn draw_map(
           output_location
             .facing
             .rotate_90(2)
-            .transformed_by(isomorphism),
+            .transformed_by(isomorphism)
+            - Facing::default(),
         );
       }
     }
@@ -914,7 +913,7 @@ fn draw_map(
         tile_canvas_size(samples) * 0.6,
         [0.0, 0.0, 0.0],
         material.icon(),
-        Facing::default(),
+        Rotation::default(),
       );
     }
   }

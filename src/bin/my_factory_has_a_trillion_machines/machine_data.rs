@@ -1,15 +1,16 @@
 use arrayvec::ArrayVec;
-use live_prop_test::live_prop_test;
+use live_prop_test::{live_prop_test, lpt_assert, lpt_assert_eq};
 use nalgebra::Vector2;
 use serde::{de::DeserializeOwned, Serialize};
 use std::cmp::{max, min};
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::convert::TryFrom;
 use std::fmt::Debug;
 use std::hash::Hash;
 
 use flow_pattern::{CroppedFlow, Flow, FlowCollection, FlowPattern, MaterialFlow, RATE_DIVISOR};
-use geometry::{Facing, GridIsomorphism, Number, TransformedBy, Vector, VectorExtension};
+use geometry::{Facing, GridIsomorphism, Number, Rotate, TransformedBy, Vector, VectorExtension};
 //use modules::ModuleMachine;
 use modules::Module;
 
@@ -75,13 +76,48 @@ fn output_times_valid(
 ) -> Result<(), String> {
   for output in outputs {
     if let Some(output) = output {
-      if output.flow.start_time() < inputs.start_time {
-        return Err(format!(
-          "output {:?} started before start time {}",
-          output, inputs.start_time
-        ));
-      }
+      lpt_assert!(
+        output.flow.start_time() >= inputs.start_time,
+        "output {:?} started before start time {}",
+        output,
+        inputs.start_time
+      );
     }
+  }
+  Ok(())
+}
+
+fn check_input_output_locations(
+  radius: Number,
+  inputs: &Inputs<InputLocation>,
+  outputs: &Inputs<InputLocation>,
+) -> Result<(), String> {
+  for output in outputs {
+    lpt_assert_eq!(output.position.closest_facing(), Some(output.facing));
+  }
+  for input in inputs {
+    lpt_assert_eq!(
+      input.position.closest_facing(),
+      Some(input.facing.rotate_90(2))
+    );
+  }
+  let mut discovered = HashSet::new();
+  for output in outputs.iter().chain(inputs) {
+    lpt_assert!(
+      discovered.insert(output.position),
+      "there are 2 inputs/outputs in the same position",
+    );
+    let distance_from_center = max(output.position[0].abs(), output.position[1].abs());
+    lpt_assert_eq!(
+      distance_from_center,
+      radius,
+      "input/output is not on the boundary of the machine",
+    );
+    lpt_assert!(
+      output.position[0].abs() % 2 != output.position[1].abs() % 2,
+      "input/output position {:?} is not properly aligned to the edge of a grid square (it's at a half position)",
+      output.position,
+    );
   }
   Ok(())
 }
@@ -108,12 +144,18 @@ pub trait MachineTypeTrait {
     ""
   }
 
-  #[live_prop_test(postcondition = "result.len() == self.num_inputs()")]
+  #[live_prop_test(
+    postcondition = "result.len() == self.num_inputs()",
+    postcondition = "check_input_output_locations(self.radius(), &result, &self.relative_output_locations())"
+  )]
   fn relative_input_locations(&self) -> Inputs<InputLocation> {
     inputs![]
   }
 
-  #[live_prop_test(postcondition = "result.len() == self.num_outputs()")]
+  #[live_prop_test(
+    postcondition = "result.len() == self.num_outputs()",
+    postcondition = "check_input_output_locations(self.radius(), &self.relative_input_locations(), &result)"
+  )]
   fn relative_output_locations(&self) -> Inputs<InputLocation> {
     inputs![]
   }
@@ -303,38 +345,39 @@ impl StandardMachineInfo {
 }
 
 impl InputLocation {
-  pub fn new(x: Number, y: Number, facing: Facing) -> InputLocation {
+  pub fn input(x: Number, y: Number) -> InputLocation {
+    let position = Vector::new(x, y);
     InputLocation {
-      position: Vector::new(x, y),
-      facing,
+      position,
+      facing: position
+        .closest_facing()
+        .expect("there shouldn't be an input location at an exact diagonal")
+        .rotate_90(2),
+    }
+  }
+  pub fn output(x: Number, y: Number) -> InputLocation {
+    let position = Vector::new(x, y);
+    InputLocation {
+      position,
+      facing: position
+        .closest_facing()
+        .expect("there shouldn't be an output location at an exact diagonal"),
     }
   }
 }
 impl AssemblerInput {
-  pub fn new(
-    x: Number,
-    y: Number,
-    facing: Facing,
-    material: Material,
-    cost: Number,
-  ) -> AssemblerInput {
+  pub fn new(x: Number, y: Number, material: Material, cost: Number) -> AssemblerInput {
     AssemblerInput {
-      location: InputLocation::new(x, y, facing),
+      location: InputLocation::input(x, y),
       material,
       cost,
     }
   }
 }
 impl AssemblerOutput {
-  pub fn new(
-    x: Number,
-    y: Number,
-    facing: Facing,
-    material: Material,
-    amount: Number,
-  ) -> AssemblerOutput {
+  pub fn new(x: Number, y: Number, material: Material, amount: Number) -> AssemblerOutput {
     AssemblerOutput {
-      location: InputLocation::new(x, y, facing),
+      location: InputLocation::output(x, y),
       material,
       amount,
     }
@@ -345,27 +388,27 @@ pub fn conveyor() -> MachineType {
   MachineType::Distributor(Distributor {
     info: StandardMachineInfo::new("Conveyor", "conveyor", 1, vec![(1, Material::Iron)]),
     inputs: inputs![
-      InputLocation::new(-1, 0, 0),
-      InputLocation::new(0, -1, 1),
-      InputLocation::new(0, 1, 3),
+      InputLocation::input(-1, 0),
+      InputLocation::input(0, -1),
+      InputLocation::input(0, 1),
     ],
-    outputs: inputs![InputLocation::new(1, 0, 0),],
+    outputs: inputs![InputLocation::output(1, 0),],
   })
 }
 
 pub fn splitter() -> MachineType {
   MachineType::Distributor(Distributor {
     info: StandardMachineInfo::new("Splitter", "splitter", 1, vec![(1, Material::Iron)]),
-    inputs: inputs![InputLocation::new(-1, 0, 0),],
-    outputs: inputs![InputLocation::new(0, 1, 1), InputLocation::new(0, -1, 3),],
+    inputs: inputs![InputLocation::input(-1, 0),],
+    outputs: inputs![InputLocation::output(0, 1), InputLocation::output(0, -1),],
   })
 }
 
 pub fn iron_smelter() -> MachineType {
   MachineType::Assembler(Assembler {
     info: StandardMachineInfo::new("Iron smelter", "machine", 3, vec![(5, Material::Iron)]),
-    inputs: inputs![AssemblerInput::new(-3, 0, 0, Material::IronOre, 3),],
-    outputs: inputs![AssemblerOutput::new(3, 0, 0, Material::Iron, 2),],
+    inputs: inputs![AssemblerInput::new(-3, 0, Material::IronOre, 3),],
+    outputs: inputs![AssemblerOutput::new(3, 0, Material::Iron, 2),],
     assembly_duration: 10 * TIME_TO_MOVE_MATERIAL,
   })
 }
@@ -374,7 +417,7 @@ pub fn iron_mine() -> MachineType {
   MachineType::Assembler(Assembler {
     info: StandardMachineInfo::new("Iron mine", "mine", 3, vec![(50, Material::Iron)]),
     inputs: inputs![],
-    outputs: inputs![AssemblerOutput::new(3, 0, 0, Material::IronOre, 1),],
+    outputs: inputs![AssemblerOutput::new(3, 0, Material::IronOre, 1),],
     assembly_duration: TIME_TO_MOVE_MATERIAL,
   })
 }
