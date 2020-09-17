@@ -1,5 +1,11 @@
-
-
-#app{
+body {
   color: #ccc;
+}
+
+#leaflet_map {
+  width: 800px;
+  height: 800px;
+  background: transparent;
+  position: absolute;
+  top: 0;
 }

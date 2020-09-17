@@ -21,6 +21,7 @@ array_ext = "0.2"
 #glium = "0.23"
 siphasher = "0.2.3"
 itertools = "0.7.3"
+live-prop-test = {git = "https://github.com/elidupree/live-prop-test", version = "0.1", features = ["stdweb"]}
 
 [dev-dependencies]
 proptest = "0.8.7"
