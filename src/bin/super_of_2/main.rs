@@ -1,5 +1,5 @@
-#![recursion_limit="256"]
-#![feature (slice_patterns)]
+#![recursion_limit = "256"]
+#![feature(slice_patterns)]
 
 extern crate eliduprees_web_games;
 
@@ -9,30 +9,28 @@ extern crate stdweb;
 extern crate serde_derive;
 #[macro_use]
 extern crate derivative;
-extern crate nalgebra;
-extern crate rand;
-extern crate ordered_float;
+extern crate arrayvec;
 extern crate boolinator;
 extern crate lyon;
-extern crate arrayvec;
+extern crate nalgebra;
+extern crate ordered_float;
+extern crate rand;
 
 use rand::Rng;
 use stdweb::unstable::TryInto;
 
-use std::rc::Rc;
-use std::cell::RefCell;
-use std::str::FromStr;
 use nalgebra::Vector2;
-
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::str::FromStr;
 
 mod draw;
-mod simulation;
 mod misc;
+mod simulation;
 pub use draw::*;
-pub use simulation::*;
-pub use misc::*;
 pub use eliduprees_web_games::*;
-
+pub use misc::*;
+pub use simulation::*;
 
 enum MenuState {
   Playing,
@@ -43,8 +41,7 @@ struct Game {
   menu_state: MenuState,
 }
 
-
-fn draw_game (game: & Game) {
+fn draw_game(game: &Game) {
   js! {
     context.clearRect (0, 0, canvas.width, canvas.height);
     context.save();
@@ -55,17 +52,15 @@ fn draw_game (game: & Game) {
   }
 }
 
-
-fn new_game()->State {
+fn new_game() -> State {
   State {
-  
     generator: Box::new(rand::thread_rng()),
-        
-    .. Default::default()
+
+    ..Default::default()
   }
 }
 
-#[cfg (target_os = "emscripten")]
+#[cfg(target_os = "emscripten")]
 fn main() {
   stdweb::initialize();
 
@@ -74,25 +69,26 @@ fn main() {
     window.context = canvas.getContext ("2d");
     window.constants = @{Constants::default()};
   }
-    
-  let game = Rc::new (RefCell::new (
-    Game {
-      menu_state: MenuState::Playing,
-      state: new_game(),
-    }
-  ));
-  
+
+  let game = Rc::new(RefCell::new(Game {
+    menu_state: MenuState::Playing,
+    state: new_game(),
+  }));
+
   {
     let mut game = game.borrow_mut();
-    game.state.create_entity (Entity {
-      is_object: true, is_unit: true,
-      size: Vector2::new (1.2, 2.0),
-      position: EntityPosition::Physical (EntityPhysicalPosition::Map {center: Vector2::new (3.0, 3.0)}),
-      velocity: Vector2::new (0.1, 0.0),
+    game.state.create_entity(Entity {
+      is_object: true,
+      is_unit: true,
+      size: Vector2::new(1.2, 2.0),
+      position: EntityPosition::Physical(EntityPhysicalPosition::Map {
+        center: Vector2::new(3.0, 3.0),
+      }),
+      velocity: Vector2::new(0.1, 0.0),
       inventory: None,
     });
   }
-  
+
   macro_rules! mouse_callback {
     ([$game: ident, $location: ident $($args: tt)*] $contents: expr) => {{ let game = game.clone(); move |x: f64, y: f64 $($args)*| {
       #[allow (unused_variables)]
@@ -101,7 +97,7 @@ fn main() {
       $contents
     }}}
   }
-  
+
   let mousedown_callback = mouse_callback!([ game, location, button: u16 ] {
     game.state.cancel_gesture();
     if button == 0 {
@@ -153,16 +149,16 @@ fn main() {
       mouseup_callback (event.clientX, event.clientY, event.button) ;
     });
   }
-  
+
   run(move |inputs| {
     let mut game = game.borrow_mut();
-    game.state.constants = Rc::new (js! {return window.constants;}.try_into().unwrap());
-    let duration_to_simulate = min(inputs.last_frame_duration, 50.0)/1000.0;
+    game.state.constants = Rc::new(js! {return window.constants;}.try_into().unwrap());
+    let duration_to_simulate = min(inputs.last_frame_duration, 50.0) / 1000.0;
     if duration_to_simulate > 0.0 {
       match game.menu_state {
         MenuState::Playing => {
-          game.state.simulate (duration_to_simulate);
-        },
+          game.state.simulate(duration_to_simulate);
+        }
       }
     }
     if inputs.resized_last_frame {
@@ -171,12 +167,11 @@ fn main() {
         canvas.setAttribute ("height", window.innerHeight);
       }
     }
-    draw_game (& game);
+    draw_game(&game);
   })
 }
 
-
-#[cfg (not(target_os = "emscripten"))]
+#[cfg(not(target_os = "emscripten"))]
 fn main() {
   println!("There's not currently a way to compile this game natively");
 }
