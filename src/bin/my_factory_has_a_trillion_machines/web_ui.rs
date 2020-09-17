@@ -94,6 +94,39 @@ struct State {
   queued_mouse_moves: VecDeque<QueuedMouseMove>,
 }
 
+#[derive(Clone, Deserialize)]
+struct DomSamples {
+  map_zoom: f64,
+  map_css_scale: f64,
+  map_world_center: Vector2<f64>,
+  canvas_backing_size: Vector2<f64>,
+  canvas_css_size: Vector2<f64>,
+  device_pixel_ratio: f64,
+  current_mode: String,
+}
+js_deserializable!(DomSamples);
+
+impl DomSamples {
+  fn gather() -> Self {
+    js_unwrap! {
+      var map_zoom = leaflet_map.getZoom();
+      var offset = canvas.getBoundingClientRect();
+      return {
+        map_zoom: map_zoom,
+        map_css_scale: leaflet_map.getZoomScale(leaflet_map.getZoom(), 0),
+        map_world_center: [leaflet_map.getCenter().lng, leaflet_map.getCenter().lat],
+        canvas_backing_size: [context.canvas.width, context.canvas.height],
+        canvas_css_size: [offset.width, offset.height],
+        device_pixel_ratio: window.devicePixelRatio,
+        current_mode: $("input:radio[name=machine_choice]:checked").val(),
+      };
+    }
+  }
+  fn map_backing_scale(&self) -> f64 {
+    self.map_css_scale * self.device_pixel_ratio
+  }
+}
+
 fn machine_presets() -> Vec<MachineType> {
   vec![
     machine_data::conveyor(),
@@ -117,41 +150,26 @@ fn machine_color(machine: &StatefulMachine) -> [f32; 3] {
   ]
 }
 
-fn map_canvas_scale() -> f64 {
-  js_unwrap! { return leaflet_map.getZoomScale(leaflet_map.getZoom(), 0) * (window.devicePixelRatio || 1.0); }
+fn canvas_position(samples: &DomSamples, position: Vector) -> Vector2<f32> {
+  canvas_position_from_f64(samples, position.to_f64())
 }
-fn map_css_scale() -> f64 {
-  js_unwrap! { return leaflet_map.getZoomScale(leaflet_map.getZoom(), 0); }
-}
-fn map_center() -> Vector2<f64> {
-  let center_x = js_unwrap! { return leaflet_map.getCenter().lng; };
-  let center_y = js_unwrap! { return leaflet_map.getCenter().lat; };
-  Vector2::new(center_x, center_y)
-}
-fn canvas_size() -> Vector2<f64> {
-  let x = js_unwrap! { return context.canvas.width; };
-  let y = js_unwrap! { return context.canvas.height; };
-  Vector2::new(x, y)
-}
-fn canvas_position(position: Vector) -> Vector2<f32> {
-  canvas_position_from_f64(position.to_f64())
-}
-fn canvas_position_from_f64(position: Vector2<f64>) -> Vector2<f32> {
-  let scale = map_canvas_scale();
-  let center = map_center();
+fn canvas_position_from_f64(samples: &DomSamples, position: Vector2<f64>) -> Vector2<f32> {
+  let scale = samples.map_backing_scale();
+  let center = samples.map_world_center;
   let relative = (position - center) * scale;
-  let canvas_center = canvas_size() * 0.5;
+  let canvas_center = samples.canvas_backing_size * 0.5;
   Vector2::new(
     (canvas_center[0] + relative[0]) as f32,
     (canvas_center[1] - relative[1]) as f32,
   )
 }
-fn tile_canvas_size() -> Vector2<f32> {
-  let scale = map_canvas_scale() * 2.0;
+fn tile_canvas_size(samples: &DomSamples) -> Vector2<f32> {
+  let scale = samples.map_backing_scale() * 2.0;
   Vector2::new(scale as f32, scale as f32)
 }
-fn tile_position(css_position: Vector2<f64>, canvas_css_size: Vector2<f64>) -> MousePosition {
-  let world = map_center() + (css_position - canvas_css_size * 0.5) / map_css_scale();
+fn tile_position(samples: &DomSamples, css_position: Vector2<f64>) -> MousePosition {
+  let world = samples.map_world_center
+    + (css_position - samples.canvas_css_size * 0.5) / samples.map_css_scale;
   MousePosition {
     tile_center: Vector::new(
       (world[0] * 0.5).floor() as Number * 2 + 1,
@@ -268,22 +286,26 @@ pub fn run_game() {
 
   let mousedown_callback = {
     let state = state.clone();
-    move |x: f64, y: f64, width: f64, height: f64, click_type: ClickType| {
+    move |x: f64, y: f64, _width: f64, _height: f64, click_type: ClickType| {
+      let samples = DomSamples::gather();
       mouse_move(
         &mut state.borrow_mut(),
-        tile_position(Vector2::new(x, y), Vector2::new(width, height)),
+        &samples,
+        tile_position(&samples, Vector2::new(x, y)),
       );
-      mouse_down(&mut state.borrow_mut(), click_type);
+      mouse_down(&mut state.borrow_mut(), &samples, click_type);
     }
   };
   let mouseup_callback = {
     let state = state.clone();
-    move |x: f64, y: f64, width: f64, height: f64| {
+    move |x: f64, y: f64, _width: f64, _height: f64| {
+      let samples = DomSamples::gather();
       mouse_move(
         &mut state.borrow_mut(),
-        tile_position(Vector2::new(x, y), Vector2::new(width, height)),
+        &samples,
+        tile_position(&samples, Vector2::new(x, y)),
       );
-      mouse_up(&mut state.borrow_mut());
+      mouse_up(&mut state.borrow_mut(), &samples);
     }
   };
   let mousemove_callback = {
@@ -351,10 +373,6 @@ pub fn run_game() {
   });
 
   stdweb::event_loop();
-}
-
-fn current_mode() -> String {
-  js_unwrap! { return ($("input:radio[name=machine_choice]:checked").val()); }
 }
 
 //as the output of a convenience function, it's intentional that a bunch of this data is redundant
@@ -578,13 +596,13 @@ fn exact_facing(vector: Vector) -> Option<Facing> {
   }
 }
 
-fn hovering_area(state: &State, position: MousePosition) -> (Vector, Number) {
+fn hovering_area(state: &State, samples: &DomSamples, position: MousePosition) -> (Vector, Number) {
   if let Some(machine_type) = state
     .game
     .machine_types
     .presets
     .iter()
-    .find(|machine_type| machine_type.as_ref().name() == current_mode())
+    .find(|machine_type| machine_type.as_ref().name() == samples.current_mode)
   {
     (
       if machine_type.as_ref().radius().is_even() {
@@ -605,34 +623,35 @@ fn queue_mouse_move(state: &mut State, mouse_move: QueuedMouseMove) {
   }
   state.queued_mouse_moves.push_back(mouse_move);
 }
-fn mouse_move(state: &mut State, position: MousePosition) {
+fn mouse_move(state: &mut State, samples: &DomSamples, position: MousePosition) {
   let facing = match state.mouse.position {
     None => 0,
     Some(previous_position) => {
-      let delta = hovering_area(state, position).0 - hovering_area(state, previous_position).0;
+      let delta = hovering_area(state, samples, position).0
+        - hovering_area(state, samples, previous_position).0;
       match exact_facing(delta) {
         Some(facing) => facing,
         _ => loop {
-          let difference = hovering_area(state, position).0
-            - hovering_area(state, state.mouse.position.unwrap()).0;
+          let difference = hovering_area(state, samples, position).0
+            - hovering_area(state, samples, state.mouse.position.unwrap()).0;
           if difference[0] != 0 {
             let offs = Vector::new(difference[0].signum() * 2, 0);
             let mut pos = state.mouse.position.unwrap();
             pos.tile_center += offs;
             pos.nearest_lines += offs;
-            mouse_move(state, pos);
+            mouse_move(state, samples, pos);
           }
-          let difference = hovering_area(state, position).0
-            - hovering_area(state, state.mouse.position.unwrap()).0;
+          let difference = hovering_area(state, samples, position).0
+            - hovering_area(state, samples, state.mouse.position.unwrap()).0;
           if difference[1] != 0 {
             let offs = Vector::new(0, difference[1].signum() * 2);
             let mut pos = state.mouse.position.unwrap();
             pos.tile_center += offs;
             pos.nearest_lines += offs;
-            mouse_move(state, pos);
+            mouse_move(state, samples, pos);
           }
-          if hovering_area(state, position).0
-            == hovering_area(state, state.mouse.position.unwrap()).0
+          if hovering_area(state, samples, position).0
+            == hovering_area(state, samples, state.mouse.position.unwrap()).0
           {
             return;
           }
@@ -649,8 +668,9 @@ fn mouse_move(state: &mut State, position: MousePosition) {
     let drag = state.mouse.drag.clone().unwrap();
     if let Some(previous) = state.mouse.previous_position {
       if drag.click_type == REGULAR_CLICK
-        && (hovering_area(state, previous).0 == hovering_area(state, drag.original_position).0
-          || current_mode() == "Conveyor")
+        && (hovering_area(state, samples, previous).0
+          == hovering_area(state, samples, drag.original_position).0
+          || samples.current_mode == "Conveyor")
       {
         let path = smallest_module_containing(state, (previous.tile_center, 1));
         let (map, isomorphism, start_time) = path.get_map(&state.game);
@@ -672,29 +692,30 @@ fn mouse_move(state: &mut State, position: MousePosition) {
       }
     }
   }
-  mouse_maybe_held(state);
+  mouse_maybe_held(state, samples);
 }
 
-fn mouse_down(state: &mut State, click_type: ClickType) {
+fn mouse_down(state: &mut State, samples: &DomSamples, click_type: ClickType) {
   state.mouse.drag = Some(DragState {
     original_position: state.mouse.position.unwrap(),
     click_type,
     moved: false,
   });
-  mouse_maybe_held(state);
+  mouse_maybe_held(state, samples);
 }
 
-fn mouse_maybe_held(state: &mut State) {
+fn mouse_maybe_held(state: &mut State, samples: &DomSamples) {
   let facing = match (state.mouse.previous_position, state.mouse.position) {
     (Some(first), Some(second)) => {
-      exact_facing(hovering_area(state, second).0 - hovering_area(state, first).0).unwrap_or(0)
+      exact_facing(hovering_area(state, samples, second).0 - hovering_area(state, samples, first).0)
+        .unwrap_or(0)
     }
     _ => 0,
   };
   if let Some(drag) = state.mouse.drag.clone() {
     let position = state.mouse.position.unwrap();
-    let hover = hovering_area(state, position);
-    if drag.click_type == REGULAR_CLICK && current_mode() == "Conveyor" {
+    let hover = hovering_area(state, samples, position);
+    if drag.click_type == REGULAR_CLICK && samples.current_mode == "Conveyor" {
       build_machine(
         state,
         MachineTypeId::Preset(
@@ -750,7 +771,7 @@ fn mouse_maybe_held(state: &mut State) {
   }
 }
 
-fn mouse_up(state: &mut State) {
+fn mouse_up(state: &mut State, samples: &DomSamples) {
   if let Some(drag) = state.mouse.drag.clone() {
     if drag.click_type == REGULAR_CLICK && !drag.moved {
       if let Some(preset_index) = state
@@ -758,13 +779,13 @@ fn mouse_up(state: &mut State) {
         .machine_types
         .presets
         .iter()
-        .position(|machine_type| machine_type.as_ref().name() == current_mode())
+        .position(|machine_type| machine_type.as_ref().name() == samples.current_mode)
       {
         build_machine(
           state,
           MachineTypeId::Preset(preset_index),
           GridIsomorphism {
-            translation: hovering_area(state, drag.original_position).0,
+            translation: hovering_area(state, samples, drag.original_position).0,
             ..Default::default()
           },
         );
@@ -776,6 +797,7 @@ fn mouse_up(state: &mut State) {
 
 fn draw_map(
   state: &State,
+  samples: &DomSamples,
   map: &Map,
   map_future: &MapFuture,
   isomorphism: GridIsomorphism,
@@ -785,19 +807,19 @@ fn draw_map(
     let machine_type = state.game.machine_types.get(machine.type_id);
     let radius = machine_type.radius();
     let size = Vector2::new(
-      tile_canvas_size()[0] * (radius * 2) as f32 / 2.0,
-      tile_canvas_size()[1] * (radius * 2) as f32 / 2.0,
+      tile_canvas_size(samples)[0] * (radius * 2) as f32 / 2.0,
+      tile_canvas_size(samples)[1] * (radius * 2) as f32 / 2.0,
     );
     let machine_isomorphism = machine.state.position * isomorphism;
     draw_rectangle(
-      canvas_position(machine_isomorphism.translation),
+      canvas_position(samples, machine_isomorphism.translation),
       size,
       machine_color(machine),
       "rounded-rectangle-transparent",
       0,
     );
     draw_rectangle(
-      canvas_position(machine_isomorphism.translation),
+      canvas_position(samples, machine_isomorphism.translation),
       size,
       machine_color(machine),
       machine_type.icon(),
@@ -813,12 +835,13 @@ fn draw_map(
         .zip(machine_type.input_materials())
       {
         let pos = canvas_position(
+          samples,
           (input_location.position + Vector::new(1, 0).rotate_90(input_location.facing))
             .transformed_by(isomorphism),
         );
         draw_rectangle(
           pos,
-          tile_canvas_size(),
+          tile_canvas_size(samples),
           machine_color(machine),
           "input",
           input_location.facing.transformed_by(isomorphism),
@@ -826,7 +849,7 @@ fn draw_map(
         if let Some(material) = expected_material {
           draw_rectangle(
             pos,
-            tile_canvas_size() * 0.8,
+            tile_canvas_size(samples) * 0.8,
             machine_color(machine),
             material.icon(),
             0,
@@ -841,10 +864,11 @@ fn draw_map(
       for output_location in machine_type.output_locations(machine.state.position) {
         draw_rectangle(
           canvas_position(
+            samples,
             (output_location.position - Vector::new(1, 0).rotate_90(output_location.facing))
               .transformed_by(isomorphism),
           ),
-          tile_canvas_size(),
+          tile_canvas_size(samples),
           machine_color(machine),
           "input",
           output_location
@@ -886,8 +910,8 @@ fn draw_map(
     };
     for (location, material) in &visuals.materials {
       draw_rectangle(
-        canvas_position_from_f64(location.transformed_by(machine_isomorphism)),
-        tile_canvas_size() * 0.6,
+        canvas_position_from_f64(samples, location.transformed_by(machine_isomorphism)),
+        tile_canvas_size(samples) * 0.6,
         [0.0, 0.0, 0.0],
         material.icon(),
         Facing::default(),
@@ -909,6 +933,7 @@ fn draw_map(
           .unwrap();
         draw_map(
           state,
+          samples,
           &module.map,
           &variation,
           machine_isomorphism,
@@ -925,9 +950,12 @@ fn do_frame(state: &Rc<RefCell<State>>) {
     return;
   }
 
+  let samples = DomSamples::gather();
+
   let mut state = state.borrow_mut();
   let state = &mut *state;
 
+  let mut tweaked_samples = samples.clone();
   for QueuedMouseMove {
     x,
     y,
@@ -935,9 +963,13 @@ fn do_frame(state: &Rc<RefCell<State>>) {
     height,
   } in mem::take(&mut state.queued_mouse_moves)
   {
+    // just in case there was a queued mouse move followed by a redraw,
+    // make sure to get the positioning correct based on the size at the time
+    tweaked_samples.canvas_css_size = Vector2::new(width, height);
     mouse_move(
       state,
-      tile_position(Vector2::new(x, y), Vector2::new(width, height)),
+      &samples,
+      tile_position(&tweaked_samples, Vector2::new(x, y)),
     );
   }
 
@@ -954,6 +986,7 @@ fn do_frame(state: &Rc<RefCell<State>>) {
 
   draw_map(
     state,
+    &samples,
     &state.game.map,
     &state.map_future,
     Default::default(),
