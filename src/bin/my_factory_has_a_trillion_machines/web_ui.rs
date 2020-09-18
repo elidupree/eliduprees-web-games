@@ -788,7 +788,7 @@ fn draw_map(samples: &DomSamples, map: MapViewWithFuture, absolute_time: Number)
       {
         let pos = canvas_position(
           samples,
-          (input_location.position + input_location.facing.unit_vector()),
+          input_location.position + input_location.facing.unit_vector(),
         );
         draw_rectangle(
           pos,
@@ -815,7 +815,7 @@ fn draw_map(samples: &DomSamples, map: MapViewWithFuture, absolute_time: Number)
         draw_rectangle(
           canvas_position(
             samples,
-            (output_location.position - output_location.facing.unit_vector()),
+            output_location.position - output_location.facing.unit_vector(),
           ),
           tile_canvas_size(samples),
           machine_color(&machine.machine),
