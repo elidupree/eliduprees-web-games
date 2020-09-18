@@ -797,9 +797,8 @@ fn draw_map(
   state: &State,
   samples: &DomSamples,
   map: &Map,
-  map_future: &MapFuture,
+  start_time_and_future: Option<(Number, &MapFuture)>,
   isomorphism: GridIsomorphism,
-  time: Number,
 ) {
   for machine in &map.machines {
     let machine_type = state.game.machine_types.get(machine.type_id);
@@ -879,65 +878,68 @@ fn draw_map(
     }
   }
 
-  for (machine, machine_future) in map.machines.iter().zip(&map_future.machines) {
-    let inputs = MachineObservedInputs {
-      input_flows: &machine_future.inputs,
-      start_time: machine.state.last_disturbed_time,
-    };
-    let machine_isomorphism = machine.state.position * isomorphism;
-    let visuals = match &machine_future.future {
-      Ok(future) => {
-        let machine_type = state.game.machine_types.get(machine.type_id);
-        match (machine_type, &machine_future.future) {
-          (MachineTypeRef::Module(module), Ok(MachineFuture::Module(module_machine_future))) => {
-            let variation = state
-              .module_futures
-              .get(&machine.type_id)
-              .unwrap()
-              .future_variations
-              .get(&module_machine_future.canonical_inputs)
-              .unwrap();
-            module.module_momentary_visuals(inputs, module_machine_future, time, variation)
+  if let Some((time, map_future)) = start_time_and_future {
+    for (machine, machine_future) in map.machines.iter().zip(&map_future.machines) {
+      let inputs = MachineObservedInputs {
+        input_flows: &machine_future.inputs,
+        start_time: machine.state.last_disturbed_time,
+      };
+      let machine_isomorphism = machine.state.position * isomorphism;
+      let visuals = match &machine_future.future {
+        Ok(future) => {
+          let machine_type = state.game.machine_types.get(machine.type_id);
+          match (machine_type, &machine_future.future) {
+            (MachineTypeRef::Module(module), Ok(MachineFuture::Module(module_machine_future))) => {
+              let variation = state
+                .module_futures
+                .get(&machine.type_id)
+                .unwrap()
+                .future_variations
+                .get(&module_machine_future.canonical_inputs)
+                .unwrap();
+              module.module_momentary_visuals(inputs, module_machine_future, time, variation)
+            }
+            _ => machine_type.momentary_visuals(inputs, future, time),
           }
-          _ => machine_type.momentary_visuals(inputs, future, time),
         }
+        Err(operating_state) => MachineMomentaryVisuals {
+          operating_state: operating_state.clone(),
+          materials: Vec::new(),
+        },
+      };
+      for (location, material) in &visuals.materials {
+        draw_rectangle(
+          canvas_position_from_f64(samples, location.transformed_by(machine_isomorphism)),
+          tile_canvas_size(samples) * 0.6,
+          [0.0, 0.0, 0.0],
+          material.icon(),
+          Rotation::default(),
+        );
       }
-      Err(operating_state) => MachineMomentaryVisuals {
-        operating_state: operating_state.clone(),
-        materials: Vec::new(),
-      },
-    };
-    for (location, material) in &visuals.materials {
-      draw_rectangle(
-        canvas_position_from_f64(samples, location.transformed_by(machine_isomorphism)),
-        tile_canvas_size(samples) * 0.6,
-        [0.0, 0.0, 0.0],
-        material.icon(),
-        Rotation::default(),
-      );
     }
   }
 
-  for (machine, machine_future) in map.machines.iter().zip(&map_future.machines) {
+  for (index, machine) in map.machines.iter().enumerate() {
     let machine_type = state.game.machine_types.get(machine.type_id);
-    match (machine_type, &machine_future.future) {
-      (MachineTypeRef::Module(module), Ok(MachineFuture::Module(module_machine_future))) => {
+    match machine_type {
+      MachineTypeRef::Module(module) => {
         let machine_isomorphism = machine.state.position * isomorphism;
-        let variation = state
-          .module_futures
-          .get(&machine.type_id)
-          .unwrap()
-          .future_variations
-          .get(&module_machine_future.canonical_inputs)
-          .unwrap();
-        draw_map(
-          state,
-          samples,
-          &module.map,
-          &variation,
-          machine_isomorphism,
-          time - module_machine_future.start_time,
-        );
+        let variation = start_time_and_future.and_then(|(time, map_future)| {
+          match &map_future.machines[index].future {
+            Ok(MachineFuture::Module(module_machine_future)) => Some((
+              time - module_machine_future.start_time,
+              state
+                .module_futures
+                .get(&machine.type_id)
+                .unwrap()
+                .future_variations
+                .get(&module_machine_future.canonical_inputs)
+                .unwrap(),
+            )),
+            _ => None,
+          }
+        });
+        draw_map(state, samples, &module.map, variation, machine_isomorphism);
       }
       _ => (),
     }
@@ -987,9 +989,8 @@ fn do_frame(state: &Rc<RefCell<State>>) {
     state,
     &samples,
     &state.game.map,
-    &state.map_future,
+    Some((state.current_game_time, &state.map_future)),
     Default::default(),
-    state.current_game_time,
   );
 
   js! { $("#inventory").empty();}
