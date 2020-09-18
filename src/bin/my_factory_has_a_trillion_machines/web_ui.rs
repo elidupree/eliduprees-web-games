@@ -13,23 +13,10 @@ use stdweb;
 use geometry::{
   Facing, GridIsomorphism, Number, Rotate, Rotation, TransformedBy, Vector, VectorExtension,
 };
-use graph_algorithms::{GameFuture, MachineAndInputsFuture, MapFuture};
+use graph_algorithms::{GameFuture, GameViewWithFuture, MachineAndInputsFuture, MapViewWithFuture};
 use machine_data::{
-  self, //Inputs,
-  Game, //MAX_COMPONENTS,
-  MachineFuture,
-  MachineMomentaryVisuals,
-  MachineObservedInputs,
-  MachineState,
-  MachineType,
-  MachineTypeId, //MachineTypeTrait,
-  MachineTypeRef,
-  MachineTypeTrait,
-  MachineTypes,
-  Map,
-  Material,
-  StatefulMachine,
-  TIME_TO_MOVE_MATERIAL,
+  self, Game, MachineFuture, MachineState, MachineType, MachineTypeId, MachineTypeRef,
+  MachineTypeTrait, MachineTypes, Map, Material, StatefulMachine, TIME_TO_MOVE_MATERIAL,
 };
 use std::collections::VecDeque;
 use std::mem;
@@ -769,61 +756,52 @@ fn mouse_up(state: &mut State, samples: &DomSamples) {
   state.mouse.drag = None;
 }
 
-fn draw_map(
-  state: &State,
-  samples: &DomSamples,
-  map: &Map,
-  start_time_and_future: Option<(Number, &MapFuture)>,
-  isomorphism: GridIsomorphism,
-) {
-  for machine in &map.machines {
-    let machine_type = state.game.machine_types.get(machine.type_id);
-    let radius = machine_type.radius();
+fn draw_map(samples: &DomSamples, map: MapViewWithFuture, absolute_time: Number) {
+  for machine in map.machines() {
+    let radius = machine.machine_type.radius();
     let size = Vector2::new(
       tile_canvas_size(samples)[0] * (radius * 2) as f32 / 2.0,
       tile_canvas_size(samples)[1] * (radius * 2) as f32 / 2.0,
     );
-    let machine_isomorphism = machine.state.position * isomorphism;
     draw_rectangle(
-      canvas_position(samples, machine_isomorphism.translation),
+      canvas_position(samples, machine.isomorphism.translation),
       size,
-      machine_color(machine),
+      machine_color(&machine.machine),
       "rounded-rectangle-transparent",
       Rotation::default(),
     );
     draw_rectangle(
-      canvas_position(samples, machine_isomorphism.translation),
+      canvas_position(samples, machine.isomorphism.translation),
       size,
-      machine_color(machine),
-      machine_type.icon(),
-      machine_isomorphism.rotation,
+      machine_color(&machine.machine),
+      machine.machine_type.icon(),
+      machine.isomorphism.rotation,
     );
   }
-  for machine in &map.machines {
-    let machine_type = state.game.machine_types.get(machine.type_id);
-    if machine_type.radius() > 1 {
-      for (input_location, expected_material) in machine_type
-        .input_locations(machine.state.position)
+  for machine in map.machines() {
+    if machine.machine_type.radius() > 1 {
+      for (input_location, expected_material) in machine
+        .machine_type
+        .input_locations(machine.isomorphism)
         .into_iter()
-        .zip(machine_type.input_materials())
+        .zip(machine.machine_type.input_materials())
       {
         let pos = canvas_position(
           samples,
-          (input_location.position + input_location.facing.unit_vector())
-            .transformed_by(isomorphism),
+          (input_location.position + input_location.facing.unit_vector()),
         );
         draw_rectangle(
           pos,
           tile_canvas_size(samples),
-          machine_color(machine),
+          machine_color(&machine.machine),
           "input",
-          input_location.facing.transformed_by(isomorphism) - Facing::default(),
+          input_location.facing - Facing::default(),
         );
         if let Some(material) = expected_material {
           draw_rectangle(
             pos,
             tile_canvas_size(samples) * 0.8,
-            machine_color(machine),
+            machine_color(&machine.machine),
             material.icon(),
             Rotation::default(),
           );
@@ -831,62 +809,28 @@ fn draw_map(
       }
     }
   }
-  for machine in &map.machines {
-    let machine_type = state.game.machine_types.get(machine.type_id);
-    if machine_type.radius() > 1 {
-      for output_location in machine_type.output_locations(machine.state.position) {
+  for machine in map.machines() {
+    if machine.machine_type.radius() > 1 {
+      for output_location in machine.machine_type.output_locations(machine.isomorphism) {
         draw_rectangle(
           canvas_position(
             samples,
-            (output_location.position - output_location.facing.unit_vector())
-              .transformed_by(isomorphism),
+            (output_location.position - output_location.facing.unit_vector()),
           ),
           tile_canvas_size(samples),
-          machine_color(machine),
+          machine_color(&machine.machine),
           "input",
-          output_location
-            .facing
-            .rotate_90(2)
-            .transformed_by(isomorphism)
-            - Facing::default(),
+          output_location.facing.rotate_90(2) - Facing::default(),
         );
       }
     }
   }
 
-  if let Some((time, map_future)) = start_time_and_future {
-    for (machine, machine_future) in map.machines.iter().zip(&map_future.machines) {
-      let inputs = MachineObservedInputs {
-        input_flows: &machine_future.inputs,
-        start_time: machine.state.last_disturbed_time,
-      };
-      let machine_isomorphism = machine.state.position * isomorphism;
-      let visuals = match &machine_future.future {
-        Ok(future) => {
-          let machine_type = state.game.machine_types.get(machine.type_id);
-          match (machine_type, &machine_future.future) {
-            (MachineTypeRef::Module(module), Ok(MachineFuture::Module(module_machine_future))) => {
-              let variation = state
-                .future
-                .modules
-                .get(&machine.type_id)
-                .unwrap()
-                .future_variations
-                .get(&module_machine_future.canonical_inputs)
-                .unwrap();
-              module.module_momentary_visuals(inputs, module_machine_future, time, variation)
-            }
-            _ => machine_type.momentary_visuals(inputs, future, time),
-          }
-        }
-        Err(operating_state) => MachineMomentaryVisuals {
-          operating_state: operating_state.clone(),
-          materials: Vec::new(),
-        },
-      };
+  for machine in map.machines() {
+    if let Some(visuals) = machine.momentary_visuals(absolute_time) {
       for (location, material) in &visuals.materials {
         draw_rectangle(
-          canvas_position_from_f64(samples, location.transformed_by(machine_isomorphism)),
+          canvas_position_from_f64(samples, location.transformed_by(machine.isomorphism)),
           tile_canvas_size(samples) * 0.6,
           [0.0, 0.0, 0.0],
           material.icon(),
@@ -896,30 +840,9 @@ fn draw_map(
     }
   }
 
-  for (index, machine) in map.machines.iter().enumerate() {
-    let machine_type = state.game.machine_types.get(machine.type_id);
-    match machine_type {
-      MachineTypeRef::Module(module) => {
-        let machine_isomorphism = machine.state.position * isomorphism;
-        let variation = start_time_and_future.and_then(|(time, map_future)| {
-          match &map_future.machines[index].future {
-            Ok(MachineFuture::Module(module_machine_future)) => Some((
-              time - module_machine_future.start_time,
-              state
-                .future
-                .modules
-                .get(&machine.type_id)
-                .unwrap()
-                .future_variations
-                .get(&module_machine_future.canonical_inputs)
-                .unwrap(),
-            )),
-            _ => None,
-          }
-        });
-        draw_map(state, samples, &module.map, variation, machine_isomorphism);
-      }
-      _ => (),
+  for machine in map.machines() {
+    if let Some(module_map) = machine.module_map() {
+      draw_map(samples, module_map, absolute_time);
     }
   }
 }
@@ -964,11 +887,13 @@ fn do_frame(state: &Rc<RefCell<State>>) {
   //target.clear_color(1.0, 1.0, 1.0, 1.0);
 
   draw_map(
-    state,
     &samples,
-    &state.game.map,
-    Some((state.current_game_time, &state.future.map)),
-    Default::default(),
+    GameViewWithFuture {
+      game: &state.game,
+      future: &state.future,
+    }
+    .map(),
+    state.current_game_time,
   );
 
   js! { $("#inventory").empty();}

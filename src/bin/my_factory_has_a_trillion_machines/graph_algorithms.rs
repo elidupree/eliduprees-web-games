@@ -4,11 +4,11 @@ use std::collections::{hash_map, HashMap};
 use arrayvec::ArrayVec;
 
 use flow_pattern::{FlowCollection, FlowPattern, MaterialFlow};
-use geometry::Number;
+use geometry::{GridIsomorphism, Number};
 use machine_data::{
-  Game, InputLocation, Inputs, MachineFuture, MachineObservedInputs, MachineOperatingState,
-  MachineTypeId, MachineTypeRef, MachineTypeTrait, MachineTypes, Map, Material, StatefulMachine,
-  MAX_COMPONENTS,
+  Game, InputLocation, Inputs, MachineFuture, MachineMomentaryVisuals, MachineObservedInputs,
+  MachineOperatingState, MachineTypeId, MachineTypeRef, MachineTypeTrait, MachineTypes, Map,
+  Material, StatefulMachine, MAX_COMPONENTS,
 };
 use modules::CanonicalModuleInputs;
 
@@ -35,6 +35,7 @@ pub struct ModuleFuture {
 
 pub type ModuleFutures = HashMap<MachineTypeId, ModuleFuture>;
 
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct GameFuture {
   pub map: MapFuture,
   pub modules: ModuleFutures,
@@ -369,5 +370,122 @@ impl Game {
         material_flow.flow.num_disbursed_between(interval);
     }
     inventory
+  }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub struct GameViewWithFuture<'a> {
+  pub game: &'a Game,
+  pub future: &'a GameFuture,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub struct MapViewWithFuture<'a> {
+  pub game: GameViewWithFuture<'a>,
+  pub map: &'a Map,
+  pub isomorphism: GridIsomorphism,
+  pub start_time_and_future: Option<(Number, &'a MapFuture)>,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub struct MachineViewWithFuture<'a> {
+  pub game: GameViewWithFuture<'a>,
+  pub machine: &'a StatefulMachine,
+  pub machine_type: MachineTypeRef<'a>,
+  pub isomorphism: GridIsomorphism,
+  pub map_start_time_and_machine_future: Option<(Number, &'a MachineAndInputsFuture)>,
+}
+
+impl<'a> GameViewWithFuture<'a> {
+  pub fn map(&self) -> MapViewWithFuture {
+    MapViewWithFuture {
+      game: *self,
+      map: &self.game.map,
+      isomorphism: GridIsomorphism::default(),
+      start_time_and_future: Some((0, &self.future.map)),
+    }
+  }
+}
+
+impl<'a> MapViewWithFuture<'a> {
+  pub fn machines<'b>(&'b self) -> impl Iterator<Item = MachineViewWithFuture<'b>> + 'b {
+    self
+      .map
+      .machines
+      .iter()
+      .enumerate()
+      .map(move |(index, machine)| MachineViewWithFuture {
+        game: self.game,
+        machine,
+        machine_type: self.game.game.machine_types.get(machine.type_id),
+        isomorphism: machine.state.position * self.isomorphism,
+        map_start_time_and_machine_future: self
+          .start_time_and_future
+          .map(|(start_time, future)| (start_time, &future.machines[index])),
+      })
+  }
+}
+
+impl<'a> MachineViewWithFuture<'a> {
+  pub fn module_map(&self) -> Option<MapViewWithFuture> {
+    match self.game.game.machine_types.get(self.machine.type_id) {
+      MachineTypeRef::Module(module) => Some(MapViewWithFuture {
+        game: self.game,
+        map: & module.map,
+        isomorphism: self.isomorphism,
+        start_time_and_future: self.map_start_time_and_machine_future.and_then(
+          |(start_time, machine_future)| match &machine_future.future {
+            Ok(MachineFuture::Module(module_machine_future)) => Some((
+              start_time + module_machine_future.start_time,
+              self
+                .game
+                .future
+                .modules
+                .get(& self.machine.type_id)
+                .expect("there shouldn't be a ModuleMachineFuture if there isn't a corresponding ModuleFuture")
+                .future_variations
+                .get(&module_machine_future.canonical_inputs)
+                .expect("there shouldn't be a ModuleMachineFuture if there isn't a corresponding future-variation"),
+            )),
+            _ => None,
+          },
+        ),
+      }),
+      _ => None,
+    }
+  }
+
+  /// returns None if this machine doesn't have a future at all (i.e. is inside a non-operating module)
+  pub fn momentary_visuals(&self, absolute_time: Number) -> Option<MachineMomentaryVisuals> {
+    let (map_start_time, machine_future) = self.map_start_time_and_machine_future?;
+    let local_time = absolute_time - map_start_time;
+    let inputs = MachineObservedInputs {
+      input_flows: &machine_future.inputs,
+      start_time: self.machine.state.last_disturbed_time,
+    };
+    let visuals = match &machine_future.future {
+      Err(operating_state) => MachineMomentaryVisuals {
+        operating_state: operating_state.clone(),
+        materials: Vec::new(),
+      },
+      Ok(future) => match (self.machine_type, &machine_future.future) {
+        (MachineTypeRef::Module(module), Ok(MachineFuture::Module(module_machine_future))) => {
+          let variation = self
+            .game
+            .future
+            .modules
+            .get(&self.machine.type_id)
+            .expect("there shouldn't be a ModuleMachineFuture if there isn't a corresponding ModuleFuture")
+            .future_variations
+            .get(&module_machine_future.canonical_inputs)
+            .expect("there shouldn't be a ModuleMachineFuture if there isn't a corresponding future-variation");
+          module.module_momentary_visuals(inputs, module_machine_future, local_time, variation)
+        }
+        _ => self
+          .machine_type
+          .momentary_visuals(inputs, future, local_time),
+      },
+    };
+    Some(visuals)
   }
 }
