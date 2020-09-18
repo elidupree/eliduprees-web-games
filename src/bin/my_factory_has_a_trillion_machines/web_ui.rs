@@ -13,7 +13,7 @@ use stdweb;
 use geometry::{
   Facing, GridIsomorphism, Number, Rotate, Rotation, TransformedBy, Vector, VectorExtension,
 };
-use graph_algorithms::{MachineAndInputsFuture, MapFuture, ModuleFutures};
+use graph_algorithms::{GameFuture, MachineAndInputsFuture, MapFuture};
 use machine_data::{
   self, //Inputs,
   Game, //MAX_COMPONENTS,
@@ -87,8 +87,7 @@ struct MouseState {
 
 struct State {
   game: Game,
-  map_future: MapFuture,
-  module_futures: ModuleFutures,
+  future: GameFuture,
   start_ui_time: f64,
   start_game_time: Number,
   current_game_time: Number,
@@ -242,23 +241,11 @@ pub fn run_game() {
   game
     .inventory_before_last_change
     .insert(Material::Iron, 1000);
-  let output_edges = game.map.output_edges(&game.machine_types);
-  let ordering = game
-    .map
-    .topological_ordering_of_noncyclic_machines(&output_edges);
-  let mut module_futures = ModuleFutures::default();
-  let map_future = game.map.future(
-    &game.machine_types,
-    &output_edges,
-    &ordering,
-    &mut module_futures,
-    &[],
-  );
+  let future = game.future();
 
   let state = Rc::new(RefCell::new(State {
     game,
-    map_future,
-    module_futures,
+    future,
     start_ui_time: now(),
     start_game_time: 0,
     current_game_time: 0,
@@ -396,7 +383,7 @@ fn smallest_module_containing(
   let mut map = &state.game.map;
   let mut isomorphism = GridIsomorphism::default();
   let mut start_time = 0;
-  let mut map_future = Some(&state.map_future);
+  let mut map_future = Some(&state.future.map);
 
   'outer: loop {
     for (machine_index, machine) in map.machines.iter().enumerate() {
@@ -415,7 +402,8 @@ fn smallest_module_containing(
             {
               Some((
                 &state
-                  .module_futures
+                  .future
+                  .modules
                   .get(&machine.type_id)
                   .unwrap()
                   .future_variations[&module_machine_future.canonical_inputs],
@@ -524,7 +512,7 @@ fn build_machine(state: &mut State, machine_type_id: MachineTypeId, position: Gr
 
   let inventory = state
     .game
-    .inventory_at(&state.map_future, state.current_game_time);
+    .inventory_at(&state.future, state.current_game_time);
   for (amount, material) in machine_type.cost() {
     if inventory
       .get(&material)
@@ -564,24 +552,12 @@ fn build_machine(state: &mut State, machine_type_id: MachineTypeId, position: Gr
 fn recalculate_future(state: &mut State) {
   state.game.inventory_before_last_change = state
     .game
-    .inventory_at(&state.map_future, state.current_game_time);
+    .inventory_at(&state.future, state.current_game_time);
   state.game.last_change_time = state.current_game_time;
 
   state.game.cleanup_modules();
 
-  let output_edges = state.game.map.output_edges(&state.game.machine_types);
-  let ordering = state
-    .game
-    .map
-    .topological_ordering_of_noncyclic_machines(&output_edges);
-  state.module_futures = ModuleFutures::default();
-  state.map_future = state.game.map.future(
-    &state.game.machine_types,
-    &output_edges,
-    &ordering,
-    &mut state.module_futures,
-    &[],
-  );
+  state.future = state.game.future();
 
   /*js!{
     $("#json").val (@{serde_json::to_string_pretty (&state.game).unwrap()});
@@ -891,7 +867,8 @@ fn draw_map(
           match (machine_type, &machine_future.future) {
             (MachineTypeRef::Module(module), Ok(MachineFuture::Module(module_machine_future))) => {
               let variation = state
-                .module_futures
+                .future
+                .modules
                 .get(&machine.type_id)
                 .unwrap()
                 .future_variations
@@ -929,7 +906,8 @@ fn draw_map(
             Ok(MachineFuture::Module(module_machine_future)) => Some((
               time - module_machine_future.start_time,
               state
-                .module_futures
+                .future
+                .modules
                 .get(&machine.type_id)
                 .unwrap()
                 .future_variations
@@ -989,14 +967,14 @@ fn do_frame(state: &Rc<RefCell<State>>) {
     state,
     &samples,
     &state.game.map,
-    Some((state.current_game_time, &state.map_future)),
+    Some((state.current_game_time, &state.future.map)),
     Default::default(),
   );
 
   js! { $("#inventory").empty();}
   for (material, amount) in state
     .game
-    .inventory_at(&state.map_future, state.current_game_time)
+    .inventory_at(&state.future, state.current_game_time)
   {
     js! { $("#inventory").append(@{format!("{:?}: {}", material, amount)});}
   }

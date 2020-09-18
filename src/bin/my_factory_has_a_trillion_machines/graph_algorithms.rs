@@ -35,6 +35,11 @@ pub struct ModuleFuture {
 
 pub type ModuleFutures = HashMap<MachineTypeId, ModuleFuture>;
 
+pub struct GameFuture {
+  pub map: MapFuture,
+  pub modules: ModuleFutures,
+}
+
 impl Map {
   pub fn output_edges(&self, machine_types: &MachineTypes) -> OutputEdges {
     self
@@ -338,10 +343,28 @@ impl Map {
 }
 
 impl Game {
-  pub fn inventory_at(&self, future: &MapFuture, time: Number) -> HashMap<Material, Number> {
+  pub fn future(&self) -> GameFuture {
+    let output_edges = self.map.output_edges(&self.machine_types);
+    let ordering = self
+      .map
+      .topological_ordering_of_noncyclic_machines(&output_edges);
+    let mut module_futures = ModuleFutures::default();
+    let map_future = self.map.future(
+      &self.machine_types,
+      &output_edges,
+      &ordering,
+      &mut module_futures,
+      &[],
+    );
+    GameFuture {
+      map: map_future,
+      modules: module_futures,
+    }
+  }
+  pub fn inventory_at(&self, future: &GameFuture, time: Number) -> HashMap<Material, Number> {
     let mut inventory = self.inventory_before_last_change.clone();
     let interval = [self.last_change_time, time];
-    for (_location, material_flow) in &future.dumped {
+    for (_location, material_flow) in &future.map.dumped {
       *inventory.entry(material_flow.material).or_default() +=
         material_flow.flow.num_disbursed_between(interval);
     }
