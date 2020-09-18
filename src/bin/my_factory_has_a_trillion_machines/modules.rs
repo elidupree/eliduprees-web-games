@@ -365,8 +365,10 @@ impl<'a> ModuleCollector<'a> {
   }
 }
 
+#[live_prop_test]
 impl Game {
   /// Deduplicate modules, remove unused modules, and put them in a canonical ordering based on the order of machines on the maps.
+  #[live_prop_test(postcondition = "self.is_canonical()")]
   pub fn cleanup_modules(&mut self) {
     let mut collector = ModuleCollector::new(self);
     collector.run();
@@ -397,5 +399,11 @@ impl Game {
         }
       }
     }
+  }
+
+  pub fn is_canonical(&self) -> bool {
+    let mut canonicalized = self.clone();
+    canonicalized.cleanup_modules();
+    *self == canonicalized
   }
 }
