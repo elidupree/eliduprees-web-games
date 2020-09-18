@@ -85,7 +85,12 @@ impl<'a> CheckUndoneMap<'a> {
   ) -> Result<(), String> {
     lpt_assert_eq!(before_map.machines.len(), undone_map.machines.len());
     for (before_machine, undone_machine) in before_map.machines.iter().zip(&undone_map.machines) {
-      self.machines_undo_compatible(before_machine, undone_machine)?;
+      self.machines_undo_compatible(
+        before_machine,
+        before_containing_module_start_time,
+        undone_machine,
+        undone_containing_module_start_time,
+      )?;
     }
     Ok(())
   }
@@ -118,7 +123,12 @@ impl<'a> CheckUndoneMap<'a> {
           let undone_module = self.undone.machine_types.get_module(undone_machine.type_id);
           lpt_assert_eq!(before_module.module_type, undone_module.module_type);
           lpt_assert_eq!(before_module.cost, undone_module.cost);
-          self.maps_undo_compatible(&before_module.map, &undone_module.map)?;
+          self.maps_undo_compatible(
+            &before_module.map,
+            before_containing_module_start_time + 0,
+            &undone_module.map,
+            undone_containing_module_start_time + 0,
+          )?;
         }
       }
       _ => {
