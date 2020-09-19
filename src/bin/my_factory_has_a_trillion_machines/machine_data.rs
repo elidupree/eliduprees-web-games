@@ -23,27 +23,22 @@ macro_rules! inputs {
   ($($whatever:tt)*) => {::std::iter::FromIterator::from_iter ([$($whatever)*].iter().cloned())};
 }
 
-#[derive(Copy, Clone, Debug)]
-pub struct MachineObservedInputs<'a> {
-  pub input_flows: &'a [Option<MaterialFlow>],
-  pub start_time: Number,
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
+pub enum MachineTypeId {
+  Preset(usize),
+  Module(usize),
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Derivative)]
-#[derivative(Default)]
-pub enum MachineOperatingState {
-  #[derivative(Default)]
-  Operating,
-  WaitingForInput,
-  InputMissing,
-  InputTooInfrequent,
-  InputIncompatible,
-  InCycle,
+#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
+pub struct MachineState {
+  pub position: GridIsomorphism,
+  pub last_disturbed_time: Number,
 }
 
-pub struct MachineMomentaryVisuals {
-  pub operating_state: MachineOperatingState,
-  pub materials: Vec<(Vector2<f64>, Material)>,
+#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
+pub struct StatefulMachine {
+  pub type_id: MachineTypeId,
+  pub state: MachineState,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Derivative)]
@@ -70,56 +65,88 @@ impl Material {
   }
 }
 
-fn output_times_valid(
-  inputs: MachineObservedInputs,
-  outputs: &[Option<MaterialFlow>],
-) -> Result<(), String> {
-  for output in outputs {
-    if let Some(output) = output {
-      lpt_assert!(
-        output.flow.start_time() >= inputs.start_time,
-        "output {:?} started before start time {}",
-        output,
-        inputs.start_time
-      );
-    }
-  }
-  Ok(())
+#[derive(Copy, Clone, Debug)]
+pub struct MachineObservedInputs<'a> {
+  pub input_flows: &'a [Option<MaterialFlow>],
+  pub start_time: Number,
 }
 
-fn check_input_output_locations(
-  radius: Number,
-  inputs: &Inputs<InputLocation>,
-  outputs: &Inputs<InputLocation>,
-) -> Result<(), String> {
-  for output in outputs {
-    lpt_assert_eq!(output.position.closest_facing(), Some(output.facing));
+#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Derivative)]
+#[derivative(Default)]
+pub enum MachineOperatingState {
+  #[derivative(Default)]
+  Operating,
+  WaitingForInput,
+  InputMissing,
+  InputTooInfrequent,
+  InputIncompatible,
+  InCycle,
+}
+
+pub struct MachineMomentaryVisuals {
+  pub operating_state: MachineOperatingState,
+  pub materials: Vec<(Vector2<f64>, Material)>,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
+pub struct InputLocation {
+  pub position: Vector,
+  pub facing: Facing,
+}
+
+impl InputLocation {
+  pub fn input(x: Number, y: Number) -> InputLocation {
+    let position = Vector::new(x, y);
+    InputLocation {
+      position,
+      facing: position
+        .closest_facing()
+        .expect("there shouldn't be an input location at an exact diagonal")
+        .rotate_90(2),
+    }
   }
-  for input in inputs {
-    lpt_assert_eq!(
-      input.position.closest_facing(),
-      Some(input.facing.rotate_90(2))
-    );
+  pub fn output(x: Number, y: Number) -> InputLocation {
+    let position = Vector::new(x, y);
+    InputLocation {
+      position,
+      facing: position
+        .closest_facing()
+        .expect("there shouldn't be an output location at an exact diagonal"),
+    }
   }
-  let mut discovered = HashSet::new();
-  for output in outputs.iter().chain(inputs) {
-    lpt_assert!(
-      discovered.insert(output.position),
-      "there are 2 inputs/outputs in the same position",
-    );
-    let distance_from_center = max(output.position[0].abs(), output.position[1].abs());
-    lpt_assert_eq!(
-      distance_from_center,
+}
+
+impl TransformedBy for InputLocation {
+  fn transformed_by(self, isomorphism: GridIsomorphism) -> Self {
+    InputLocation {
+      position: self.position.transformed_by(isomorphism),
+      facing: self.facing.transformed_by(isomorphism),
+    }
+  }
+}
+
+#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Default)]
+pub struct StandardMachineInfo {
+  pub name: String,
+  pub icon: String,
+  pub radius: Number,
+  pub cost: Vec<(Number, Material)>,
+}
+
+impl StandardMachineInfo {
+  pub fn new(
+    name: impl Into<String>,
+    icon: impl Into<String>,
+    radius: Number,
+    cost: Vec<(Number, Material)>,
+  ) -> StandardMachineInfo {
+    StandardMachineInfo {
+      name: name.into(),
+      icon: icon.into(),
       radius,
-      "input/output is not on the boundary of the machine",
-    );
-    lpt_assert!(
-      output.position[0].abs() % 2 != output.position[1].abs() % 2,
-      "input/output position {:?} is not properly aligned to the edge of a grid square (it's at a half position)",
-      output.position,
-    );
+      cost,
+    }
   }
-  Ok(())
 }
 
 #[allow(unused)]
@@ -268,25 +295,56 @@ machine_type_enums! {
   Distributor, Assembler, Module, //Mine, ModuleMachine, // Conveyor,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
-pub enum MachineTypeId {
-  Preset(usize),
-  Module(usize),
-}
-
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
-pub struct InputLocation {
-  pub position: Vector,
-  pub facing: Facing,
-}
-
-impl TransformedBy for InputLocation {
-  fn transformed_by(self, isomorphism: GridIsomorphism) -> Self {
-    InputLocation {
-      position: self.position.transformed_by(isomorphism),
-      facing: self.facing.transformed_by(isomorphism),
+fn output_times_valid(
+  inputs: MachineObservedInputs,
+  outputs: &[Option<MaterialFlow>],
+) -> Result<(), String> {
+  for output in outputs {
+    if let Some(output) = output {
+      lpt_assert!(
+        output.flow.start_time() >= inputs.start_time,
+        "output {:?} started before start time {}",
+        output,
+        inputs.start_time
+      );
     }
   }
+  Ok(())
+}
+
+fn check_input_output_locations(
+  radius: Number,
+  inputs: &Inputs<InputLocation>,
+  outputs: &Inputs<InputLocation>,
+) -> Result<(), String> {
+  for output in outputs {
+    lpt_assert_eq!(output.position.closest_facing(), Some(output.facing));
+  }
+  for input in inputs {
+    lpt_assert_eq!(
+      input.position.closest_facing(),
+      Some(input.facing.rotate_90(2))
+    );
+  }
+  let mut discovered = HashSet::new();
+  for output in outputs.iter().chain(inputs) {
+    lpt_assert!(
+      discovered.insert(output.position),
+      "there are 2 inputs/outputs in the same position",
+    );
+    let distance_from_center = max(output.position[0].abs(), output.position[1].abs());
+    lpt_assert_eq!(
+      distance_from_center,
+      radius,
+      "input/output is not on the boundary of the machine",
+    );
+    lpt_assert!(
+      output.position[0].abs() % 2 != output.position[1].abs() % 2,
+      "input/output position {:?} is not properly aligned to the edge of a grid square (it's at a half position)",
+      output.position,
+    );
+  }
+  Ok(())
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
@@ -301,14 +359,6 @@ pub struct AssemblerOutput {
   pub material: Material,
   pub amount: Number,
   pub location: InputLocation,
-}
-
-#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Default)]
-pub struct StandardMachineInfo {
-  pub name: String,
-  pub icon: String,
-  pub radius: Number,
-  pub cost: Vec<(Number, Material)>,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
@@ -326,45 +376,6 @@ pub struct Distributor {
   pub outputs: Inputs<InputLocation>,
 }
 
-//#[derive (Clone, PartialEq, Eq, Hash, Debug)]
-//pub struct Conveyor;
-impl StandardMachineInfo {
-  pub fn new(
-    name: impl Into<String>,
-    icon: impl Into<String>,
-    radius: Number,
-    cost: Vec<(Number, Material)>,
-  ) -> StandardMachineInfo {
-    StandardMachineInfo {
-      name: name.into(),
-      icon: icon.into(),
-      radius,
-      cost,
-    }
-  }
-}
-
-impl InputLocation {
-  pub fn input(x: Number, y: Number) -> InputLocation {
-    let position = Vector::new(x, y);
-    InputLocation {
-      position,
-      facing: position
-        .closest_facing()
-        .expect("there shouldn't be an input location at an exact diagonal")
-        .rotate_90(2),
-    }
-  }
-  pub fn output(x: Number, y: Number) -> InputLocation {
-    let position = Vector::new(x, y);
-    InputLocation {
-      position,
-      facing: position
-        .closest_facing()
-        .expect("there shouldn't be an output location at an exact diagonal"),
-    }
-  }
-}
 impl AssemblerInput {
   pub fn new(x: Number, y: Number, material: Material, cost: Number) -> AssemblerInput {
     AssemblerInput {
@@ -420,12 +431,6 @@ pub fn iron_mine() -> MachineType {
     outputs: inputs![AssemblerOutput::new(3, 0, Material::IronOre, 1),],
     assembly_duration: TIME_TO_MOVE_MATERIAL,
   })
-}
-
-#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
-pub struct MachineState {
-  pub position: GridIsomorphism,
-  pub last_disturbed_time: Number,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
@@ -790,12 +795,6 @@ impl MachineTypeTrait for Assembler {
       materials,
     }
   }
-}
-
-#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
-pub struct StatefulMachine {
-  pub type_id: MachineTypeId,
-  pub state: MachineState,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Default)]
