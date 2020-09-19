@@ -845,8 +845,8 @@ fn draw_map(samples: &DomSamples, map: MapViewWithFuture, absolute_time: Number)
   }
 
   for machine in map.machines() {
-    if let Some(module_map) = machine.module_map() {
-      draw_map(samples, module_map, absolute_time);
+    if let Some(module) = machine.module() {
+      draw_map(samples, module.map(), absolute_time);
     }
   }
 }

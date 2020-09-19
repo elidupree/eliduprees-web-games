@@ -1,8 +1,10 @@
 use crate::geometry::Number;
 use crate::machine_data::Game;
-use graph_algorithms::{GameFuture, GameViewWithFuture, MachineViewWithFuture, MapViewWithFuture};
+use graph_algorithms::{
+  GameFuture, GameViewWithFuture, MachineViewWithFuture, MapViewWithFuture, ModuleViewWithFuture,
+};
 use live_prop_test::{live_prop_test, lpt_assert, lpt_assert_eq};
-use machine_data::{MachineFuture, MachineTypeId, TIME_TO_MOVE_MATERIAL};
+use machine_data::{MachineTypeId, TIME_TO_MOVE_MATERIAL};
 use modules::CanonicalModuleInputs;
 use std::collections::HashSet;
 
@@ -62,10 +64,12 @@ fn check_modify_game<Undo: UndoModifyGame + ?Sized>(
   Ok(())
 }
 
-struct CheckUndoneMap<'a> {
-  before: GameViewWithFuture<'a>,
+struct CheckUndoneMap
+//<'a>
+{
+  //before: GameViewWithFuture<'a>,
   //modify_time: Number,
-  undone: GameViewWithFuture<'a>,
+  //undone: GameViewWithFuture<'a>,
   undo_time: Number,
   verified_module_pairs: HashSet<[(usize, Option<CanonicalModuleInputs>); 2]>,
 }
@@ -90,29 +94,24 @@ fn check_undo<Undo: UndoModifyGame + ?Sized>(
     future: &undone_future,
   };
   CheckUndoneMap {
-    before,
+    //before,
     //modify_time,
-    undone,
+    //undone,
     undo_time,
     verified_module_pairs: HashSet::new(),
   }
   .maps_undo_compatible(before.map(), undone.map())
 }
 
-fn module_canonical_inputs(machine: MachineViewWithFuture) -> Option<CanonicalModuleInputs> {
-  machine
-    .map_start_time_and_machine_future
-    .and_then(|(_, future)| {
-      future.future.as_ref().ok().map(|future| match future {
-        MachineFuture::Module(module_machine_future) => {
-          module_machine_future.canonical_inputs.clone()
-        }
-        _ => panic!("called module_canonical_inputs on a machine that wasn't a module"),
-      })
-    })
+fn module_canonical_inputs(module: ModuleViewWithFuture) -> Option<CanonicalModuleInputs> {
+  module.inner_start_time_and_module_future.map(
+    |(_inner_start_time, module_machine_future, _module_map_future)| {
+      module_machine_future.canonical_inputs.clone()
+    },
+  )
 }
 
-impl<'a> CheckUndoneMap<'a> {
+impl CheckUndoneMap {
   fn maps_undo_compatible(
     &mut self,
     before_map: MapViewWithFuture,
@@ -169,6 +168,8 @@ impl<'a> CheckUndoneMap<'a> {
         lpt_assert_eq!(before_index, undone_index)
       }
       (MachineTypeId::Module(before_index), MachineTypeId::Module(undone_index)) => {
+        let before_module = before_machine.module().unwrap();
+        let undone_module = undone_machine.module().unwrap();
         // short-circuit on repeated module pairings to avoid an exponential search.
         // theoretically, the two versions of the module, even with the same canonical inputs,
         // could still differ in their start_time.
@@ -178,25 +179,15 @@ impl<'a> CheckUndoneMap<'a> {
         // TODO: actually assert that the start_times are all after undo_time in this case,
         // or prove that the other test already catch that.
         if self.verified_module_pairs.insert([
-          (before_index, module_canonical_inputs(before_machine)),
-          (undone_index, module_canonical_inputs(undone_machine)),
+          (before_index, module_canonical_inputs(before_module)),
+          (undone_index, module_canonical_inputs(undone_module)),
         ]) {
-          let before_module = self
-            .before
-            .game
-            .machine_types
-            .get_module(before_machine.machine.type_id);
-          let undone_module = self
-            .undone
-            .game
-            .machine_types
-            .get_module(undone_machine.machine.type_id);
-          lpt_assert_eq!(before_module.module_type, undone_module.module_type);
-          lpt_assert_eq!(before_module.cost, undone_module.cost);
-          self.maps_undo_compatible(
-            before_machine.module_map().unwrap(),
-            undone_machine.module_map().unwrap(),
-          )?;
+          lpt_assert_eq!(
+            before_module.module.module_type,
+            undone_module.module.module_type
+          );
+          lpt_assert_eq!(before_module.module.cost, undone_module.module.cost);
+          self.maps_undo_compatible(before_module.map(), undone_module.map())?;
         }
       }
       _ => {

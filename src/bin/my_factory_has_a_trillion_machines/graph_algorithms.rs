@@ -10,7 +10,7 @@ use machine_data::{
   MachineOperatingState, MachineTypeId, MachineTypeRef, MachineTypeTrait, MachineTypes, Map,
   Material, StatefulMachine, MAX_COMPONENTS,
 };
-use modules::CanonicalModuleInputs;
+use modules::{CanonicalModuleInputs, Module, ModuleMachineFuture};
 
 pub type OutputEdges = ArrayVec<[Inputs<Option<(usize, usize)>>; MAX_COMPONENTS]>;
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
@@ -384,7 +384,17 @@ pub struct MachineViewWithFuture<'a> {
   pub machine: &'a StatefulMachine,
   pub machine_type: MachineTypeRef<'a>,
   pub isomorphism: GridIsomorphism,
+  pub parent: &'a MapViewWithFuture<'a>,
+  pub index_within_parent: usize,
   pub map_start_time_and_machine_future: Option<(Number, &'a MachineAndInputsFuture)>,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub struct ModuleViewWithFuture<'a> {
+  pub game: GameViewWithFuture<'a>,
+  pub machine: &'a MachineViewWithFuture<'a>,
+  pub module: &'a Module,
+  pub inner_start_time_and_module_future: Option<(Number, &'a ModuleMachineFuture, &'a MapFuture)>,
 }
 
 impl<'a> GameViewWithFuture<'a> {
@@ -419,6 +429,8 @@ impl<'a> MapViewWithFuture<'a> {
         machine,
         machine_type: self.game.game.machine_types.get(machine.type_id),
         isomorphism: machine.state.position * self.isomorphism,
+        parent: self,
+        index_within_parent: index,
         map_start_time_and_machine_future: self
           .start_time_and_future
           .map(|(start_time, future)| (start_time, &future.machines[index])),
@@ -427,16 +439,17 @@ impl<'a> MapViewWithFuture<'a> {
 }
 
 impl<'a> MachineViewWithFuture<'a> {
-  pub fn module_map(&self) -> Option<MapViewWithFuture> {
+  pub fn module(&self) -> Option<ModuleViewWithFuture> {
     match self.game.game.machine_types.get(self.machine.type_id) {
-      MachineTypeRef::Module(module) => Some(MapViewWithFuture {
+      MachineTypeRef::Module(module) => Some(ModuleViewWithFuture {
         game: self.game,
-        map: & module.map,
-        isomorphism: self.isomorphism,
-        start_time_and_future: self.map_start_time_and_machine_future.and_then(
+        machine: self,
+        module,
+        inner_start_time_and_module_future: self.map_start_time_and_machine_future.and_then(
           |(start_time, machine_future)| match &machine_future.future {
             Ok(MachineFuture::Module(module_machine_future)) => Some((
               start_time + module_machine_future.start_time,
+              module_machine_future,
               self
                 .game
                 .future
@@ -475,24 +488,32 @@ impl<'a> MachineViewWithFuture<'a> {
         operating_state: operating_state.clone(),
         materials: Vec::new(),
       },
-      Ok(future) => match (self.machine_type, &machine_future.future) {
-        (MachineTypeRef::Module(module), Ok(MachineFuture::Module(module_machine_future))) => {
-          let variation = self
-            .game
-            .future
-            .modules
-            .get(&self.machine.type_id)
-            .expect("there shouldn't be a ModuleMachineFuture if there isn't a corresponding ModuleFuture")
-            .future_variations
-            .get(&module_machine_future.canonical_inputs)
-            .expect("there shouldn't be a ModuleMachineFuture if there isn't a corresponding future-variation");
-          module.module_momentary_visuals(inputs, module_machine_future, local_time, variation)
-        }
-        _ => self
+      Ok(future) => match self.module().and_then(|module| {
+        module
+          .inner_start_time_and_module_future
+          .map(|stuff| (module, stuff))
+      }) {
+        Some((module, (_inner_start_time, module_machine_future, module_map_future))) => module
+          .module
+          .module_momentary_visuals(inputs, module_machine_future, local_time, module_map_future),
+        None => self
           .machine_type
           .momentary_visuals(inputs, future, local_time),
       },
     };
     Some(visuals)
+  }
+}
+
+impl<'a> ModuleViewWithFuture<'a> {
+  pub fn map(&self) -> MapViewWithFuture {
+    MapViewWithFuture {
+      game: self.game,
+      map: &self.module.map,
+      isomorphism: self.machine.isomorphism,
+      start_time_and_future: self
+        .inner_start_time_and_module_future
+        .map(|(a, _b, c)| (a, c)),
+    }
   }
 }
