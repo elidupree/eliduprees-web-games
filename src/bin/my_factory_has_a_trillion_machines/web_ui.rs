@@ -15,8 +15,8 @@ use geometry::{
 };
 use graph_algorithms::{GameFuture, GameViewWithFuture, MachineAndInputsFuture, MapViewWithFuture};
 use machine_data::{
-  self, Game, MachineFuture, MachineState, MachineType, MachineTypeId, MachineTypeRef,
-  MachineTypeTrait, MachineTypes, Map, Material, StatefulMachine, TIME_TO_MOVE_MATERIAL,
+  Game, MachineFuture, MachineState, MachineType, MachineTypeId, MachineTypeRef, MachineTypeTrait,
+  MachineTypes, Map, Material, StatefulMachine, TIME_TO_MOVE_MATERIAL,
 };
 use std::collections::VecDeque;
 use std::mem;
@@ -117,10 +117,10 @@ impl DomSamples {
 
 fn machine_presets() -> Vec<MachineType> {
   vec![
-    machine_data::conveyor(),
-    machine_data::splitter(),
-    machine_data::iron_smelter(),
-    machine_data::iron_mine(),
+    primitive_machines::conveyor(),
+    primitive_machines::splitter(),
+    primitive_machines::iron_smelter(),
+    primitive_machines::iron_mine(),
     modules::basic_module(),
   ]
 }
@@ -685,7 +685,7 @@ fn mouse_maybe_held(state: &mut State, samples: &DomSamples) {
             .machine_types
             .presets
             .iter()
-            .position(|machine_type| machine_type == &machine_data::conveyor())
+            .position(|machine_type| machine_type == &primitive_machines::conveyor())
             .unwrap(),
         ),
         GridIsomorphism {

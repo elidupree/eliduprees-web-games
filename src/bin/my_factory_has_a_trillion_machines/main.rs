@@ -65,6 +65,7 @@ pub mod geometry;
 pub mod graph_algorithms;
 pub mod modules;
 pub mod undo_history;
+pub mod primitive_machines;
 
 #[cfg(any(target_arch = "wasm32", target_arch = "asmjs"))]
 mod web_ui;
