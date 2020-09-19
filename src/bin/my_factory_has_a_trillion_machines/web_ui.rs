@@ -781,8 +781,7 @@ fn draw_map(samples: &DomSamples, map: MapViewWithFuture, absolute_time: Number)
   for machine in map.machines() {
     if machine.machine_type.radius() > 1 {
       for (input_location, expected_material) in machine
-        .machine_type
-        .input_locations(machine.isomorphism)
+        .input_locations()
         .into_iter()
         .zip(machine.machine_type.input_materials())
       {
@@ -811,7 +810,7 @@ fn draw_map(samples: &DomSamples, map: MapViewWithFuture, absolute_time: Number)
   }
   for machine in map.machines() {
     if machine.machine_type.radius() > 1 {
-      for output_location in machine.machine_type.output_locations(machine.isomorphism) {
+      for output_location in machine.output_locations() {
         draw_rectangle(
           canvas_position(
             samples,
