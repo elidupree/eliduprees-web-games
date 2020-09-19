@@ -2,7 +2,8 @@ use crate::geometry::Number;
 use crate::machine_data::Game;
 use graph_algorithms::{GameFuture, GameViewWithFuture, MachineViewWithFuture, MapViewWithFuture};
 use live_prop_test::{live_prop_test, lpt_assert, lpt_assert_eq};
-use machine_data::{MachineTypeId, TIME_TO_MOVE_MATERIAL};
+use machine_data::{MachineFuture, MachineTypeId, TIME_TO_MOVE_MATERIAL};
+use modules::CanonicalModuleInputs;
 use std::collections::HashSet;
 
 pub trait UndoModifyGame {
@@ -42,7 +43,8 @@ fn check_modify_game<Undo: UndoModifyGame + ?Sized>(
   );
   lpt_assert!(before.is_canonical());
   lpt_assert!(after.is_canonical());
-  // todo: every absolute disturbed time is either the same as before or is now
+  // we'd like to assert that every absolute disturbed time is either the same as before or is now...
+  // except how do we tell which machines are the "same"?
 
   let after_future = after.future();
   let after_view = GameViewWithFuture {
@@ -64,7 +66,7 @@ struct CheckUndoneMap<'a> {
   //modify_time: Number,
   undone: GameViewWithFuture<'a>,
   undo_time: Number,
-  verified_module_pairs: HashSet<(usize, usize)>,
+  verified_module_pairs: HashSet<[(usize, Option<CanonicalModuleInputs>); 2]>,
 }
 
 fn check_undo<Undo: UndoModifyGame + ?Sized>(
@@ -94,6 +96,19 @@ fn check_undo<Undo: UndoModifyGame + ?Sized>(
     verified_module_pairs: HashSet::new(),
   }
   .maps_undo_compatible(before.map(), undone.map())
+}
+
+fn module_canonical_inputs(machine: MachineViewWithFuture) -> Option<CanonicalModuleInputs> {
+  machine
+    .map_start_time_and_machine_future
+    .and_then(|(_, future)| {
+      future.future.as_ref().ok().map(|future| match future {
+        MachineFuture::Module(module_machine_future) => {
+          module_machine_future.canonical_inputs.clone()
+        }
+        _ => panic!("called module_canonical_inputs on a machine that wasn't a module"),
+      })
+    })
 }
 
 impl<'a> CheckUndoneMap<'a> {
@@ -130,7 +145,7 @@ impl<'a> CheckUndoneMap<'a> {
         let undone_absolute_disturbed_time =
           undone_start + undone_machine.machine.state.last_disturbed_time;
         if undone_absolute_disturbed_time != before_absolute_disturbed_time {
-          lpt_assert_eq!(undone_absolute_disturbed_time, self.undo_time);
+          lpt_assert!(undone_absolute_disturbed_time >= self.undo_time);
         }
       }
       (None, None) => {
@@ -153,10 +168,18 @@ impl<'a> CheckUndoneMap<'a> {
         lpt_assert_eq!(before_index, undone_index)
       }
       (MachineTypeId::Module(before_index), MachineTypeId::Module(undone_index)) => {
-        if self
-          .verified_module_pairs
-          .insert((before_index, undone_index))
-        {
+        // short-circuit on repeated module pairings to avoid an exponential search.
+        // theoretically, the two versions of the module, even with the same canonical inputs,
+        // could still differ in their start_time.
+        // However the start_times should only be different if the start_times are all
+        // AFTER undo_time, which rules out any last_disturbed_time-related errors,
+        // assuming last_disturbed_times inside modules are never negative.
+        // TODO: actually assert that the start_times are all after undo_time in this case,
+        // or prove that the other test already catch that.
+        if self.verified_module_pairs.insert([
+          (before_index, module_canonical_inputs(before_machine)),
+          (undone_index, module_canonical_inputs(undone_machine)),
+        ]) {
           let before_module = self
             .before
             .game
