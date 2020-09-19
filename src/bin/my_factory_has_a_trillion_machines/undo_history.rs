@@ -13,6 +13,8 @@ pub trait UndoModifyGame {
 #[live_prop_test]
 pub trait ModifyGame {
   #[live_prop_test(
+    precondition = "game.is_canonical()",
+    precondition = "*future == game.future()",
     postcondition = "check_modify_game(&old(game.clone()), game, future, time, &*result)"
   )]
   fn modify_game(
@@ -41,7 +43,6 @@ fn check_modify_game<Undo: UndoModifyGame + ?Sized>(
     after.inventory_before_last_change,
     before_view.inventory_at(time)
   );
-  lpt_assert!(before.is_canonical());
   lpt_assert!(after.is_canonical());
   // we'd like to assert that every absolute disturbed time is either the same as before or is now...
   // except how do we tell which machines are the "same"?
