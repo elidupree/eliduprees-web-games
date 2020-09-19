@@ -82,6 +82,15 @@ struct State {
   queued_mouse_moves: VecDeque<QueuedMouseMove>,
 }
 
+impl State {
+  fn view(&self) -> GameViewWithFuture {
+    GameViewWithFuture {
+      game: &self.game,
+      future: &self.future,
+    }
+  }
+}
+
 #[derive(Clone, Deserialize)]
 struct DomSamples {
   map_zoom: f64,
@@ -497,9 +506,7 @@ fn build_machine(state: &mut State, machine_type_id: MachineTypeId, position: Gr
     return;
   }
 
-  let inventory = state
-    .game
-    .inventory_at(&state.future, state.current_game_time);
+  let inventory = state.view().inventory_at(state.current_game_time);
   for (amount, material) in machine_type.cost() {
     if inventory
       .get(&material)
@@ -537,12 +544,10 @@ fn build_machine(state: &mut State, machine_type_id: MachineTypeId, position: Gr
 }
 
 fn recalculate_future(state: &mut State) {
-  state.game.inventory_before_last_change = state
-    .game
-    .inventory_at(&state.future, state.current_game_time);
+  state.game.inventory_before_last_change = state.view().inventory_at(state.current_game_time);
   state.game.last_change_time = state.current_game_time;
 
-  state.game.cleanup_modules();
+  state.game.canonicalize();
 
   state.future = state.game.future();
 
@@ -884,22 +889,10 @@ fn do_frame(state: &Rc<RefCell<State>>) {
   }
 
   //target.clear_color(1.0, 1.0, 1.0, 1.0);
-
-  draw_map(
-    &samples,
-    GameViewWithFuture {
-      game: &state.game,
-      future: &state.future,
-    }
-    .map(),
-    state.current_game_time,
-  );
+  draw_map(&samples, state.view().map(), state.current_game_time);
 
   js! { $("#inventory").empty();}
-  for (material, amount) in state
-    .game
-    .inventory_at(&state.future, state.current_game_time)
-  {
+  for (material, amount) in state.view().inventory_at(state.current_game_time) {
     js! { $("#inventory").append(@{format!("{:?}: {}", material, amount)});}
   }
 }

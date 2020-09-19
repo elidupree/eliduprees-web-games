@@ -362,15 +362,6 @@ impl Game {
       modules: module_futures,
     }
   }
-  pub fn inventory_at(&self, future: &GameFuture, time: Number) -> HashMap<Material, Number> {
-    let mut inventory = self.inventory_before_last_change.clone();
-    let interval = [self.last_change_time, time];
-    for (_location, material_flow) in &future.map.dumped {
-      *inventory.entry(material_flow.material).or_default() +=
-        material_flow.flow.num_disbursed_between(interval);
-    }
-    inventory
-  }
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
@@ -404,6 +395,15 @@ impl<'a> GameViewWithFuture<'a> {
       isomorphism: GridIsomorphism::default(),
       start_time_and_future: Some((0, &self.future.map)),
     }
+  }
+  pub fn inventory_at(&self, time: Number) -> HashMap<Material, Number> {
+    let mut inventory = self.game.inventory_before_last_change.clone();
+    let interval = [self.game.last_change_time, time];
+    for (_location, material_flow) in &self.future.map.dumped {
+      *inventory.entry(material_flow.material).or_default() +=
+        material_flow.flow.num_disbursed_between(interval);
+    }
+    inventory
   }
 }
 

@@ -365,11 +365,31 @@ impl<'a> ModuleCollector<'a> {
   }
 }
 
+impl Map {
+  pub fn sort_canonically(&mut self) {
+    // note: the canonical sorting must NOT refer to module ids,
+    // because this sorting has to be able to be applied before modules are canonicalized.
+    // currently, position is enough to enforce unique keys within legal game states.
+    // if we make bridge-like machines later, this will need to get more sophisticated.
+    self.machines.sort_by_key(|machine| {
+      let position = machine.state.position.translation;
+      (position[0], position[1])
+    })
+  }
+}
+
 #[live_prop_test]
 impl Game {
   /// Deduplicate modules, remove unused modules, and put them in a canonical ordering based on the order of machines on the maps.
+  ///
+  /// This is *required* after every map change, for the purposes of the undo system.
   #[live_prop_test(postcondition = "self.is_canonical()")]
-  pub fn cleanup_modules(&mut self) {
+  pub fn canonicalize(&mut self) {
+    self.map.sort_canonically();
+    for module in &mut self.machine_types.modules {
+      module.map.sort_canonically();
+    }
+
     let mut collector = ModuleCollector::new(self);
     collector.run();
     let new_ids = collector.new_ids;
@@ -403,7 +423,7 @@ impl Game {
 
   pub fn is_canonical(&self) -> bool {
     let mut canonicalized = self.clone();
-    canonicalized.cleanup_modules();
+    canonicalized.canonicalize();
     *self == canonicalized
   }
 }
