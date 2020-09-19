@@ -56,7 +56,7 @@ pub struct Material {
 }*/
 
 impl Material {
-  pub fn icon(self) -> &'static str {
+  pub const fn icon(self) -> &'static str {
     match self {
       Material::IronOre => "ore",
       Material::Iron => "iron",
