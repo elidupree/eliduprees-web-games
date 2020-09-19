@@ -13,11 +13,12 @@ use stdweb;
 use geometry::{
   Facing, GridIsomorphism, Number, Rotate, Rotation, TransformedBy, Vector, VectorExtension,
 };
-use graph_algorithms::{GameFuture, GameViewWithFuture, MachineAndInputsFuture, MapViewWithFuture};
+use graph_algorithms::{GameFuture, GameViewWithFuture, MapViewWithFuture};
 use machine_data::{
-  Game, MachineFuture, MachineState, MachineType, MachineTypeId, MachineTypeRef, MachineTypeTrait,
-  MachineTypes, Map, Material, StatefulMachine, TIME_TO_MOVE_MATERIAL,
+  Game, MachineState, MachineType, MachineTypeId, MachineTypeTrait, MachineTypes, Map, Material,
+  StatefulMachine, TIME_TO_MOVE_MATERIAL,
 };
+use std::cmp::max;
 use std::collections::VecDeque;
 use std::mem;
 //use misc;
@@ -365,7 +366,7 @@ struct ModuleInstancePathNode {
   machine_index_in_parent: usize,
   module_id: MachineTypeId,
   isomorphism: GridIsomorphism,
-  start_time: Number,
+  start_time: Option<Number>,
 }
 struct ModuleInstancePath {
   nodes: Vec<ModuleInstancePathNode>,
@@ -375,67 +376,39 @@ fn smallest_module_containing(
   state: &State,
   (position, radius): (Vector, Number),
 ) -> ModuleInstancePath {
-  let mut nodes = Vec::new();
-  let mut map = &state.game.map;
-  let mut isomorphism = GridIsomorphism::default();
-  let mut start_time = 0;
-  let mut map_future = Some(&state.future.map);
-
-  'outer: loop {
-    for (machine_index, machine) in map.machines.iter().enumerate() {
-      if let MachineTypeRef::Module(module) = state.game.machine_types.get(machine.type_id) {
-        let machine_isomorphism = machine.state.position * isomorphism;
-        let relative_position = position - machine_isomorphism.translation;
-        let available_radius = module.module_type.inner_radius - radius;
-        if relative_position[0].abs() <= available_radius
-          && relative_position[1].abs() <= available_radius
-        {
-          if let Some((new_map_future, new_start_time)) = map_future.and_then(|map_future| {
-            if let MachineAndInputsFuture {
-              future: Ok(MachineFuture::Module(module_machine_future)),
-              ..
-            } = &map_future.machines[machine_index]
-            {
-              Some((
-                &state
-                  .future
-                  .modules
-                  .get(&machine.type_id)
-                  .unwrap()
-                  .future_variations[&module_machine_future.canonical_inputs],
-                start_time + module_machine_future.start_time,
-              ))
-            } else {
-              None
-            }
-          }) {
-            map_future = Some(new_map_future);
-            start_time = new_start_time;
-          } else {
-            map_future = None;
-            start_time = state.current_game_time;
-          }
-          isomorphism = machine_isomorphism;
-          map = &module.map;
+  fn recurse(
+    (position, radius): (Vector, Number),
+    map: MapViewWithFuture,
+    nodes: &mut Vec<ModuleInstancePathNode>,
+  ) {
+    for machine in map.machines() {
+      if let Some(module) = machine.module() {
+        let relative_position = position - machine.isomorphism.translation;
+        let available_radius = module.module.module_type.inner_radius - radius;
+        if max(relative_position[0].abs(), relative_position[1].abs()) <= available_radius {
           nodes.push(ModuleInstancePathNode {
-            isomorphism,
-            machine_index_in_parent: machine_index,
-            module_id: machine.type_id,
-            start_time,
+            isomorphism: machine.isomorphism,
+            machine_index_in_parent: machine.index_within_parent,
+            module_id: machine.machine.type_id,
+            start_time: module.inner_start_time_and_module_future.map(|a| a.0),
           });
-          continue 'outer;
+          recurse((position, radius), module.map(), nodes);
         }
       }
     }
-
-    return ModuleInstancePath { nodes };
   }
+
+  let mut nodes = Vec::new();
+
+  recurse((position, radius), state.view().map(), &mut nodes);
+
+  return ModuleInstancePath { nodes };
 }
 
 impl ModuleInstancePath {
-  fn get_map<'a>(&self, game: &'a Game) -> (&'a Map, GridIsomorphism, Number) {
+  fn get_map<'a>(&self, game: &'a Game) -> (&'a Map, GridIsomorphism, Option<Number>) {
     match self.nodes.last() {
-      None => (&game.map, GridIsomorphism::default(), 0),
+      None => (&game.map, GridIsomorphism::default(), Some(0)),
       Some(ModuleInstancePathNode {
         module_id,
         isomorphism,
@@ -449,31 +422,17 @@ impl ModuleInstancePath {
     }
   }
 
-  fn modify_map(
-    mut self,
-    game: &mut Game,
-    modify: impl FnOnce(&mut MachineTypes, &mut Map, GridIsomorphism, Number),
-  ) {
+  fn modify_map(mut self, game: &mut Game, modify: impl FnOnce(&mut MachineTypes, &mut Map)) {
     let node = match self.nodes.pop() {
       Some(node) => node,
       None => {
-        (modify)(
-          &mut game.machine_types,
-          &mut game.map,
-          GridIsomorphism::default(),
-          0,
-        );
+        (modify)(&mut game.machine_types, &mut game.map);
         return;
       }
     };
 
     let mut module = game.machine_types.get_module(node.module_id).clone();
-    (modify)(
-      &mut game.machine_types,
-      &mut module.map,
-      node.isomorphism,
-      node.start_time,
-    );
+    (modify)(&mut game.machine_types, &mut module.map);
     let mut new_module_index = game.machine_types.modules.len();
     game.machine_types.modules.push(module);
 
@@ -525,9 +484,9 @@ fn build_machine(state: &mut State, machine_type_id: MachineTypeId, position: Gr
       .get_mut(&material)
       .unwrap() -= amount;
   }
-  let inner_now = state.current_game_time - start_time;
+  let inner_now = start_time.map_or(0, |start_time| state.current_game_time - start_time);
 
-  path.modify_map(&mut state.game, |machine_types, map, _, _| {
+  path.modify_map(&mut state.game, |machine_types, map| {
     map.build_machines(
       machine_types,
       vec![StatefulMachine {
@@ -635,14 +594,14 @@ fn mouse_move(state: &mut State, samples: &DomSamples, position: MousePosition) 
         let path = smallest_module_containing(state, (previous.tile_center, 1));
         let (map, isomorphism, start_time) = path.get_map(&state.game);
         let inner_position = previous.tile_center.transformed_by(isomorphism.inverse());
-        let inner_now = state.current_game_time - start_time;
+        let inner_now = start_time.map_or(0, |start_time| state.current_game_time - start_time);
 
         if let Some(rotated_index) = map
           .machines
           .iter()
           .position(|machine| inside_machine(&state.game.machine_types, inner_position, machine))
         {
-          path.modify_map(&mut state.game, |machine_types, map, isomorphism, _| {
+          path.modify_map(&mut state.game, |machine_types, map| {
             map.modify_machines(machine_types, vec![rotated_index], inner_now, |machine| {
               machine.state.position = machine
                 .state
@@ -710,7 +669,7 @@ fn mouse_maybe_held(state: &mut State, samples: &DomSamples) {
       let path = smallest_module_containing(state, hover);
       let (map, isomorphism, start_time) = path.get_map(&state.game);
       let inner_position = position.tile_center.transformed_by(isomorphism.inverse());
-      let inner_now = state.current_game_time - start_time;
+      let inner_now = start_time.map_or(0, |start_time| state.current_game_time - start_time);
 
       if let Some(deleted_index) = map
         .machines
@@ -728,7 +687,7 @@ fn mouse_maybe_held(state: &mut State, samples: &DomSamples) {
           *inventory.get_mut(&material).unwrap() += amount;
         }
 
-        path.modify_map(&mut state.game, |machine_types, map, _, _| {
+        path.modify_map(&mut state.game, |machine_types, map| {
           map.remove_machines(machine_types, vec![deleted_index], inner_now);
         });
         recalculate_future(state);
