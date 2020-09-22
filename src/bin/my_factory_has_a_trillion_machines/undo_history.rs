@@ -1,8 +1,6 @@
 use crate::geometry::Number;
 use crate::machine_data::Game;
-use graph_algorithms::{
-  GameFuture, GameView, ModuleViewWithFuture, WorldMachineView, WorldRegionView,
-};
+use graph_algorithms::{GameFuture, GameView, WorldMachineView, WorldModuleView, WorldRegionView};
 use live_prop_test::{live_prop_test, lpt_assert, lpt_assert_eq};
 use machine_data::{MachineTypeId, TIME_TO_MOVE_MATERIAL};
 use modules::CanonicalModuleInputs;
@@ -103,7 +101,7 @@ fn check_undo<Undo: UndoModifyGame + ?Sized>(
   .maps_undo_compatible(before.global_region(), undone.global_region())
 }
 
-fn module_canonical_inputs(module: ModuleViewWithFuture) -> Option<CanonicalModuleInputs> {
+fn module_canonical_inputs(module: WorldModuleView) -> Option<CanonicalModuleInputs> {
   module.inner_start_time_and_module_future.map(
     |(_inner_start_time, module_machine_future, _module_map_future)| {
       module_machine_future.canonical_inputs.clone()

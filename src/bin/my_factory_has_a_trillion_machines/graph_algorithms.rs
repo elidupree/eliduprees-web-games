@@ -395,7 +395,7 @@ pub struct WorldMachineView<'a> {
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
-pub struct ModuleViewWithFuture<'a> {
+pub struct WorldModuleView<'a> {
   pub game: GameView<'a>,
   pub machine: &'a WorldMachineView<'a>,
   pub module: &'a PlatonicModule,
@@ -445,9 +445,9 @@ impl<'a> WorldRegionView<'a> {
 }
 
 impl<'a> WorldMachineView<'a> {
-  pub fn module(&self) -> Option<ModuleViewWithFuture> {
+  pub fn module(&self) -> Option<WorldModuleView> {
     match self.game.game.machine_types.get(self.machine.type_id) {
-      MachineTypeRef::Module(module) => Some(ModuleViewWithFuture {
+      MachineTypeRef::Module(module) => Some(WorldModuleView {
         game: self.game,
         machine: self,
         module,
@@ -516,7 +516,7 @@ impl<'a> WorldMachineView<'a> {
   }
 }
 
-impl<'a> ModuleViewWithFuture<'a> {
+impl<'a> WorldModuleView<'a> {
   pub fn region(&self) -> WorldRegionView {
     WorldRegionView {
       game: self.game,
