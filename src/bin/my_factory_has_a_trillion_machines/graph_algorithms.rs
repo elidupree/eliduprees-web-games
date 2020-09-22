@@ -8,7 +8,7 @@ use geometry::{GridIsomorphism, Number};
 use machine_data::{
   Game, InputLocation, Inputs, MachineFuture, MachineMomentaryVisuals, MachineObservedInputs,
   MachineOperatingState, MachineTypeId, MachineTypeRef, MachineTypeTrait, MachineTypes, Material,
-  PlatonicRegionContents, StatefulMachine, MAX_COMPONENTS,
+  PlatonicMachine, PlatonicRegionContents, MAX_COMPONENTS,
 };
 use modules::{CanonicalModuleInputs, ModuleMachineFuture, PlatonicModule};
 
@@ -80,7 +80,7 @@ impl PlatonicRegionContents {
   pub fn build_machines(
     &mut self,
     machine_types: &mut MachineTypes,
-    machines: impl IntoIterator<Item = StatefulMachine>,
+    machines: impl IntoIterator<Item = PlatonicMachine>,
     now: Number,
   ) {
     let old_length = self.machines.len();
@@ -122,7 +122,7 @@ impl PlatonicRegionContents {
     machine_types: &mut MachineTypes,
     machines: Vec<usize>,
     now: Number,
-    mut modify: impl FnMut(&mut StatefulMachine),
+    mut modify: impl FnMut(&mut PlatonicMachine),
   ) {
     let mut disturbed = Vec::with_capacity(self.machines.len());
     disturbed.extend_from_slice(&machines);
@@ -386,7 +386,7 @@ pub struct WorldRegionView<'a> {
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct WorldMachineView<'a> {
   pub game: GameView<'a>,
-  pub machine: &'a StatefulMachine,
+  pub machine: &'a PlatonicMachine,
   pub machine_type: MachineTypeRef<'a>,
   pub isomorphism: GridIsomorphism,
   pub parent: &'a WorldRegionView<'a>,

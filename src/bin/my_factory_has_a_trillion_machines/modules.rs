@@ -14,7 +14,7 @@ use graph_algorithms::RegionFuture;
 use machine_data::{
   Game, InputLocation, Inputs, MachineMomentaryVisuals, MachineObservedInputs,
   MachineOperatingState, MachineType, MachineTypeId, MachineTypeTrait, MachineTypes, Material,
-  PlatonicRegionContents, StandardMachineInfo, StatefulMachine, MAX_COMPONENTS,
+  PlatonicMachine, PlatonicRegionContents, StandardMachineInfo, MAX_COMPONENTS,
   TIME_TO_MOVE_MATERIAL,
 };
 
@@ -372,10 +372,7 @@ impl PlatonicRegionContents {
     // because this sorting has to be able to be applied before modules are canonicalized.
     // currently, position is enough to enforce unique keys within legal game states.
     // if we make bridge-like machines later, this will need to get more sophisticated.
-    self.machines.sort_by_key(|machine| {
-      let position = machine.state.position.translation;
-      (position[0], position[1])
-    })
+    self.machines.sort_by_key(PlatonicMachine::id_within_region)
   }
 }
 

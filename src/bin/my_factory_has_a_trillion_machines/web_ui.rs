@@ -16,7 +16,7 @@ use geometry::{
 use graph_algorithms::{GameFuture, GameView, WorldRegionView};
 use machine_data::{
   Game, MachineState, MachineType, MachineTypeId, MachineTypeTrait, MachineTypes, Material,
-  PlatonicRegionContents, StatefulMachine, TIME_TO_MOVE_MATERIAL,
+  PlatonicMachine, PlatonicRegionContents, TIME_TO_MOVE_MATERIAL,
 };
 use std::cmp::max;
 use std::collections::VecDeque;
@@ -135,7 +135,7 @@ fn machine_presets() -> Vec<MachineType> {
   ]
 }
 
-fn machine_color(machine: &StatefulMachine) -> [f32; 3] {
+fn machine_color(machine: &PlatonicMachine) -> [f32; 3] {
   let mut hasher = SipHasher::new();
   machine.hash(&mut hasher);
   let hash = hasher.finish();
@@ -215,7 +215,7 @@ fn draw_rectangle(
 fn inside_machine(
   machine_types: &MachineTypes,
   position: Vector,
-  machine: &StatefulMachine,
+  machine: &PlatonicMachine,
 ) -> bool {
   let machine_type = machine_types.get(machine.type_id);
   let radius = machine_type.radius();
@@ -496,7 +496,7 @@ fn build_machine(state: &mut State, machine_type_id: MachineTypeId, position: Gr
   path.modify_region(&mut state.game, |machine_types, region| {
     region.build_machines(
       machine_types,
-      vec![StatefulMachine {
+      vec![PlatonicMachine {
         type_id: machine_type_id,
         state: MachineState {
           position: position / isomorphism,

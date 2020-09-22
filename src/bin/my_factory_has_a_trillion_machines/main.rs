@@ -1,4 +1,5 @@
 //#![feature (nll)]
+#![feature(type_alias_impl_trait)]
 #![recursion_limit = "256"]
 
 extern crate eliduprees_web_games;

@@ -36,9 +36,17 @@ pub struct MachineState {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
-pub struct StatefulMachine {
+pub struct PlatonicMachine {
   pub type_id: MachineTypeId,
   pub state: MachineState,
+}
+
+pub type MachineIdWithinPlatonicRegion = impl Copy + Clone + Ord + Hash + Debug + Default;
+impl PlatonicMachine {
+  pub(crate) fn id_within_region(&self) -> MachineIdWithinPlatonicRegion {
+    let position = self.state.position.translation;
+    (position[0], position[1])
+  }
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Derivative)]
@@ -349,7 +357,7 @@ fn check_input_output_locations(
 
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Default)]
 pub struct PlatonicRegionContents {
-  pub machines: Vec<StatefulMachine>,
+  pub machines: Vec<PlatonicMachine>,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -391,12 +399,12 @@ impl MachineTypes {
     }
   }
 
-  pub fn input_locations(&self, machine: &StatefulMachine) -> impl Iterator<Item = InputLocation> {
+  pub fn input_locations(&self, machine: &PlatonicMachine) -> impl Iterator<Item = InputLocation> {
     self
       .get(machine.type_id)
       .input_locations(machine.state.position)
   }
-  pub fn output_locations(&self, machine: &StatefulMachine) -> impl Iterator<Item = InputLocation> {
+  pub fn output_locations(&self, machine: &PlatonicMachine) -> impl Iterator<Item = InputLocation> {
     self
       .get(machine.type_id)
       .output_locations(machine.state.position)
