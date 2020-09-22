@@ -13,10 +13,10 @@ use stdweb;
 use geometry::{
   Facing, GridIsomorphism, Number, Rotate, Rotation, TransformedBy, Vector, VectorExtension,
 };
-use graph_algorithms::{GameFuture, GameViewWithFuture, MapViewWithFuture};
+use graph_algorithms::{GameFuture, GameView, WorldRegionView};
 use machine_data::{
-  Game, MachineState, MachineType, MachineTypeId, MachineTypeTrait, MachineTypes, Map, Material,
-  StatefulMachine, TIME_TO_MOVE_MATERIAL,
+  Game, MachineState, MachineType, MachineTypeId, MachineTypeTrait, MachineTypes, Material,
+  PlatonicRegionContents, StatefulMachine, TIME_TO_MOVE_MATERIAL,
 };
 use std::cmp::max;
 use std::collections::VecDeque;
@@ -84,8 +84,8 @@ struct State {
 }
 
 impl State {
-  fn view(&self) -> GameViewWithFuture {
-    GameViewWithFuture {
+  fn view(&self) -> GameView {
+    GameView {
       game: &self.game,
       future: &self.future,
     }
@@ -225,7 +225,7 @@ fn inside_machine(
 
 pub fn run_game() {
   let mut game = Game {
-    map: Map {
+    global_region: PlatonicRegionContents {
       machines: Vec::new(),
     },
     last_change_time: 0,
@@ -372,16 +372,16 @@ struct ModuleInstancePath {
   nodes: Vec<ModuleInstancePathNode>,
 }
 
-fn smallest_module_containing(
+fn smallest_region_containing(
   state: &State,
   (position, radius): (Vector, Number),
 ) -> ModuleInstancePath {
   fn recurse(
     (position, radius): (Vector, Number),
-    map: MapViewWithFuture,
+    region: WorldRegionView,
     nodes: &mut Vec<ModuleInstancePathNode>,
   ) {
-    for machine in map.machines() {
+    for machine in region.machines() {
       if let Some(module) = machine.module() {
         let relative_position = position - machine.isomorphism.translation;
         let available_radius = module.module.module_type.inner_radius - radius;
@@ -392,7 +392,7 @@ fn smallest_module_containing(
             module_id: machine.machine.type_id,
             start_time: module.inner_start_time_and_module_future.map(|a| a.0),
           });
-          recurse((position, radius), module.map(), nodes);
+          recurse((position, radius), module.region(), nodes);
         }
       }
     }
@@ -400,45 +400,52 @@ fn smallest_module_containing(
 
   let mut nodes = Vec::new();
 
-  recurse((position, radius), state.view().map(), &mut nodes);
+  recurse((position, radius), state.view().global_region(), &mut nodes);
 
   return ModuleInstancePath { nodes };
 }
 
 impl ModuleInstancePath {
-  fn get_map<'a>(&self, game: &'a Game) -> (&'a Map, GridIsomorphism, Option<Number>) {
+  fn get_region<'a>(
+    &self,
+    game: &'a Game,
+  ) -> (&'a PlatonicRegionContents, GridIsomorphism, Option<Number>) {
     match self.nodes.last() {
-      None => (&game.map, GridIsomorphism::default(), Some(0)),
+      None => (&game.global_region, GridIsomorphism::default(), Some(0)),
       Some(ModuleInstancePathNode {
         module_id,
         isomorphism,
         start_time,
         ..
       }) => (
-        &game.machine_types.get_module(*module_id).map,
+        &game.machine_types.get_module(*module_id).region,
         *isomorphism,
         *start_time,
       ),
     }
   }
 
-  fn modify_map(mut self, game: &mut Game, modify: impl FnOnce(&mut MachineTypes, &mut Map)) {
+  fn modify_region(
+    mut self,
+    game: &mut Game,
+    modify: impl FnOnce(&mut MachineTypes, &mut PlatonicRegionContents),
+  ) {
     let node = match self.nodes.pop() {
       Some(node) => node,
       None => {
-        (modify)(&mut game.machine_types, &mut game.map);
+        (modify)(&mut game.machine_types, &mut game.global_region);
         return;
       }
     };
 
     let mut module = game.machine_types.get_module(node.module_id).clone();
-    (modify)(&mut game.machine_types, &mut module.map);
+    (modify)(&mut game.machine_types, &mut module.region);
     let mut new_module_index = game.machine_types.modules.len();
     game.machine_types.modules.push(module);
 
     while let Some(parent_node) = self.nodes.pop() {
       let mut parent_module = game.machine_types.get_module(parent_node.module_id).clone();
-      parent_module.map.machines[node.machine_index_in_parent].type_id =
+      parent_module.region.machines[node.machine_index_in_parent].type_id =
         MachineTypeId::Module(new_module_index);
       let new_parent_module_index = game.machine_types.modules.len();
       game.machine_types.modules.push(parent_module);
@@ -446,17 +453,17 @@ impl ModuleInstancePath {
       new_module_index = new_parent_module_index;
     }
 
-    game.map.machines[node.machine_index_in_parent].type_id =
+    game.global_region.machines[node.machine_index_in_parent].type_id =
       MachineTypeId::Module(new_module_index);
   }
 }
 
 fn build_machine(state: &mut State, machine_type_id: MachineTypeId, position: GridIsomorphism) {
   let machine_type = state.game.machine_types.get(machine_type_id);
-  let path = smallest_module_containing(state, (position.translation, machine_type.radius()));
-  let (map, isomorphism, start_time) = path.get_map(&state.game);
+  let path = smallest_region_containing(state, (position.translation, machine_type.radius()));
+  let (region, isomorphism, start_time) = path.get_region(&state.game);
 
-  if map.machines.iter().any(|machine| {
+  if region.machines.iter().any(|machine| {
     let radius = state.game.machine_types.get(machine.type_id).radius() + machine_type.radius();
     let offset = (position / (machine.state.position * isomorphism)).translation;
     offset[0].abs() < radius && offset[1].abs() < radius
@@ -486,8 +493,8 @@ fn build_machine(state: &mut State, machine_type_id: MachineTypeId, position: Gr
   }
   let inner_now = start_time.map_or(0, |start_time| state.current_game_time - start_time);
 
-  path.modify_map(&mut state.game, |machine_types, map| {
-    map.build_machines(
+  path.modify_region(&mut state.game, |machine_types, region| {
+    region.build_machines(
       machine_types,
       vec![StatefulMachine {
         type_id: machine_type_id,
@@ -591,18 +598,18 @@ fn mouse_move(state: &mut State, samples: &DomSamples, position: MousePosition) 
           == hovering_area(state, samples, drag.original_position).0
           || samples.current_mode == "Conveyor")
       {
-        let path = smallest_module_containing(state, (previous.tile_center, 1));
-        let (map, isomorphism, start_time) = path.get_map(&state.game);
+        let path = smallest_region_containing(state, (previous.tile_center, 1));
+        let (region, isomorphism, start_time) = path.get_region(&state.game);
         let inner_position = previous.tile_center.transformed_by(isomorphism.inverse());
         let inner_now = start_time.map_or(0, |start_time| state.current_game_time - start_time);
 
-        if let Some(rotated_index) = map
+        if let Some(rotated_index) = region
           .machines
           .iter()
           .position(|machine| inside_machine(&state.game.machine_types, inner_position, machine))
         {
-          path.modify_map(&mut state.game, |machine_types, map| {
-            map.modify_machines(machine_types, vec![rotated_index], inner_now, |machine| {
+          path.modify_region(&mut state.game, |machine_types, region| {
+            region.modify_machines(machine_types, vec![rotated_index], inner_now, |machine| {
               machine.state.position = machine
                 .state
                 .position
@@ -666,12 +673,12 @@ fn mouse_maybe_held(state: &mut State, samples: &DomSamples) {
         ..Default::default()
       })
     {
-      let path = smallest_module_containing(state, hover);
-      let (map, isomorphism, start_time) = path.get_map(&state.game);
+      let path = smallest_region_containing(state, hover);
+      let (region, isomorphism, start_time) = path.get_region(&state.game);
       let inner_position = position.tile_center.transformed_by(isomorphism.inverse());
       let inner_now = start_time.map_or(0, |start_time| state.current_game_time - start_time);
 
-      if let Some(deleted_index) = map
+      if let Some(deleted_index) = region
         .machines
         .iter()
         .position(|machine| inside_machine(&state.game.machine_types, inner_position, machine))
@@ -679,7 +686,7 @@ fn mouse_maybe_held(state: &mut State, samples: &DomSamples) {
         let machine_type = state
           .game
           .machine_types
-          .get(map.machines[deleted_index].type_id);
+          .get(region.machines[deleted_index].type_id);
         let cost = machine_type.cost();
 
         let inventory = &mut state.game.inventory_before_last_change;
@@ -687,8 +694,8 @@ fn mouse_maybe_held(state: &mut State, samples: &DomSamples) {
           *inventory.get_mut(&material).unwrap() += amount;
         }
 
-        path.modify_map(&mut state.game, |machine_types, map| {
-          map.remove_machines(machine_types, vec![deleted_index], inner_now);
+        path.modify_region(&mut state.game, |machine_types, region| {
+          region.remove_machines(machine_types, vec![deleted_index], inner_now);
         });
         recalculate_future(state);
       }
@@ -720,8 +727,8 @@ fn mouse_up(state: &mut State, samples: &DomSamples) {
   state.mouse.drag = None;
 }
 
-fn draw_map(samples: &DomSamples, map: MapViewWithFuture, absolute_time: Number) {
-  for machine in map.machines() {
+fn draw_region(samples: &DomSamples, region: WorldRegionView, absolute_time: Number) {
+  for machine in region.machines() {
     let radius = machine.machine_type.radius();
     let size = Vector2::new(
       tile_canvas_size(samples)[0] * (radius * 2) as f32 / 2.0,
@@ -742,7 +749,7 @@ fn draw_map(samples: &DomSamples, map: MapViewWithFuture, absolute_time: Number)
       machine.isomorphism.rotation,
     );
   }
-  for machine in map.machines() {
+  for machine in region.machines() {
     if machine.machine_type.radius() > 1 {
       for (input_location, expected_material) in machine
         .input_locations()
@@ -772,7 +779,7 @@ fn draw_map(samples: &DomSamples, map: MapViewWithFuture, absolute_time: Number)
       }
     }
   }
-  for machine in map.machines() {
+  for machine in region.machines() {
     if machine.machine_type.radius() > 1 {
       for output_location in machine.output_locations() {
         draw_rectangle(
@@ -789,7 +796,7 @@ fn draw_map(samples: &DomSamples, map: MapViewWithFuture, absolute_time: Number)
     }
   }
 
-  for machine in map.machines() {
+  for machine in region.machines() {
     if let Some(visuals) = machine.momentary_visuals(absolute_time) {
       for (location, material) in &visuals.materials {
         draw_rectangle(
@@ -803,9 +810,9 @@ fn draw_map(samples: &DomSamples, map: MapViewWithFuture, absolute_time: Number)
     }
   }
 
-  for machine in map.machines() {
+  for machine in region.machines() {
     if let Some(module) = machine.module() {
-      draw_map(samples, module.map(), absolute_time);
+      draw_region(samples, module.region(), absolute_time);
     }
   }
 }
@@ -848,7 +855,11 @@ fn do_frame(state: &Rc<RefCell<State>>) {
   }
 
   //target.clear_color(1.0, 1.0, 1.0, 1.0);
-  draw_map(&samples, state.view().map(), state.current_game_time);
+  draw_region(
+    &samples,
+    state.view().global_region(),
+    state.current_game_time,
+  );
 
   js! { $("#inventory").empty();}
   for (material, amount) in state.view().inventory_at(state.current_game_time) {

@@ -11,7 +11,7 @@ use std::hash::Hash;
 use flow_pattern::MaterialFlow;
 use geometry::{Facing, GridIsomorphism, Number, Rotate, TransformedBy, Vector, VectorExtension};
 //use modules::ModuleMachine;
-use modules::Module;
+use modules::PlatonicModule;
 use primitive_machines::{Assembler, Distributor};
 
 pub const MAX_COMPONENTS: usize = 256;
@@ -225,23 +225,23 @@ pub trait MachineTypeTrait {
 }
 
 macro_rules! machine_type_enums {
-  ($($Variant: ident,)*) => {
+  ($($Type: ident as $Variant: ident,)*) => {
 
 
 #[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
 pub enum MachineType {
-  $($Variant ($Variant),)*
+  $($Variant ($Type),)*
 }
 
 #[derive (Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum MachineTypeRef<'a> {
-  $($Variant (&'a $Variant),)*
+  $($Variant (&'a $Type),)*
 }
 
 
 #[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
 pub enum MachineFuture {
-  $($Variant (<$Variant as MachineTypeTrait>::Future),)*
+  $($Variant (<$Type as MachineTypeTrait>::Future),)*
 }
 
 impl MachineType {
@@ -292,7 +292,7 @@ impl<'a> MachineTypeTrait for MachineTypeRef<'a> {
 }
 
 machine_type_enums! {
-  Distributor, Assembler, Module, //Mine, ModuleMachine, // Conveyor,
+  Distributor as Distributor, Assembler as Assembler, PlatonicModule as Module, //Mine, ModuleMachine, // Conveyor,
 }
 
 fn output_times_valid(
@@ -348,14 +348,14 @@ fn check_input_output_locations(
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Default)]
-pub struct Map {
+pub struct PlatonicRegionContents {
   pub machines: Vec<StatefulMachine>,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub struct MachineTypes {
   pub presets: Vec<MachineType>,
-  pub modules: Vec<Module>,
+  pub modules: Vec<PlatonicModule>,
 }
 
 impl<'a> MachineTypeRef<'a> {
@@ -381,7 +381,7 @@ impl MachineTypes {
     }
   }
 
-  pub fn get_module(&self, id: MachineTypeId) -> &Module {
+  pub fn get_module(&self, id: MachineTypeId) -> &PlatonicModule {
     match self.get(id) {
       MachineTypeRef::Module(module) => module,
       _ => panic!(
@@ -405,7 +405,7 @@ impl MachineTypes {
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub struct Game {
-  pub map: Map,
+  pub global_region: PlatonicRegionContents,
   pub machine_types: MachineTypes,
   pub last_change_time: Number,
   pub inventory_before_last_change: HashMap<Material, Number>,

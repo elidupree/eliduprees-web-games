@@ -10,11 +10,12 @@ use flow_pattern::{
   Flow, FlowCollection, FlowPattern, FlowRate, MaterialFlow, MaterialFlowRate, RATE_DIVISOR,
 };
 use geometry::{Facing, Number, Vector, VectorExtension};
-use graph_algorithms::MapFuture;
+use graph_algorithms::RegionFuture;
 use machine_data::{
   Game, InputLocation, Inputs, MachineMomentaryVisuals, MachineObservedInputs,
-  MachineOperatingState, MachineType, MachineTypeId, MachineTypeTrait, MachineTypes, Map, Material,
-  StandardMachineInfo, StatefulMachine, MAX_COMPONENTS, TIME_TO_MOVE_MATERIAL,
+  MachineOperatingState, MachineType, MachineTypeId, MachineTypeTrait, MachineTypes, Material,
+  PlatonicRegionContents, StandardMachineInfo, StatefulMachine, MAX_COMPONENTS,
+  TIME_TO_MOVE_MATERIAL,
 };
 
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Default)]
@@ -32,10 +33,10 @@ pub struct ModuleInput {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Default)]
-pub struct Module {
+pub struct PlatonicModule {
   pub module_type: ModuleType,
   pub cost: Vec<(Number, Material)>,
-  pub map: Map,
+  pub region: PlatonicRegionContents,
 }
 
 pub fn basic_module() -> MachineType {
@@ -57,7 +58,7 @@ pub fn basic_module() -> MachineType {
 
   let cost = vec![(20, Material::Iron)];
 
-  MachineType::Module(Module {
+  MachineType::Module(PlatonicModule {
     module_type: ModuleType {
       info: StandardMachineInfo::new("Basic module", "rounded-rectangle-solid", 20, cost.clone()),
       inner_radius: 18,
@@ -65,7 +66,7 @@ pub fn basic_module() -> MachineType {
       outputs: (0..4).map(output).collect(),
     },
     cost,
-    map: Map {
+    region: PlatonicRegionContents {
       machines: Vec::new(),
     },
   })
@@ -117,8 +118,8 @@ pub fn canonical_module_input(input: MaterialFlow) -> Option<MaterialFlowRate> {
   })
 }
 
-impl Module {
-  fn internal_outputs(&self, variation: &MapFuture) -> Inputs<Option<MaterialFlow>> {
+impl PlatonicModule {
+  fn internal_outputs(&self, variation: &RegionFuture) -> Inputs<Option<MaterialFlow>> {
     self
       .module_type
       .outputs
@@ -137,7 +138,7 @@ impl Module {
     &self,
     _inputs: MachineObservedInputs,
     module_machine_future: &ModuleMachineFuture,
-    variation: &MapFuture,
+    variation: &RegionFuture,
   ) -> Inputs<Option<MaterialFlow>> {
     self
       .internal_outputs(variation)
@@ -154,7 +155,7 @@ impl Module {
     inputs: MachineObservedInputs,
     module_machine_future: &ModuleMachineFuture,
     outer_time: Number,
-    variation: &MapFuture,
+    variation: &RegionFuture,
   ) -> MachineMomentaryVisuals {
     let inner_time = outer_time - module_machine_future.start_time;
 
@@ -233,7 +234,7 @@ impl Module {
 }
 
 #[live_prop_test(use_trait_tests)]
-impl MachineTypeTrait for Module {
+impl MachineTypeTrait for PlatonicModule {
   // basic information
   fn name(&self) -> &str {
     &self.module_type.info.name
@@ -315,9 +316,9 @@ impl MachineTypeTrait for Module {
 
 struct ModuleCollector<'a> {
   machine_types: &'a MachineTypes,
-  found_modules: HashMap<&'a Module, MachineTypeId>,
+  found_modules: HashMap<&'a PlatonicModule, MachineTypeId>,
   next_index: usize,
-  map_queue: VecDeque<&'a Map>,
+  region_queue: VecDeque<&'a PlatonicRegionContents>,
   new_ids: Vec<Option<MachineTypeId>>,
 }
 
@@ -326,11 +327,11 @@ impl<'a> ModuleCollector<'a> {
     if let MachineTypeId::Module(module_index) = id {
       let module = &self.machine_types.modules[module_index];
       let next_index = &mut self.next_index;
-      let map_queue = &mut self.map_queue;
+      let region_queue = &mut self.region_queue;
       let new_id = *self.found_modules.entry(module).or_insert_with(|| {
         let result = MachineTypeId::Module(*next_index);
         *next_index += 1;
-        map_queue.push_back(&module.map);
+        region_queue.push_back(&module.region);
         result
       });
       self.new_ids[module_index] = Some(new_id);
@@ -342,10 +343,10 @@ impl<'a> ModuleCollector<'a> {
       machine_types: &game.machine_types,
       found_modules: HashMap::with_capacity(game.machine_types.modules.len()),
       next_index: 0,
-      map_queue: VecDeque::with_capacity(game.machine_types.modules.len()),
+      region_queue: VecDeque::with_capacity(game.machine_types.modules.len()),
       new_ids: vec![None; game.machine_types.modules.len()],
     };
-    collector.map_queue.push_back(&game.map);
+    collector.region_queue.push_back(&game.global_region);
     for (index, preset) in game.machine_types.presets.iter().enumerate() {
       if let MachineType::Module(module) = preset {
         collector
@@ -357,15 +358,15 @@ impl<'a> ModuleCollector<'a> {
   }
 
   fn run(&mut self) {
-    while let Some(map) = self.map_queue.pop_front() {
-      for machine in &map.machines {
+    while let Some(region) = self.region_queue.pop_front() {
+      for machine in &region.machines {
         self.find_machine(machine.type_id);
       }
     }
   }
 }
 
-impl Map {
+impl PlatonicRegionContents {
   pub fn sort_canonically(&mut self) {
     // note: the canonical sorting must NOT refer to module ids,
     // because this sorting has to be able to be applied before modules are canonicalized.
@@ -380,14 +381,14 @@ impl Map {
 
 #[live_prop_test]
 impl Game {
-  /// Deduplicate modules, remove unused modules, and put them in a canonical ordering based on the order of machines on the maps.
+  /// Deduplicate modules, remove unused modules, and put them in a canonical ordering based on the order of machines in the regions.
   ///
-  /// This is *required* after every map change, for the purposes of the undo system.
+  /// This is *required* after every Game change, for the purposes of the undo system.
   #[live_prop_test(postcondition = "self.is_canonical()")]
   pub fn canonicalize(&mut self) {
-    self.map.sort_canonically();
+    self.global_region.sort_canonically();
     for module in &mut self.machine_types.modules {
-      module.map.sort_canonically();
+      module.region.sort_canonically();
     }
 
     let mut collector = ModuleCollector::new(self);
@@ -395,7 +396,8 @@ impl Game {
     let new_ids = collector.new_ids;
     let new_count = collector.next_index;
 
-    let mut new_modules: Vec<Module> = (0..new_count).map(|_| Module::default()).collect();
+    let mut new_modules: Vec<PlatonicModule> =
+      (0..new_count).map(|_| PlatonicModule::default()).collect();
     for (module, new_id) in std::mem::take(&mut self.machine_types.modules)
       .into_iter()
       .zip(&new_ids)
@@ -406,14 +408,14 @@ impl Game {
     }
     self.machine_types.modules = new_modules;
 
-    for map in std::iter::once(&mut self.map).chain(
+    for region in std::iter::once(&mut self.global_region).chain(
       self
         .machine_types
         .modules
         .iter_mut()
-        .map(|module| &mut module.map),
+        .map(|module| &mut module.region),
     ) {
-      for machine in &mut map.machines {
+      for machine in &mut region.machines {
         if let MachineTypeId::Module(module_index) = machine.type_id {
           machine.type_id = new_ids[module_index].unwrap();
         }

@@ -118,11 +118,11 @@ fn main() {
     std::fs::File::open("../data/test.json").unwrap(),
   ))
   .unwrap();
-  let output_edges = game.map.output_edges(&game.machine_types);
+  let output_edges = game.global_region.output_edges(&game.machine_types);
   let ordering = game
-    .map
+    .global_region
     .topological_ordering_of_noncyclic_machines(&output_edges);
-  let future = game.map.future(
+  let future = game.global_region.future(
     &game.machine_types,
     &output_edges,
     &ordering,
