@@ -368,10 +368,6 @@ impl<'a> ModuleCollector<'a> {
 
 impl PlatonicRegionContents {
   pub fn sort_canonically(&mut self) {
-    // note: the canonical sorting must NOT refer to module ids,
-    // because this sorting has to be able to be applied before modules are canonicalized.
-    // currently, position is enough to enforce unique keys within legal game states.
-    // if we make bridge-like machines later, this will need to get more sophisticated.
     self.machines.sort_by_key(PlatonicMachine::id_within_region)
   }
 }

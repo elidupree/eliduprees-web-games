@@ -43,6 +43,12 @@ pub struct PlatonicMachine {
 
 pub type MachineIdWithinPlatonicRegion = impl Copy + Clone + Ord + Hash + Debug + Default;
 impl PlatonicMachine {
+  /// An ID that is guaranteed to be unique within its region.
+  ///
+  /// note: this must NOT include a module index,
+  /// because this is used for sorting BEFORE modules are canonicalized.
+  /// currently, position is enough to enforce unique ids within legal game states.
+  /// if we make bridge-like machines later, this will need to get more sophisticated.
   pub(crate) fn id_within_region(&self) -> MachineIdWithinPlatonicRegion {
     let position = self.state.position.translation;
     (position[0], position[1])
