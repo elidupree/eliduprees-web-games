@@ -115,7 +115,7 @@ fn main() {
     (consumer(), None, & []),
   ]).simulate_future();*/
 
-  let game: machine_data::Game = serde_json::from_reader(std::io::BufReader::new(
+  /*let game: machine_data::Game = serde_json::from_reader(std::io::BufReader::new(
     std::fs::File::open("../data/test.json").unwrap(),
   ))
   .unwrap();
@@ -130,5 +130,5 @@ fn main() {
     &mut graph_algorithms::ModuleFutures::default(),
     &[],
   );
-  println!("{:?}", future);
+  println!("{:?}", future);*/
 }

@@ -6,9 +6,10 @@ use arrayvec::ArrayVec;
 use flow_pattern::{FlowCollection, FlowPattern, MaterialFlow};
 use geometry::{GridIsomorphism, Number};
 use machine_data::{
-  Game, InputLocation, Inputs, MachineFuture, MachineMomentaryVisuals, MachineObservedInputs,
-  MachineOperatingState, MachineTypeId, MachineTypeRef, MachineTypeTrait, MachineTypes, Material,
-  PlatonicMachine, PlatonicRegionContents, MAX_COMPONENTS,
+  Game, InputLocation, Inputs, MachineFuture, MachineIdWithinPlatonicRegion,
+  MachineMomentaryVisuals, MachineObservedInputs, MachineOperatingState, MachineTypeId,
+  MachineTypeRef, MachineTypeTrait, MachineTypes, Material, PlatonicMachine,
+  PlatonicRegionContents, WorldMachinesMap, MAX_COMPONENTS,
 };
 use modules::{CanonicalModuleInputs, ModuleMachineFuture, PlatonicModule};
 
@@ -18,32 +19,26 @@ pub type OutputEdges = ArrayVec<[Inputs<Option<(usize, usize)>>; MAX_COMPONENTS]
 /// it will be determined by more than just the PlatonicRegionContents
 /// (it'll also consider last_disturbed_times and module inputs)
 /// So like, the ideal name would express PlatonicFutureOfPlatonicRegionContentsPlusDisturbedTimesAndFiatInputs
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct RegionFuture {
   pub machines: Vec<MachineAndInputsFuture>,
   pub dumped: Vec<(InputLocation, MaterialFlow)>,
-}
-
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
-pub struct MachineAndInputsFuture {
-  pub inputs: Inputs<Option<MaterialFlow>>,
-  // Hack: only non-module machines have their futures stored here; operating modules are listed as Err (Operating)
-  pub future: Result<MachineFuture, MachineOperatingState>,
+  pub disturbed_children: HashMap<MachineIdWithinPlatonicRegion, RegionFuture>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct ModuleFuture {
-  pub output_edges: OutputEdges,
-  pub topological_ordering: Vec<usize>,
-  pub future_variations: HashMap<CanonicalModuleInputs, RegionFuture>,
+pub struct MachineAndInputsFuture {
+  pub inputs: Inputs<Option<MaterialFlow>>,
+  pub future: Result<MachineFuture, MachineOperatingState>,
 }
 
-pub type ModuleFutures = HashMap<MachineTypeId, ModuleFuture>;
+pub type UndisturbedModuleFutures = HashMap<CanonicalModuleInputs, RegionFuture>;
+pub type UndisturbedModulesFutures = HashMap<MachineTypeId, UndisturbedModuleFutures>;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct GameFuture {
   pub global_region: RegionFuture,
-  pub modules: ModuleFutures,
+  pub undisturbed_modules: UndisturbedModulesFutures,
 }
 
 impl PlatonicRegionContents {
@@ -83,7 +78,8 @@ impl PlatonicRegionContents {
     machines: impl IntoIterator<Item = PlatonicMachine>,
     now: Number,
   ) {
-    let old_length = self.machines.len();
+    unimplemented!()
+    /*let old_length = self.machines.len();
     self.machines.extend(machines);
     let mut disturbed = Vec::with_capacity(self.machines.len());
     disturbed.extend(old_length..self.machines.len());
@@ -92,7 +88,7 @@ impl PlatonicRegionContents {
       &self.output_edges(machine_types),
       disturbed,
       now,
-    );
+    );*/
   }
 
   pub fn remove_machines(
@@ -101,7 +97,8 @@ impl PlatonicRegionContents {
     machines: Vec<usize>,
     now: Number,
   ) {
-    let mut disturbed = Vec::with_capacity(self.machines.len());
+    unimplemented!()
+    /*let mut disturbed = Vec::with_capacity(self.machines.len());
     disturbed.extend_from_slice(&machines);
     self.disturb_downstream(
       machine_types,
@@ -114,7 +111,7 @@ impl PlatonicRegionContents {
       let result = !machines.contains(&index);
       index += 1;
       result
-    });
+    });*/
   }
 
   pub fn modify_machines(
@@ -124,7 +121,8 @@ impl PlatonicRegionContents {
     now: Number,
     mut modify: impl FnMut(&mut PlatonicMachine),
   ) {
-    let mut disturbed = Vec::with_capacity(self.machines.len());
+    unimplemented!()
+    /*let mut disturbed = Vec::with_capacity(self.machines.len());
     disturbed.extend_from_slice(&machines);
     self.disturb_downstream(
       machine_types,
@@ -136,10 +134,10 @@ impl PlatonicRegionContents {
       if machines.contains(&index) {
         (modify)(machine);
       }
-    }
+    }*/
   }
 
-  pub fn disturb_downstream(
+  /*pub fn disturb_downstream(
     &mut self,
     machine_types: &mut MachineTypes,
     output_edges: &OutputEdges,
@@ -169,22 +167,22 @@ impl PlatonicRegionContents {
     machine_index: usize,
     module_index: usize,
   ) {
-    if machine_types.modules[module_index]
+    if machine_types.custom_modules[module_index]
       .region
       .machines
       .iter()
       .any(|machine| machine.state.last_disturbed_time != 0)
     {
-      let mut new_module = machine_types.modules[module_index].clone();
-      let new_module_index = machine_types.modules.len();
+      let mut new_module = machine_types.custom_modules[module_index].clone();
+      let new_module_index = machine_types.custom_modules.len();
       for machine in &mut new_module.region.machines {
         machine.state.last_disturbed_time = 0;
       }
-      machine_types.modules.push(new_module);
+      machine_types.custom_modules.push(new_module);
 
       self.machines[machine_index].type_id = MachineTypeId::Module(new_module_index);
     }
-  }
+  }*/
 
   pub fn topological_ordering_of_noncyclic_machines(
     &self,
@@ -221,23 +219,52 @@ impl PlatonicRegionContents {
     }
     result
   }
+}
 
-  pub fn future(
+struct GameFutureBuilder<'a> {
+  machine_types: &'a MachineTypes,
+  global_region_geometry: (OutputEdges, Vec<usize>),
+  module_geometries: HashMap<MachineTypeId, (OutputEdges, Vec<usize>)>,
+}
+
+impl<'a> GameFutureBuilder<'a> {
+  pub fn new(game: &'a Game) -> GameFutureBuilder<'a> {
+    let module_geometries = game
+      .machine_types
+      .modules()
+      .map(|(id, module)| {
+        let output_edges = module.region.output_edges(&game.machine_types);
+        let topological_ordering = module
+          .region
+          .topological_ordering_of_noncyclic_machines(&output_edges);
+        (id, (output_edges, topological_ordering))
+      })
+      .collect();
+
+    let output_edges = game.global_region.output_edges(&game.machine_types);
+    let ordering = game
+      .global_region
+      .topological_ordering_of_noncyclic_machines(&output_edges);
+    GameFutureBuilder {
+      machine_types: &game.machine_types,
+      global_region_geometry: (output_edges, ordering),
+      module_geometries,
+    }
+  }
+  pub fn region_future(
     &self,
-    machine_types: &MachineTypes,
-    output_edges: &OutputEdges,
-    topological_ordering: &[usize],
-    module_futures: &mut ModuleFutures,
+    undisturbed_modules_futures: &'a mut UndisturbedModulesFutures,
+    region: &WorldRegionView,
     fiat_inputs: &[(InputLocation, MaterialFlow)],
   ) -> RegionFuture {
     //debug!("{:?}", fiat_inputs);
     let mut result = RegionFuture {
-      machines: self
-        .machines
-        .iter()
+      machines: region
+        .machines()
         .map(|machine| MachineAndInputsFuture {
-          inputs: machine_types
-            .input_locations(machine)
+          inputs: self
+            .machine_types
+            .input_locations(machine.platonic)
             .map(|input_location| {
               //debug!("{:?}", (input_location, fiat_inputs.iter().find (| (location,_) | *location == input_location)));
               fiat_inputs
@@ -250,86 +277,93 @@ impl PlatonicRegionContents {
         })
         .collect(),
       dumped: Default::default(),
+      disturbed_children: Default::default(),
     };
 
+    let (output_edges, topological_ordering) = match region.as_module {
+      Some(module) => self
+        .module_geometries
+        .get(&module.as_machine.platonic.type_id)
+        .unwrap(),
+      None => &self.global_region_geometry,
+    };
+
+    let machines: Vec<_> = region.machines().collect();
     for &machine_index in topological_ordering {
-      let machine = &self.machines[machine_index];
+      let machine: &WorldMachineView = &machines[machine_index];
       let inputs = MachineObservedInputs {
-        input_flows: &result.machines[machine_index].inputs,
-        start_time: machine.state.last_disturbed_time,
+        input_flows: &result.machines[machine.index_within_region].inputs,
+        start_time: machine.last_disturbed_time.unwrap_or(0),
       };
-      let machine_type = machine_types.get(machine.type_id);
-      let future = machine_type.future(inputs);
+      let future = machine.machine_type.future(inputs);
 
-      let outputs = match (&machine_type, &future) {
-        (MachineTypeRef::Module(module), Ok(MachineFuture::Module(module_machine_future))) => {
-          let module_future = module_futures.entry(machine.type_id).or_insert_with(|| {
-            let output_edges = module.region.output_edges(machine_types);
-            let topological_ordering = module
-              .region
-              .topological_ordering_of_noncyclic_machines(&output_edges);
-            ModuleFuture {
-              output_edges,
-              topological_ordering,
-              future_variations: HashMap::new(),
-            }
-          });
-          let variation = match module_future
-            .future_variations
-            .get(&module_machine_future.canonical_inputs)
-          {
-            Some(existing_future) => existing_future,
-            None => {
-              // note: we have to drop module_future here so we can use module_futures mutably in the recursive call
-              // cloning is unfortunate; I could consider refactoring the data structure again to avoid this, but it's nowhere near a performance bottleneck
-              let output_edges = module_future.output_edges.clone();
-              let ordering = module_future.topological_ordering.clone();
+      let outputs = match (machine.as_module(), &future) {
+        (Some(module), Ok(MachineFuture::Module(module_machine_future))) => {
+          let inner_region = module.region();
 
-              let fiat_inputs: Vec<_> = module
-                .module_type
-                .inputs
-                .iter()
-                .map(|input| input.inner_location)
-                .zip(module_machine_future.canonical_inputs.iter())
-                .filter_map(|(loc, flow)| {
-                  flow.map(|f| {
-                    (
-                      loc,
-                      MaterialFlow {
-                        material: f.material,
-                        flow: FlowPattern::new(0, f.rate()),
-                      },
-                    )
-                  })
-                })
-                .collect();
-              let future = module.region.future(
-                machine_types,
-                &output_edges,
-                &ordering,
-                module_futures,
-                &fiat_inputs,
-              );
+          let fiat_inputs: Vec<_> = module
+            .platonic
+            .module_type
+            .inputs
+            .iter()
+            .map(|input| input.inner_location)
+            .zip(module_machine_future.canonical_inputs.iter())
+            .filter_map(|(loc, flow)| {
+              flow.map(|f| {
+                (
+                  loc,
+                  MaterialFlow {
+                    material: f.material,
+                    flow: FlowPattern::new(0, f.rate()),
+                  },
+                )
+              })
+            })
+            .collect();
 
-              match module_futures.get_mut (&machine.type_id).unwrap().future_variations.entry (module_machine_future.canonical_inputs.clone()) {
-                hash_map::Entry::Occupied (_) => unreachable!("A module's future was modified during calculation of its submodules' futures. Did a module get put inside itself somehow?"),
-                hash_map::Entry::Vacant (entry) => entry.insert (future)
+          let variation = if inner_region.last_disturbed_times.is_some() {
+            // Disturbed, and therefore unique enough that we don't need to deduplicate the future
+            let inner_future =
+              self.region_future(undisturbed_modules_futures, &inner_region, &fiat_inputs);
+            result
+              .disturbed_children
+              .entry(machine.id_within_region)
+              .or_insert(inner_future) // should always insert, but doing it this way to get a reference back
+          } else {
+            let platonic_module_futures = undisturbed_modules_futures
+              .entry(machine.platonic.type_id)
+              .or_default();
+
+            match platonic_module_futures.get(&module_machine_future.canonical_inputs) {
+              Some(e) => e,
+              None => {
+                let inner_future =
+                  self.region_future(undisturbed_modules_futures, &inner_region, &fiat_inputs);
+
+                match undisturbed_modules_futures.get_mut(&machine.platonic.type_id).unwrap().entry(module_machine_future.canonical_inputs.clone()) {
+                  hash_map::Entry::Occupied(_) => unreachable!("A module's future was modified during calculation of its submodules' futures. Did a module get put inside itself somehow?"),
+                  hash_map::Entry::Vacant(entry) => entry.insert(inner_future)
+                }
               }
             }
           };
-          module.module_output_flows(inputs, module_machine_future, variation)
+          module
+            .platonic
+            .module_output_flows(inputs, module_machine_future, variation)
         }
-        (_, Ok(future)) => machine_type.output_flows(inputs, future),
+        (_, Ok(future)) => machine.machine_type.output_flows(inputs, future),
         (_, Err(_)) => inputs![],
       };
 
       result.machines[machine_index].future = future;
 
       //println!("{:?}\n{:?}\n{:?}\n\n", machine, inputs , outputs);
-      for ((flow, destination), location) in outputs
-        .into_iter()
-        .zip(&output_edges[machine_index])
-        .zip(machine_type.output_locations(machine.state.position))
+      for ((flow, destination), location) in
+        outputs.into_iter().zip(&output_edges[machine_index]).zip(
+          machine
+            .machine_type
+            .output_locations(machine.platonic.state.position),
+        )
       {
         match destination {
           None => {
@@ -350,21 +384,21 @@ impl PlatonicRegionContents {
 
 impl Game {
   pub fn future(&self) -> GameFuture {
-    let output_edges = self.global_region.output_edges(&self.machine_types);
-    let ordering = self
-      .global_region
-      .topological_ordering_of_noncyclic_machines(&output_edges);
-    let mut module_futures = ModuleFutures::default();
-    let region_future = self.global_region.future(
-      &self.machine_types,
-      &output_edges,
-      &ordering,
-      &mut module_futures,
+    let builder = GameFutureBuilder::new(self);
+    let mut undisturbed_modules = UndisturbedModulesFutures::default();
+    let global_region = builder.region_future(
+      &mut undisturbed_modules,
+      &GameView {
+        game: self,
+        future: None,
+        selected: None,
+      }
+      .global_region(),
       &[],
     );
     GameFuture {
-      global_region: region_future,
-      modules: module_futures,
+      global_region,
+      undisturbed_modules,
     }
   }
 }
@@ -372,33 +406,40 @@ impl Game {
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct GameView<'a> {
   pub game: &'a Game,
-  pub future: &'a GameFuture,
+  pub future: Option<&'a GameFuture>,
+  pub selected: Option<&'a WorldMachinesMap<()>>,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct WorldRegionView<'a> {
   pub game: GameView<'a>,
-  pub region: &'a PlatonicRegionContents,
+  pub as_module: Option<&'a WorldModuleView<'a>>,
+  pub platonic: &'a PlatonicRegionContents,
   pub isomorphism: GridIsomorphism,
   pub start_time_and_future: Option<(Number, &'a RegionFuture)>,
+  pub last_disturbed_times: Option<&'a WorldMachinesMap<Number>>,
+  pub selected: Option<&'a WorldMachinesMap<()>>,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct WorldMachineView<'a> {
   pub game: GameView<'a>,
-  pub machine: &'a PlatonicMachine,
+  pub platonic: &'a PlatonicMachine,
   pub machine_type: MachineTypeRef<'a>,
   pub isomorphism: GridIsomorphism,
-  pub parent: &'a WorldRegionView<'a>,
-  pub index_within_parent: usize,
+  pub containing_region: &'a WorldRegionView<'a>,
+  pub index_within_region: usize,
+  pub id_within_region: MachineIdWithinPlatonicRegion,
   pub region_start_time_and_machine_future: Option<(Number, &'a MachineAndInputsFuture)>,
+  pub last_disturbed_time: Option<Number>,
+  pub selected: bool,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct WorldModuleView<'a> {
   pub game: GameView<'a>,
-  pub machine: &'a WorldMachineView<'a>,
-  pub module: &'a PlatonicModule,
+  pub as_machine: &'a WorldMachineView<'a>,
+  pub platonic: &'a PlatonicModule,
   pub inner_start_time_and_module_future:
     Option<(Number, &'a ModuleMachineFuture, &'a RegionFuture)>,
 }
@@ -407,15 +448,21 @@ impl<'a> GameView<'a> {
   pub fn global_region(&self) -> WorldRegionView {
     WorldRegionView {
       game: *self,
-      region: &self.game.global_region,
+      as_module: None,
+      platonic: &self.game.global_region,
       isomorphism: GridIsomorphism::default(),
-      start_time_and_future: Some((0, &self.future.global_region)),
+      start_time_and_future: self.future.map(|future| (0, &future.global_region)),
+      last_disturbed_times: Some(&self.game.last_disturbed_times),
+      selected: self.selected,
     }
   }
   pub fn inventory_at(&self, time: Number) -> HashMap<Material, Number> {
+    let future = self
+      .future
+      .expect("called inventory_at on a view with no future");
     let mut inventory = self.game.inventory_before_last_change.clone();
     let interval = [self.game.last_change_time, time];
-    for (_location, material_flow) in &self.future.global_region.dumped {
+    for (_location, material_flow) in &future.global_region.dumped {
       *inventory.entry(material_flow.material).or_default() +=
         material_flow.flow.num_disbursed_between(interval);
     }
@@ -426,45 +473,58 @@ impl<'a> GameView<'a> {
 impl<'a> WorldRegionView<'a> {
   pub fn machines<'b>(&'b self) -> impl Iterator<Item = WorldMachineView<'b>> + 'b {
     self
-      .region
+      .platonic
       .machines
       .iter()
       .enumerate()
-      .map(move |(index, machine)| WorldMachineView {
-        game: self.game,
-        machine,
-        machine_type: self.game.game.machine_types.get(machine.type_id),
-        isomorphism: machine.state.position * self.isomorphism,
-        parent: self,
-        index_within_parent: index,
-        region_start_time_and_machine_future: self
-          .start_time_and_future
-          .map(|(start_time, future)| (start_time, &future.machines[index])),
+      .map(move |(index, machine)| {
+        let id_within_region = machine.id_within_region();
+        WorldMachineView {
+          game: self.game,
+          platonic: machine,
+          machine_type: self.game.game.machine_types.get(machine.type_id),
+          isomorphism: machine.state.position * self.isomorphism,
+          containing_region: self,
+          index_within_region: index,
+          id_within_region,
+          region_start_time_and_machine_future: self
+            .start_time_and_future
+            .map(|(start_time, future)| (start_time, &future.machines[index])),
+          last_disturbed_time: self
+            .last_disturbed_times
+            .and_then(|a| a.here.get(&id_within_region))
+            .copied(),
+          selected: self
+            .selected
+            .and_then(|a| a.here.get(&id_within_region))
+            .is_some(),
+        }
       })
   }
 }
 
 impl<'a> WorldMachineView<'a> {
-  pub fn module(&self) -> Option<WorldModuleView> {
-    match self.game.game.machine_types.get(self.machine.type_id) {
+  pub fn as_module(&self) -> Option<WorldModuleView> {
+    match self.game.game.machine_types.get(self.platonic.type_id) {
       MachineTypeRef::Module(module) => Some(WorldModuleView {
         game: self.game,
-        machine: self,
-        module,
+        as_machine: self,
+        platonic: module,
         inner_start_time_and_module_future: self.region_start_time_and_machine_future.and_then(
           |(start_time, machine_future)| match &machine_future.future {
             Ok(MachineFuture::Module(module_machine_future)) => Some((
               start_time + module_machine_future.start_time,
               module_machine_future,
+              self.containing_region.start_time_and_future.unwrap().1.disturbed_children.get(&self.id_within_region).unwrap_or_else(||
               self
                 .game
                 .future
-                .modules
-                .get(& self.machine.type_id)
+                .unwrap()
+                .undisturbed_modules
+                .get(& self.platonic.type_id)
                 .expect("there shouldn't be a ModuleMachineFuture if there isn't a corresponding ModuleFuture")
-                .future_variations
                 .get(&module_machine_future.canonical_inputs)
-                .expect("there shouldn't be a ModuleMachineFuture if there isn't a corresponding future-variation"),
+                .expect("there shouldn't be a ModuleMachineFuture if there isn't a corresponding future-variation")),
             )),
             _ => None,
           },
@@ -487,20 +547,20 @@ impl<'a> WorldMachineView<'a> {
     let local_time = absolute_time - region_start_time;
     let inputs = MachineObservedInputs {
       input_flows: &machine_future.inputs,
-      start_time: self.machine.state.last_disturbed_time,
+      start_time: self.last_disturbed_time.unwrap_or(0),
     };
     let visuals = match &machine_future.future {
       Err(operating_state) => MachineMomentaryVisuals {
         operating_state: operating_state.clone(),
         materials: Vec::new(),
       },
-      Ok(future) => match self.module().and_then(|module| {
+      Ok(future) => match self.as_module().and_then(|module| {
         module
           .inner_start_time_and_module_future
           .map(|stuff| (module, stuff))
       }) {
         Some((module, (_inner_start_time, module_machine_future, module_region_future))) => {
-          module.module.module_momentary_visuals(
+          module.platonic.module_momentary_visuals(
             inputs,
             module_machine_future,
             local_time,
@@ -520,11 +580,22 @@ impl<'a> WorldModuleView<'a> {
   pub fn region(&self) -> WorldRegionView {
     WorldRegionView {
       game: self.game,
-      region: &self.module.region,
-      isomorphism: self.machine.isomorphism,
+      as_module: Some(self),
+      platonic: &self.platonic.region,
+      isomorphism: self.as_machine.isomorphism,
       start_time_and_future: self
         .inner_start_time_and_module_future
         .map(|(a, _b, c)| (a, c)),
+      last_disturbed_times: self
+        .as_machine
+        .containing_region
+        .last_disturbed_times
+        .and_then(|a| a.children.get(&self.as_machine.id_within_region)),
+      selected: self
+        .as_machine
+        .containing_region
+        .selected
+        .and_then(|a| a.children.get(&self.as_machine.id_within_region)),
     }
   }
 }
