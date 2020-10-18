@@ -6,42 +6,51 @@ use machine_data::{MachineTypeId, TIME_TO_MOVE_MATERIAL};
 use modules::CanonicalModuleInputs;
 use std::collections::HashSet;
 
-pub trait UndoModifyGame {
-  fn undo(&self, game: &mut Game, future: &GameFuture, time: Number);
-}
-
-#[live_prop_test]
 pub trait ModifyGame {
   #[live_prop_test(
     precondition = "game.is_canonical()",
-    precondition = "*future == game.future()",
-    postcondition = "check_modify_game(&old(game.clone()), game, future, time, &*result)"
+    postcondition = "check_modify_game(&old(game.clone()), game, time)"
   )]
-  fn modify_game(
-    &self,
-    game: &mut Game,
-    future: &GameFuture,
-    time: Number,
-  ) -> Box<dyn UndoModifyGame>;
+  fn undo(&self, game: &mut Game, time: Number);
 }
 
-fn check_modify_game<Undo: UndoModifyGame + ?Sized>(
-  before: &Game,
-  after: &Game,
-  future: &GameFuture,
-  time: Number,
-  undo: &Undo,
-) -> Result<(), String> {
+#[live_prop_test]
+pub trait UndoableModifyGame {
+  #[live_prop_test(
+    precondition = "game.is_canonical()",
+    postcondition = "check_undoable_modify_game(&old(game.clone()), game, time, &*result)"
+  )]
+  fn modify_game(&self, game: &mut Game, time: Number) -> Box<dyn ModifyGame>;
+}
+
+fn check_modify_game(before: &Game, after: &Game, modify_time: Number) -> Result<(), String> {
+  lpt_assert!(after.is_canonical());
+  lpt_assert_eq!(
+    after.inventory_before_last_change,
+    before_view.inventory_at(modify_time)
+  );
   // Note: Null changes COULD be allowed to not change last_change_time...
   // but also maybe they shouldn't be a ModifyGame at all, because they probably shouldn't go in the undo history?
-  lpt_assert_eq!(after.last_change_time, time);
+  lpt_assert_eq!(after.last_change_time, modify_time);
+  Ok(())
+}
+
+type Aspects = (Platonic, LastDisturbed);
+
+fn check_undoable_modify_game<Undo: ModifyGame + ?Sized>(
+  before: &Game,
+  after: &Game,
+  modify_time: Number,
+  undo: &Undo,
+) -> Result<(), String> {
+  check_modify_game(before, after, modify_time)?;
   let before_view = GameView {
     game: before,
     future,
   };
   lpt_assert_eq!(
     after.inventory_before_last_change,
-    before_view.inventory_at(time)
+    before_view.inventory_at(modify_time)
   );
   lpt_assert!(after.is_canonical());
   // we'd like to assert that every absolute disturbed time is either the same as before or is now...
@@ -52,12 +61,12 @@ fn check_modify_game<Undo: UndoModifyGame + ?Sized>(
     game: after,
     future: &after_future,
   };
-  check_undo(before_view, after_view, undo, time)?;
+  check_undo(before_view, after_view, undo, modify_time)?;
   check_undo(
     before_view,
     after_view,
     undo,
-    time + TIME_TO_MOVE_MATERIAL * 33 + 67,
+    modify_time + TIME_TO_MOVE_MATERIAL * 33 + 67,
   )?;
   Ok(())
 }
@@ -69,12 +78,12 @@ struct CheckUndoneMap
   //modify_time: Number,
   //undone: GameViewWithFuture<'a>,
   undo_time: Number,
-  verified_module_pairs: HashSet<[(usize, Option<CanonicalModuleInputs>); 2]>,
+  verified_undisturbed_module_pairs: HashSet<[usize; 2]>,
 }
 
 fn check_undo<Undo: UndoModifyGame + ?Sized>(
-  before: GameView,
-  after: GameView,
+  before: GameView<Aspects>,
+  after: GameView<Aspects>,
   undo: &Undo,
   undo_time: Number,
 ) -> Result<(), String> {
@@ -96,7 +105,7 @@ fn check_undo<Undo: UndoModifyGame + ?Sized>(
     //modify_time,
     //undone,
     undo_time,
-    verified_module_pairs: HashSet::new(),
+    verified_undisturbed_module_pairs: HashSet::new(),
   }
   .maps_undo_compatible(before.global_region(), undone.global_region())
 }
@@ -112,8 +121,8 @@ fn module_canonical_inputs(module: WorldModuleView) -> Option<CanonicalModuleInp
 impl CheckUndoneMap {
   fn maps_undo_compatible(
     &mut self,
-    before_map: WorldRegionView,
-    undone_map: WorldRegionView,
+    before_map: WorldRegionView<Aspects>,
+    undone_map: WorldRegionView<Aspects>,
   ) -> Result<(), String> {
     let before_machines: Vec<_> = before_map.machines().collect();
     let undone_machines: Vec<_> = undone_map.machines().collect();
@@ -126,41 +135,23 @@ impl CheckUndoneMap {
 
   fn machines_undo_compatible(
     &mut self,
-    before_machine: WorldMachineView,
-    undone_machine: WorldMachineView,
+    before_machine: WorldMachineView<Aspects>,
+    undone_machine: WorldMachineView<Aspects>,
   ) -> Result<(), String> {
     lpt_assert_eq!(
-      before_machine.machine.state.position,
-      undone_machine.machine.state.position
+      before_machine.platonic().state.position,
+      undone_machine.platonic().state.position
     );
-    match (
-      &before_machine.region_start_time_and_machine_future,
-      &undone_machine.region_start_time_and_machine_future,
-    ) {
-      (Some((before_start, _before_future)), Some((undone_start, _undone_future))) => {
-        let before_absolute_disturbed_time =
-          before_start + before_machine.machine.state.last_disturbed_time;
-        let undone_absolute_disturbed_time =
-          undone_start + undone_machine.machine.state.last_disturbed_time;
-        if undone_absolute_disturbed_time != before_absolute_disturbed_time {
-          lpt_assert!(undone_absolute_disturbed_time >= self.undo_time);
-        }
-      }
-      (None, None) => {
-        // right now, last_disturbed_time doesn't matter inside of modules that aren't operating.
-        // we might eventually require it to be 0 in that case, but currently, we don't.
-      }
-      _ => {
-        return Err(format!(
-          "One machine had a future and the other didn't: {:?}, {:?}",
-          before_machine, undone_machine
-        ))
+
+    if let Some(undone_disturbed_time) = undone_machine.last_disturbed_time() {
+      if undone_disturbed_time != self.undo_time {
+        lpt_assert_eq!(undone_machine.last_disturbed_time(), self.undo_time);
       }
     }
 
     match (
-      before_machine.machine.type_id,
-      undone_machine.machine.type_id,
+      before_machine.platonic().type_id,
+      undone_machine.platonic().type_id,
     ) {
       (MachineTypeId::Preset(before_index), MachineTypeId::Preset(undone_index)) => {
         lpt_assert_eq!(before_index, undone_index)
@@ -168,23 +159,17 @@ impl CheckUndoneMap {
       (MachineTypeId::Module(before_index), MachineTypeId::Module(undone_index)) => {
         let before_module = before_machine.module().unwrap();
         let undone_module = undone_machine.module().unwrap();
-        // short-circuit on repeated module pairings to avoid an exponential search.
-        // theoretically, the two versions of the module, even with the same canonical inputs,
-        // could still differ in their start_time.
-        // However the start_times should only be different if the start_times are all
-        // AFTER undo_time, which rules out any last_disturbed_time-related errors,
-        // assuming last_disturbed_times inside modules are never negative.
-        // TODO: actually assert that the start_times are all after undo_time in this case,
-        // or prove that the other test already catch that.
-        if self.verified_module_pairs.insert([
-          (before_index, module_canonical_inputs(before_module)),
-          (undone_index, module_canonical_inputs(undone_module)),
-        ]) {
+        // short-circuit on undisturbed module pairings to avoid an exponential search.
+        if before_module.as_machine().last_disturbed_time().is_some()
+          || before_module.as_machine().last_disturbed_time().is_some()
+          || self
+            .verified_undisturbed_module_pairs
+            .insert([before_index, undone_index])
+        {
           lpt_assert_eq!(
-            before_module.module.module_type,
-            undone_module.module.module_type
+            before_module.platonic().module_type,
+            undone_module.platonic().module_type
           );
-          lpt_assert_eq!(before_module.module.cost, undone_module.module.cost);
           self.maps_undo_compatible(before_module.region(), undone_module.region())?;
         }
       }

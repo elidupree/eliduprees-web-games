@@ -6,9 +6,10 @@ use arrayvec::ArrayVec;
 use flow_pattern::{FlowCollection, FlowPattern, MaterialFlow};
 use geometry::{GridIsomorphism, Number};
 use machine_data::{
-  Game, InputLocation, Inputs, MachineFuture, MachineMomentaryVisuals, MachineObservedInputs,
-  MachineOperatingState, MachineTypeId, MachineTypeRef, MachineTypeTrait, MachineTypes, Material,
-  PlatonicMachine, PlatonicRegionContents, MAX_COMPONENTS,
+  Game, InputLocation, Inputs, MachineFuture, MachineIdWithinPlatonicRegion,
+  MachineMomentaryVisuals, MachineObservedInputs, MachineOperatingState, MachineTypeId,
+  MachineTypeRef, MachineTypeTrait, MachineTypes, Material, PlatonicMachine,
+  PlatonicRegionContents, MAX_COMPONENTS,
 };
 use modules::{CanonicalModuleInputs, ModuleMachineFuture, PlatonicModule};
 
@@ -367,6 +368,165 @@ impl Game {
       modules: module_futures,
     }
   }
+}
+
+pub trait GameViewAspect<'a> {
+  type Region;
+  fn global_region(&'a self) -> Self::Region;
+}
+pub trait GameViewAspectMut<'a> {
+  type RegionMut;
+  fn global_region_mut(&'a mut self) -> Self::RegionMut;
+}
+impl<'a, T: GameViewAspect<'a>> GameViewAspectMut<'a> for T {
+  type RegionMut = <Self as GameViewAspect<'a>>::Region;
+  fn global_region_mut(&'a mut self) -> Self::RegionMut {
+    self.global_region()
+  }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct ViewMachineIds {
+  index: usize,
+  id_within_region: MachineIdWithinPlatonicRegion,
+}
+
+pub trait RegionViewAspect<'a> {
+  type Machine;
+  fn get_machine(&'a self, ids: ViewMachineIds) -> Self::Machine;
+}
+pub trait RegionViewAspectMut<'a> {
+  type MachineMut;
+  fn get_machine_mut(&'a mut self, ids: ViewMachineIds) -> Self::MachineMut;
+}
+impl<'a, T: RegionViewAspect<'a>> RegionViewAspectMut<'a> for T {
+  type MachineMut = <Self as RegionViewAspect<'a>>::Machine;
+  fn get_machine_mut(&'a mut self, ids: ViewMachineIds) -> Self::MachineMut {
+    self.get_machine(ids)
+  }
+}
+pub trait RegionViewListMachines {
+  fn view_machine_ids(&self) -> Vec<ViewMachineIds>;
+}
+
+pub trait MachineViewAspect<'a> {
+  type Module;
+  fn as_module(&'a self) -> Self::Module;
+}
+pub trait MachineViewAspectMut<'a> {
+  type ModuleMut;
+  fn as_module_mut(&'a mut self) -> Self::ModuleMut;
+}
+impl<'a, T: MachineViewAspect<'a>> MachineViewAspectMut<'a> for T {
+  type ModuleMut = <Self as MachineViewAspect<'a>>::Module;
+  fn as_module_mut(&'a mut self) -> Self::ModuleMut {
+    self.as_module()
+  }
+}
+
+pub trait ModuleViewAspect<'a> {
+  type Region;
+  fn inner_region(&'a self) -> Self::Region;
+}
+pub trait ModuleViewAspectMut<'a> {
+  type RegionMut;
+  fn inner_region_mut(&'a mut self) -> Self::RegionMut;
+}
+impl<'a, T: ModuleViewAspect<'a>> ModuleViewAspectMut<'a> for T {
+  type RegionMut = <Self as ModuleViewAspect<'a>>::Region;
+  fn inner_region_mut(&'a mut self) -> Self::RegionMut {
+    self.inner_region()
+  }
+}
+
+macro_rules! views {
+  ($($field: ident:$Field: ident,)*) => {
+
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub struct WorldView<$($Field,)*> {
+  $(pub $field: $Field,)*
+}
+
+impl<'a,$($Field: GameViewAspect<'a>,)*> WorldView<$($Field,)*> {
+  fn global_region(&'a self) -> WorldView<$($Field::Region,)*> {
+    WorldView {
+      $($field: self.$field.global_region(),)*
+    }
+  }
+}
+
+impl<'a,$($Field: GameViewAspectMut<'a>,)*> WorldView<$($Field,)*> {
+  fn global_region_mut(&'a mut self) -> WorldView<$($Field::RegionMut,)*> {
+    WorldView {
+      $($field: self.$field.global_region_mut(),)*
+    }
+  }
+}
+
+impl<'a,$($Field: RegionViewAspect<'a>,)*> WorldView<$($Field,)*> {
+  fn get_machine(&'a self, ids: ViewMachineIds) -> WorldView<$($Field::Machine,)*> {
+    WorldView {
+      $($field: self.$field.get_machine(ids),)*
+    }
+  }
+}
+
+impl<'a,$($Field: RegionViewAspectMut<'a>,)*> WorldView<$($Field,)*> {
+  fn get_machine_mut(&'a mut self, ids: ViewMachineIds) -> WorldView<$($Field::MachineMut,)*> {
+    WorldView {
+      $($field: self.$field.get_machine_mut(ids),)*
+    }
+  }
+}
+
+
+impl<$($Field,)*> WorldView<$($Field,)*> where Platonic: RegionViewListMachines {
+  fn machines<'a>(&'a self, ids: ViewMachineIds) -> impl Iterator<Item = WorldView<$(<$Field as RegionViewAspect<'a>>::Machine,)*>> + 'a where $($Field: RegionViewAspect<'a>,)* {
+    self.platonic.machine_ids().into_iter().map(move |ids| self.get_machine(ids))
+  }
+}
+//unfortunately, the lifetimes don't work for the mutable version
+
+impl<'a,$($Field: MachineViewAspect<'a>,)*> WorldView<$($Field,)*> {
+  fn as_module(&'a self) -> WorldView<$($Field::Module,)*> {
+    WorldView {
+      $($field: self.$field.as_module(),)*
+    }
+  }
+}
+
+impl<'a,$($Field: MachineViewAspectMut<'a>,)*> WorldView<$($Field,)*> {
+  fn as_module_mut(&'a mut self) -> WorldView<$($Field::ModuleMut,)*> {
+    WorldView {
+      $($field: self.$field.as_module_mut(),)*
+    }
+  }
+}
+
+impl<'a,$($Field: ModuleViewAspect<'a>,)*> WorldView<$($Field,)*> {
+  fn inner_region(&'a self) -> WorldView<$($Field::Region,)*> {
+    WorldView {
+      $($field: self.$field.inner_region(),)*
+    }
+  }
+}
+
+impl<'a,$($Field: ModuleViewAspectMut<'a>,)*> WorldView<$($Field,)*> {
+  fn inner_region_mut(&'a mut self) -> WorldView<$($Field::RegionMut,)*> {
+    WorldView {
+      $($field: self.$field.inner_region_mut(),)*
+    }
+  }
+}
+
+  }
+}
+
+views! {
+  platonic: Platonic,
+  last_disturbed: LastDisturbed,
+  selected: Selected,
+  future: Future,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
