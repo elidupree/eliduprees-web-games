@@ -370,116 +370,283 @@ impl Game {
   }
 }
 
-pub trait GameViewAspect<'a> {
-  type Region;
-  fn global_region(&'a self) -> Self::Region;
-}
-pub trait GameViewAspectMut<'a> {
-  type RegionMut;
-  fn global_region_mut(&'a mut self) -> Self::RegionMut;
-}
-impl<'a, T: GameViewAspect<'a>> GameViewAspectMut<'a> for T {
-  type RegionMut = <Self as GameViewAspect<'a>>::Region;
-  fn global_region_mut(&'a mut self) -> Self::RegionMut {
-    self.global_region()
-  }
-}
-
 #[derive(Copy, Clone, Debug)]
 pub struct ViewMachineIds {
   index: usize,
   id_within_region: MachineIdWithinPlatonicRegion,
 }
 
-pub trait RegionViewAspect<'a> {
-  type Machine;
-  fn get_machine(&'a self, ids: ViewMachineIds) -> Self::Machine;
+pub trait WorldViewAspect<'a> {
+  type Game: 'a;
+  type Region: 'a;
+  type Machine: 'a;
+  type Module: 'a;
 }
-pub trait RegionViewAspectMut<'a> {
-  type MachineMut;
-  fn get_machine_mut(&'a mut self, ids: ViewMachineIds) -> Self::MachineMut;
+pub trait WorldViewAspectGetMut<'a>: WorldViewAspect<'a> {
+  fn global_region_mut(game: &'a mut Self::Game) -> Self::Region;
+  fn get_machine_mut(region: &'a mut Self::Region, ids: ViewMachineIds) -> Self::Machine;
+  // One might think this should be Option<Self::Module>,
+  // but some aspect types can't tell whether the module exists or not
+  fn as_module_mut(machine: &'a mut Self::Machine) -> Self::Module;
+  fn inner_region_mut(module: &'a mut Self::Module) -> Self::Region;
 }
-impl<'a, T: RegionViewAspect<'a>> RegionViewAspectMut<'a> for T {
-  type MachineMut = <Self as RegionViewAspect<'a>>::Machine;
-  fn get_machine_mut(&'a mut self, ids: ViewMachineIds) -> Self::MachineMut {
-    self.get_machine(ids)
+pub trait WorldViewAspectGet<'a>: WorldViewAspectGetMut<'a> {
+  fn global_region(game: &'a Self::Game) -> Self::Region;
+  fn get_machine(region: &'a Self::Region, ids: ViewMachineIds) -> Self::Machine;
+  fn as_module(machine: &'a Self::Machine) -> Self::Module;
+  fn inner_region(module: &'a Self::Module) -> Self::Region;
+}
+
+impl<'a, T: WorldViewAspectGet<'a>> WorldViewAspectGetMut<'a> for T {
+  fn global_region_mut(game: &'a mut Self::Game) -> Self::Region {
+    Self::global_region(game)
+  }
+  fn get_machine_mut(region: &'a mut Self::Region, ids: ViewMachineIds) -> Self::Machine {
+    Self::get_machine(region, ids)
+  }
+  fn as_module_mut(machine: &'a mut Self::Machine) -> Self::Module {
+    Self::as_module(machine)
+  }
+  fn inner_region_mut(module: &'a mut Self::Module) -> Self::Region {
+    Self::inner_region(module)
   }
 }
+
 pub trait RegionViewListMachines {
   fn view_machine_ids(&self) -> Vec<ViewMachineIds>;
 }
 
-pub trait MachineViewAspect<'a> {
-  type Module;
-  fn as_module(&'a self) -> Self::Module;
-}
-pub trait MachineViewAspectMut<'a> {
-  type ModuleMut;
-  fn as_module_mut(&'a mut self) -> Self::ModuleMut;
-}
-impl<'a, T: MachineViewAspect<'a>> MachineViewAspectMut<'a> for T {
-  type ModuleMut = <Self as MachineViewAspect<'a>>::Module;
-  fn as_module_mut(&'a mut self) -> Self::ModuleMut {
-    self.as_module()
-  }
+#[derive(Debug)]
+pub struct GameView<'a, T: WorldViewAspect<'a>> {
+  pub aspects: T::Game,
 }
 
-pub trait ModuleViewAspect<'a> {
-  type Region;
-  fn inner_region(&'a self) -> Self::Region;
-}
-pub trait ModuleViewAspectMut<'a> {
-  type RegionMut;
-  fn inner_region_mut(&'a mut self) -> Self::RegionMut;
-}
-impl<'a, T: ModuleViewAspect<'a>> ModuleViewAspectMut<'a> for T {
-  type RegionMut = <Self as ModuleViewAspect<'a>>::Region;
-  fn inner_region_mut(&'a mut self) -> Self::RegionMut {
-    self.inner_region()
-  }
+#[derive(Debug)]
+pub struct WorldRegionView<'a, T: WorldViewAspect<'a>> {
+  pub aspects: T::Region,
 }
 
-macro_rules! views {
-  ($($field: ident:$Field: ident,)*) => {
-
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
-pub struct WorldView<$($Field,)*> {
-  $(pub $field: $Field,)*
+#[derive(Debug)]
+pub struct WorldMachineView<'a, T: WorldViewAspect<'a>> {
+  pub aspects: T::Machine,
 }
 
-impl<'a,$($Field: GameViewAspect<'a>,)*> WorldView<$($Field,)*> {
-  fn global_region(&'a self) -> WorldView<$($Field::Region,)*> {
-    WorldView {
-      $($field: self.$field.global_region(),)*
+#[derive(Debug)]
+pub struct WorldModuleView<'a, T: WorldViewAspect<'a>> {
+  pub aspects: T::Module,
+}
+
+impl<'a, T: WorldViewAspectGetMut<'a>> GameView<'a, T> {
+  pub fn global_region_mut(&'a mut self) -> WorldRegionView<'a, T> {
+    WorldRegionView {
+      aspects: T::global_region_mut(&mut self.aspects),
     }
   }
 }
 
-impl<'a,$($Field: GameViewAspectMut<'a>,)*> WorldView<$($Field,)*> {
-  fn global_region_mut(&'a mut self) -> WorldView<$($Field::RegionMut,)*> {
-    WorldView {
-      $($field: self.$field.global_region_mut(),)*
+impl<'a, T: WorldViewAspectGet<'a>> GameView<'a, T> {
+  pub fn global_region(&'a self) -> WorldRegionView<'a, T> {
+    WorldRegionView {
+      aspects: T::global_region(&self.aspects),
     }
   }
 }
 
-impl<'a,$($Field: RegionViewAspect<'a>,)*> WorldView<$($Field,)*> {
-  fn get_machine(&'a self, ids: ViewMachineIds) -> WorldView<$($Field::Machine,)*> {
-    WorldView {
-      $($field: self.$field.get_machine(ids),)*
+impl<'a, T: WorldViewAspectGetMut<'a>> WorldRegionView<'a, T> {
+  pub fn get_machine_mut(&'a mut self, ids: ViewMachineIds) -> WorldMachineView<'a, T> {
+    WorldMachineView {
+      aspects: T::get_machine_mut(&mut self.aspects, ids),
     }
   }
 }
 
-impl<'a,$($Field: RegionViewAspectMut<'a>,)*> WorldView<$($Field,)*> {
-  fn get_machine_mut(&'a mut self, ids: ViewMachineIds) -> WorldView<$($Field::MachineMut,)*> {
-    WorldView {
-      $($field: self.$field.get_machine_mut(ids),)*
+impl<'a, T: WorldViewAspectGet<'a>> WorldRegionView<'a, T> {
+  pub fn get_machine(&'a self, ids: ViewMachineIds) -> WorldMachineView<'a, T> {
+    WorldMachineView {
+      aspects: T::get_machine(&self.aspects, ids),
     }
   }
 }
 
+impl<'a, T: WorldViewAspectGetMut<'a>> WorldMachineView<'a, T> {
+  pub fn as_module_mut(&'a mut self) -> WorldModuleView<'a, T> {
+    WorldModuleView {
+      aspects: T::as_module_mut(&mut self.aspects),
+    }
+  }
+}
 
+impl<'a, T: WorldViewAspectGet<'a>> WorldMachineView<'a, T> {
+  pub fn as_module(&'a self) -> WorldModuleView<'a, T> {
+    WorldModuleView {
+      aspects: T::as_module(&self.aspects),
+    }
+  }
+}
+
+impl<'a, T: WorldViewAspectGetMut<'a>> WorldModuleView<'a, T> {
+  pub fn inner_region_mut(&'a mut self) -> WorldRegionView<'a, T> {
+    WorldRegionView {
+      aspects: T::inner_region_mut(&mut self.aspects),
+    }
+  }
+}
+
+impl<'a, T: WorldViewAspectGet<'a>> WorldModuleView<'a, T> {
+  pub fn inner_region(&'a self) -> WorldRegionView<'a, T> {
+    WorldRegionView {
+      aspects: T::inner_region(&self.aspects),
+    }
+  }
+}
+
+macro_rules! impl_world_views_for_aspect_tuple {
+   (($($Aspect: ident,)*)) => {
+
+impl<'a> WorldViewAspect<'a> for ($($Aspect,)*) {
+  type Game = ($(<$Aspect as WorldViewAspect<'a>>::Game,)*);
+  type Region = ($(<$Aspect as WorldViewAspect<'a>>::Region,)*);
+  type Machine = ($(<$Aspect as WorldViewAspect<'a>>::Machine,)*);
+  type Module = ($(<$Aspect as WorldViewAspect<'a>>::Module,)*);
+}
+  };
+  (&mut ($($Aspect: ident,)*)) => {
+impl_world_views_for_aspect_tuple!(($($Aspect,)*));
+impl<'a> WorldViewAspectGetMut<'a> for ($($Aspect,)*) {
+  fn global_region_mut(game: &'a mut Self::Game) -> Self::Region {
+    let ($($Aspect,)*) = &mut game;
+    ($(
+      $Aspect::global_region_mut($Aspect),
+    )*)
+  }
+  fn get_machine_mut(region: &'a mut Self::Region, ids: ViewMachineIds) -> Self::Machine {
+    let ($($Aspect,)*) = &mut region;
+    ($(
+      $Aspect::get_machine_mut($Aspect, ids),
+    )*)
+  }
+  fn as_module_mut(machine: &'a mut Self::Machine) -> Self::Module {
+    let ($($Aspect,)*) = &mut machine;
+    ($(
+      $Aspect::as_module_mut($Aspect),
+    )*)
+  }
+  fn inner_region_mut(module: &'a mut Self::Module) -> Self::Region {
+    let ($($Aspect,)*) = &mut module;
+    ($(
+      $Aspect::inner_region_mut($Aspect),
+    )*)
+  }
+}
+  };
+
+  (& ($($Aspect: ident,)*)) => {
+impl_world_views_for_aspect_tuple!(($($Aspect,)*));
+impl<'a> WorldViewAspectGet<'a> for ($($Aspect,)*) {
+  fn global_region(game: &'a Self::Game) -> Self::Region {
+    let ($($Aspect,)*) = &game;
+    ($(
+      $Aspect::global_region($Aspect),
+    )*)
+  }
+  fn get_machine(region: &'a Self::Region, ids: ViewMachineIds) -> Self::Machine {
+    let ($($Aspect,)*) = &region;
+    ($(
+      $Aspect::get_machine($Aspect, ids),
+    )*)
+  }
+  fn as_module(machine: &'a  Self::Machine) -> Self::Module {
+    let ($($Aspect,)*) = & machine;
+    ($(
+      $Aspect::as_module($Aspect),
+    )*)
+  }
+  fn inner_region(module: &'a Self::Module) -> Self::Region {
+    let ($($Aspect,)*) = &module;
+    ($(
+      $Aspect::inner_region($Aspect),
+    )*)
+  }
+}
+  };
+}
+
+mod base_view_aspect {
+  use super::*;
+
+  pub enum Base {}
+
+  impl<'a> WorldViewAspect<'a> for Base {
+    type Game = GameView<'a>;
+    type Region = WorldRegionView<'a>;
+    type Machine = WorldMachineView<'a>;
+    type Module = WorldModuleView<'a>;
+  }
+  impl<'a> WorldViewAspectGet<'a> for Base {
+    fn global_region(game: &'a Self::Game) -> Self::Region {
+      WorldRegionView {
+        game: *game,
+        platonic: &game.game.global_region,
+        isomorphism: GridIsomorphism::default(),
+      }
+    }
+    fn get_machine(region: &'a Self::Region, ids: ViewMachineIds) -> Self::Machine {
+      let machine = &region.platonic.machines[ids.index];
+      WorldMachineView {
+        game: region.game,
+        platonic: machine,
+        machine_type: region.game.game.machine_types.get(machine.type_id),
+        isomorphism: machine.state.position * region.isomorphism,
+        parent: region,
+        index_within_parent: ids.index,
+      }
+    }
+    fn as_module(machine: &'a Self::Machine) -> Self::Module {
+      unimplemented!()
+    }
+    fn inner_region(module: &'a Self::Module) -> Self::Region {
+      WorldRegionView {
+        game: module.game,
+        platonic: &module.platonic.region,
+        isomorphism: module.as_machine.isomorphism,
+      }
+    }
+  }
+
+  #[derive(Copy, Clone, PartialEq, Eq, Debug)]
+  pub struct GameView<'a> {
+    pub game: &'a Game,
+  }
+
+  #[derive(Copy, Clone, PartialEq, Eq, Debug)]
+  pub struct WorldRegionView<'a> {
+    pub game: GameView<'a>,
+    pub platonic: &'a PlatonicRegionContents,
+    pub isomorphism: GridIsomorphism,
+  }
+
+  #[derive(Copy, Clone, PartialEq, Eq, Debug)]
+  pub struct WorldMachineView<'a> {
+    pub game: GameView<'a>,
+    pub platonic: &'a PlatonicMachine,
+    pub machine_type: MachineTypeRef<'a>,
+    pub isomorphism: GridIsomorphism,
+    pub parent: &'a WorldRegionView<'a>,
+    pub index_within_parent: usize,
+  }
+
+  #[derive(Copy, Clone, PartialEq, Eq, Debug)]
+  pub struct WorldModuleView<'a> {
+    pub game: GameView<'a>,
+    pub as_machine: &'a WorldMachineView<'a>,
+    pub platonic: &'a PlatonicModule,
+  }
+}
+
+pub use self::base_view_aspect::Base;
+impl_world_views_for_aspect_tuple!(&(Base,));
+
+/*
 impl<$($Field,)*> WorldView<$($Field,)*> where Platonic: RegionViewListMachines {
   fn machines<'a>(&'a self, ids: ViewMachineIds) -> impl Iterator<Item = WorldView<$(<$Field as RegionViewAspect<'a>>::Machine,)*>> + 'a where $($Field: RegionViewAspect<'a>,)* {
     self.platonic.machine_ids().into_iter().map(move |ids| self.get_machine(ids))
@@ -521,6 +688,7 @@ impl<'a,$($Field: ModuleViewAspectMut<'a>,)*> WorldView<$($Field,)*> {
 
   }
 }
+
 
 views! {
   platonic: Platonic,
@@ -687,4 +855,4 @@ impl<'a> WorldModuleView<'a> {
         .map(|(a, _b, c)| (a, c)),
     }
   }
-}
+}*/
