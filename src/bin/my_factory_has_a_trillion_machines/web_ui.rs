@@ -232,7 +232,7 @@ pub fn run_game() {
     inventory_before_last_change: Default::default(),
     machine_types: MachineTypes {
       presets: machine_presets(),
-      modules: Vec::new(),
+      custom_modules: Vec::new(),
     },
   };
   game
@@ -382,14 +382,14 @@ fn smallest_region_containing(
     nodes: &mut Vec<ModuleInstancePathNode>,
   ) {
     for machine in region.machines() {
-      if let Some(module) = machine.module() {
+      if let Some(module) = machine.as_module() {
         let relative_position = position - machine.isomorphism.translation;
-        let available_radius = module.module.module_type.inner_radius - radius;
+        let available_radius = module.platonic.module_type.inner_radius - radius;
         if max(relative_position[0].abs(), relative_position[1].abs()) <= available_radius {
           nodes.push(ModuleInstancePathNode {
             isomorphism: machine.isomorphism,
             machine_index_in_parent: machine.index_within_parent,
-            module_id: machine.machine.type_id,
+            module_id: machine.platonic.type_id,
             start_time: module.inner_start_time_and_module_future.map(|a| a.0),
           });
           recurse((position, radius), module.region(), nodes);
@@ -440,15 +440,15 @@ impl ModuleInstancePath {
 
     let mut module = game.machine_types.get_module(node.module_id).clone();
     (modify)(&mut game.machine_types, &mut module.region);
-    let mut new_module_index = game.machine_types.modules.len();
-    game.machine_types.modules.push(module);
+    let mut new_module_index = game.machine_types.custom_modules.len();
+    game.machine_types.custom_modules.push(module);
 
     while let Some(parent_node) = self.nodes.pop() {
       let mut parent_module = game.machine_types.get_module(parent_node.module_id).clone();
       parent_module.region.machines[node.machine_index_in_parent].type_id =
         MachineTypeId::Module(new_module_index);
-      let new_parent_module_index = game.machine_types.modules.len();
-      game.machine_types.modules.push(parent_module);
+      let new_parent_module_index = game.machine_types.custom_modules.len();
+      game.machine_types.custom_modules.push(parent_module);
 
       new_module_index = new_parent_module_index;
     }
@@ -737,14 +737,14 @@ fn draw_region(samples: &DomSamples, region: WorldRegionView, absolute_time: Num
     draw_rectangle(
       canvas_position(samples, machine.isomorphism.translation),
       size,
-      machine_color(&machine.machine),
+      machine_color(&machine.platonic),
       "rounded-rectangle-transparent",
       Rotation::default(),
     );
     draw_rectangle(
       canvas_position(samples, machine.isomorphism.translation),
       size,
-      machine_color(&machine.machine),
+      machine_color(&machine.platonic),
       machine.machine_type.icon(),
       machine.isomorphism.rotation,
     );
@@ -763,7 +763,7 @@ fn draw_region(samples: &DomSamples, region: WorldRegionView, absolute_time: Num
         draw_rectangle(
           pos,
           tile_canvas_size(samples),
-          machine_color(&machine.machine),
+          machine_color(&machine.platonic),
           "input",
           input_location.facing - Facing::default(),
         );
@@ -771,7 +771,7 @@ fn draw_region(samples: &DomSamples, region: WorldRegionView, absolute_time: Num
           draw_rectangle(
             pos,
             tile_canvas_size(samples) * 0.8,
-            machine_color(&machine.machine),
+            machine_color(&machine.platonic),
             material.icon(),
             Rotation::default(),
           );
@@ -788,7 +788,7 @@ fn draw_region(samples: &DomSamples, region: WorldRegionView, absolute_time: Num
             output_location.position - output_location.facing.unit_vector(),
           ),
           tile_canvas_size(samples),
-          machine_color(&machine.machine),
+          machine_color(&machine.platonic),
           "input",
           output_location.facing.rotate_90(2) - Facing::default(),
         );
@@ -811,7 +811,7 @@ fn draw_region(samples: &DomSamples, region: WorldRegionView, absolute_time: Num
   }
 
   for machine in region.machines() {
-    if let Some(module) = machine.module() {
+    if let Some(module) = machine.as_module() {
       draw_region(samples, module.region(), absolute_time);
     }
   }

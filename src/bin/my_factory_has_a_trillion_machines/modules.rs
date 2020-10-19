@@ -316,52 +316,25 @@ impl MachineTypeTrait for PlatonicModule {
 
 struct ModuleCollector<'a> {
   machine_types: &'a MachineTypes,
-  found_modules: HashMap<&'a PlatonicModule, MachineTypeId>,
-  next_index: usize,
-  region_queue: VecDeque<&'a PlatonicRegionContents>,
-  new_ids: Vec<Option<MachineTypeId>>,
+  found_custom_modules: HashMap<usize, usize>,
 }
 
 impl<'a> ModuleCollector<'a> {
-  fn find_machine(&mut self, id: MachineTypeId) {
+  fn visit_region(&mut self, region: &PlatonicRegionContents) {
+    for machine in &region.machines {
+      self.visit_machine(machine.type_id);
+    }
+  }
+
+  fn visit_machine(&mut self, id: MachineTypeId) {
     if let MachineTypeId::Module(module_index) = id {
-      let module = &self.machine_types.modules[module_index];
-      let next_index = &mut self.next_index;
-      let region_queue = &mut self.region_queue;
-      let new_id = *self.found_modules.entry(module).or_insert_with(|| {
-        let result = MachineTypeId::Module(*next_index);
-        *next_index += 1;
-        region_queue.push_back(&module.region);
-        result
-      });
-      self.new_ids[module_index] = Some(new_id);
-    }
-  }
-
-  fn new(game: &'a Game) -> ModuleCollector<'a> {
-    let mut collector = ModuleCollector {
-      machine_types: &game.machine_types,
-      found_modules: HashMap::with_capacity(game.machine_types.modules.len()),
-      next_index: 0,
-      region_queue: VecDeque::with_capacity(game.machine_types.modules.len()),
-      new_ids: vec![None; game.machine_types.modules.len()],
-    };
-    collector.region_queue.push_back(&game.global_region);
-    for (index, preset) in game.machine_types.presets.iter().enumerate() {
-      if let MachineType::Module(module) = preset {
-        collector
-          .found_modules
-          .insert(module, MachineTypeId::Preset(index));
-      }
-    }
-    collector
-  }
-
-  fn run(&mut self) {
-    while let Some(region) = self.region_queue.pop_front() {
-      for machine in &region.machines {
-        self.find_machine(machine.type_id);
-      }
+      let module = &self.machine_types.custom_modules[module_index];
+      self.visit_region(&module.region);
+      let num_found_modules = self.found_custom_modules.len();
+      self
+        .found_custom_modules
+        .entry(module_index)
+        .or_insert(num_found_modules);
     }
   }
 }
@@ -374,44 +347,38 @@ impl PlatonicRegionContents {
 
 #[live_prop_test]
 impl Game {
-  /// Deduplicate modules, remove unused modules, and put them in a canonical ordering based on the order of machines in the regions.
+  /// Remove unused modules, and put them in a canonical ordering based on the order of machines in the regions.
   ///
   /// This is *required* after every Game change, for the purposes of the undo system.
+  ///
+  /// The ordering is guaranteed to go from contained to containing modules. Thus, if you iterate
+  /// through the platonic modules in order, each one you visit contains only ones you've already
+  /// visited.
   #[live_prop_test(postcondition = "self.is_canonical()")]
   pub fn canonicalize(&mut self) {
     self.global_region.sort_canonically();
-    for module in &mut self.machine_types.modules {
+    for module in &mut self.machine_types.custom_modules {
       module.region.sort_canonically();
     }
 
-    let mut collector = ModuleCollector::new(self);
-    collector.run();
-    let new_ids = collector.new_ids;
-    let new_count = collector.next_index;
+    let mut collector = ModuleCollector {
+      machine_types: &self.machine_types,
+      found_custom_modules: HashMap::with_capacity(self.machine_types.custom_modules.len()),
+    };
+    collector.visit_region(&self.global_region);
+    let found_modules = collector.found_custom_modules;
 
-    let mut new_modules: Vec<PlatonicModule> =
-      (0..new_count).map(|_| PlatonicModule::default()).collect();
-    for (module, new_id) in std::mem::take(&mut self.machine_types.modules)
-      .into_iter()
-      .zip(&new_ids)
-    {
-      if let Some(MachineTypeId::Module(new_module_index)) = new_id {
-        new_modules[*new_module_index] = module;
-      }
+    let mut new_modules: Vec<PlatonicModule> = (0..found_modules.len())
+      .map(|_| PlatonicModule::default())
+      .collect();
+    for (&old_index, &new_index) in &found_modules {
+      new_modules[new_index] = std::mem::take(&mut self.machine_types.custom_modules[old_index]);
     }
-    self.machine_types.modules = new_modules;
+    self.machine_types.custom_modules = new_modules;
 
-    for region in std::iter::once(&mut self.global_region).chain(
-      self
-        .machine_types
-        .modules
-        .iter_mut()
-        .map(|module| &mut module.region),
-    ) {
-      for machine in &mut region.machines {
-        if let MachineTypeId::Module(module_index) = machine.type_id {
-          machine.type_id = new_ids[module_index].unwrap();
-        }
+    for machine in self.platonic_machines_mut() {
+      if let MachineTypeId::Module(module_index) = &mut machine.type_id {
+        *module_index = found_modules[&module_index];
       }
     }
   }

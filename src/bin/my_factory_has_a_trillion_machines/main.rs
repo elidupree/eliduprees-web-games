@@ -66,7 +66,7 @@ pub mod geometry;
 pub mod graph_algorithms;
 pub mod modules;
 pub mod primitive_machines;
-pub mod undo_history;
+//pub mod undo_history;
 
 #[cfg(any(target_arch = "wasm32", target_arch = "asmjs"))]
 mod web_ui;
@@ -115,7 +115,7 @@ fn main() {
     (consumer(), None, & []),
   ]).simulate_future();*/
 
-  let game: machine_data::Game = serde_json::from_reader(std::io::BufReader::new(
+  /*let game: machine_data::Game = serde_json::from_reader(std::io::BufReader::new(
     std::fs::File::open("../data/test.json").unwrap(),
   ))
   .unwrap();
@@ -130,5 +130,5 @@ fn main() {
     &mut graph_algorithms::ModuleFutures::default(),
     &[],
   );
-  println!("{:?}", future);
+  println!("{:?}", future);*/
 }

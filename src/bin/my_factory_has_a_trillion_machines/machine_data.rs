@@ -32,7 +32,6 @@ pub enum MachineTypeId {
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
 pub struct MachineState {
   pub position: GridIsomorphism,
-  pub last_disturbed_time: Number,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
@@ -209,7 +208,11 @@ pub trait MachineTypeTrait {
 
   type Future: Clone + Eq + Hash + Serialize + DeserializeOwned + Debug;
 
-  #[live_prop_test(postcondition = "result != Err(MachineOperatingState::Operating)")]
+  #[live_prop_test(
+    postcondition = "result != Err(MachineOperatingState::Operating)", // That's not an error
+    postcondition = "result != Err(MachineOperatingState::WaitingForInput)", // Futures are timeless and this state isn't
+    postcondition = "result != Err(MachineOperatingState::InCycle)", // Individual machines can't detect this
+  )]
   fn future(&self, inputs: MachineObservedInputs) -> Result<Self::Future, MachineOperatingState>;
 
   #[live_prop_test(
@@ -370,7 +373,7 @@ pub struct PlatonicRegionContents {
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub struct MachineTypes {
   pub presets: Vec<MachineType>,
-  pub modules: Vec<PlatonicModule>,
+  pub custom_modules: Vec<PlatonicModule>,
 }
 
 impl<'a> MachineTypeRef<'a> {
@@ -392,10 +395,13 @@ impl MachineTypes {
   pub fn get(&self, id: MachineTypeId) -> MachineTypeRef {
     match id {
       MachineTypeId::Preset(index) => self.presets.get(index).unwrap().as_ref(),
-      MachineTypeId::Module(index) => MachineTypeRef::Module(self.modules.get(index).unwrap()),
+      MachineTypeId::Module(index) => {
+        MachineTypeRef::Module(self.custom_modules.get(index).unwrap())
+      }
     }
   }
 
+  /// kinda hacky function, deprecated
   pub fn get_module(&self, id: MachineTypeId) -> &PlatonicModule {
     match self.get(id) {
       MachineTypeRef::Module(module) => module,
@@ -416,6 +422,24 @@ impl MachineTypes {
       .get(machine.type_id)
       .output_locations(machine.state.position)
   }
+
+  pub fn modules<'a>(&'a self) -> impl Iterator<Item = (MachineTypeId, &'a PlatonicModule)> + 'a {
+    self
+      .presets
+      .iter()
+      .enumerate()
+      .filter_map(|(index, preset)| match preset {
+        MachineType::Module(module) => Some((MachineTypeId::Preset(index), module)),
+        _ => None,
+      })
+      .chain(
+        self
+          .custom_modules
+          .iter()
+          .enumerate()
+          .map(|(index, module)| (MachineTypeId::Module(index), module)),
+      )
+  }
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -431,4 +455,28 @@ pub struct Game {
   pub last_disturbed_times: WorldMachinesMap<Number>,
   pub last_change_time: Number,
   pub inventory_before_last_change: HashMap<Material, Number>,
+}
+
+impl Game {
+  pub fn platonic_regions<'a>(&'a self) -> impl Iterator<Item = &'a PlatonicRegionContents> + 'a {
+    std::iter::once(&self.global_region).chain(
+      self
+        .machine_types
+        .modules()
+        .map(|(_id, module)| &module.region),
+    )
+  }
+  pub fn platonic_machines_mut<'a>(
+    &'a mut self,
+  ) -> impl Iterator<Item = &'a mut PlatonicMachine> + 'a {
+    std::iter::once(&mut self.global_region)
+      .chain(
+        self
+          .machine_types
+          .custom_modules
+          .iter_mut()
+          .map(|module| &mut module.region),
+      )
+      .flat_map(|region| &mut region.machines)
+  }
 }
