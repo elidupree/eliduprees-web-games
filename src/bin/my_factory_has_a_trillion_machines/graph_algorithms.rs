@@ -637,7 +637,7 @@ pub mod base_view_aspect {
 
   #[derive(Copy, Clone, PartialEq, Eq, Debug)]
   pub struct GameView<'a> {
-    pub game: &'a Game,
+    game: &'a Game,
   }
 
   #[derive(Copy, Clone, PartialEq, Eq, Debug)]
@@ -723,6 +723,12 @@ pub mod base_view_aspect {
       }
     }
   }
+
+  impl<'a, T: GetSubaspect<'a, BaseAspect>> super::GameView<'a, T> {
+    pub fn game(&'a self) -> &'a Game {
+      T::get_game_aspect(&self.aspects).game
+    }
+  }
 }
 
 pub use self::future_view_aspect::FutureAspect;
@@ -734,7 +740,7 @@ pub mod future_view_aspect {
 
   #[derive(Copy, Clone, PartialEq, Eq, Debug)]
   pub struct GameView<'a> {
-    pub future: &'a GameFuture,
+    future: &'a GameFuture,
   }
 
   #[derive(Copy, Clone, PartialEq, Eq, Debug)]
@@ -814,17 +820,21 @@ pub mod future_view_aspect {
       }
     }
   }
+
+  impl<'a, T: GetSubaspect<'a, FutureAspect>> super::GameView<'a, T> {
+    pub fn future(&'a self) -> &'a GameFuture {
+      T::get_game_aspect(&self.aspects).future
+    }
+  }
 }
 
 impl_world_views_for_aspect_tuple!(&(BaseAspect,));
 
 impl<'a, T: GetSubaspect<'a, BaseAspect> + GetSubaspect<'a, FutureAspect>> GameView<'a, T> {
   pub fn inventory_at(&'a self, time: Number) -> HashMap<Material, Number> {
-    let base = <T as GetSubaspect<'a, BaseAspect>>::get_game_aspect(&self.aspects);
-    let future = <T as GetSubaspect<'a, FutureAspect>>::get_game_aspect(&self.aspects);
-    let mut inventory = base.game.inventory_before_last_change.clone();
-    let interval = [base.game.last_change_time, time];
-    for (_location, material_flow) in &future.future.global_region.dumped {
+    let mut inventory = self.game().inventory_before_last_change.clone();
+    let interval = [self.game().last_change_time, time];
+    for (_location, material_flow) in &self.future().global_region.dumped {
       *inventory.entry(material_flow.material).or_default() +=
         material_flow.flow.num_disbursed_between(interval);
     }
