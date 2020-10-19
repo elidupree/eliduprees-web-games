@@ -41,7 +41,8 @@ pub struct PlatonicMachine {
   pub state: MachineState,
 }
 
-pub type MachineIdWithinPlatonicRegion = impl Copy + Clone + Ord + Hash + Debug + Default;
+pub type MachineIdWithinPlatonicRegion =
+  impl Copy + Clone + Ord + Hash + Debug + Default + Serialize + DeserializeOwned;
 impl PlatonicMachine {
   /// An ID that is guaranteed to be unique within its region.
   ///
@@ -418,9 +419,16 @@ impl MachineTypes {
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+pub struct WorldMachinesMap<T> {
+  pub here: HashMap<MachineIdWithinPlatonicRegion, T>,
+  pub children: HashMap<MachineIdWithinPlatonicRegion, WorldMachinesMap<T>>,
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub struct Game {
   pub global_region: PlatonicRegionContents,
   pub machine_types: MachineTypes,
+  pub last_disturbed_times: WorldMachinesMap<Number>,
   pub last_change_time: Number,
   pub inventory_before_last_change: HashMap<Material, Number>,
 }
