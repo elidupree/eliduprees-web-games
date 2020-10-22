@@ -280,7 +280,7 @@ impl<'a> GameFutureBuilder<'a> {
       disturbed_children: Default::default(),
     };
 
-    let (output_edges, topological_ordering) = match region.as_module {
+    let (output_edges, topological_ordering) = match region.as_module() {
       Some(module) => self
         .module_geometries
         .get(&module.as_machine.platonic.type_id)
@@ -293,9 +293,9 @@ impl<'a> GameFutureBuilder<'a> {
       let machine: &WorldMachineView<(BaseAspect,)> = &machines[machine_index];
       let inputs = MachineObservedInputs {
         input_flows: &result.machines[machine.index_within_region].inputs,
-        start_time: machine.last_disturbed_time.unwrap_or(0),
+        start_time: machine.last_disturbed_time().unwrap_or(0),
       };
-      let future = machine.machine_type.future(inputs);
+      let future = machine.platonic().machine_type.future(inputs);
 
       let outputs = match (machine.as_module(), &future) {
         (Some(module), Ok(MachineFuture::Module(module_machine_future))) => {
@@ -327,11 +327,11 @@ impl<'a> GameFutureBuilder<'a> {
               self.region_future(undisturbed_modules_futures, &inner_region, &fiat_inputs);
             result
               .disturbed_children
-              .entry(machine.id_within_region)
+              .entry(machine.platonic().id_within_region())
               .or_insert(inner_future) // should always insert, but doing it this way to get a reference back
           } else {
             let platonic_module_futures = undisturbed_modules_futures
-              .entry(machine.platonic.type_id)
+              .entry(machine.platonic().type_id)
               .or_default();
 
             match platonic_module_futures.get(&module_machine_future.canonical_inputs) {
@@ -340,7 +340,7 @@ impl<'a> GameFutureBuilder<'a> {
                 let inner_future =
                   self.region_future(undisturbed_modules_futures, &inner_region, &fiat_inputs);
 
-                match undisturbed_modules_futures.get_mut(&machine.platonic.type_id).unwrap().entry(module_machine_future.canonical_inputs.clone()) {
+                match undisturbed_modules_futures.get_mut(&machine.platonic().type_id).unwrap().entry(module_machine_future.canonical_inputs.clone()) {
                   hash_map::Entry::Occupied(_) => unreachable!("A module's future was modified during calculation of its submodules' futures. Did a module get put inside itself somehow?"),
                   hash_map::Entry::Vacant(entry) => entry.insert(inner_future)
                 }
@@ -351,7 +351,7 @@ impl<'a> GameFutureBuilder<'a> {
             .platonic
             .module_output_flows(inputs, module_machine_future, variation)
         }
-        (_, Ok(future)) => machine.machine_type.output_flows(inputs, future),
+        (_, Ok(future)) => machine.platonic().machine_type.output_flows(inputs, future),
         (_, Err(_)) => inputs![],
       };
 
@@ -361,8 +361,9 @@ impl<'a> GameFutureBuilder<'a> {
       for ((flow, destination), location) in
         outputs.into_iter().zip(&output_edges[machine_index]).zip(
           machine
+            .platonic()
             .machine_type
-            .output_locations(machine.platonic.state.position),
+            .output_locations(machine.platonic().state.position),
         )
       {
         match destination {
@@ -760,6 +761,116 @@ pub mod base_view_aspect {
   }
 }
 
+pub use self::base_mut_view_aspect::BaseMutAspect;
+pub mod base_mut_view_aspect {
+  use super::*;
+  use machine_data::WorldMachinesMap;
+
+  pub enum BaseMutAspect {}
+
+  #[derive(Debug)]
+  struct ViewGlobals {
+    pub change_time: Number,
+  }
+
+  #[derive(Debug)]
+  pub struct GameView<'a> {
+    globals: ViewGlobals,
+    game: &'a mut Game,
+  }
+
+  #[derive(Debug)]
+  pub struct WorldRegionView<'a> {
+    globals: &'a ViewGlobals,
+    machine_types: &'a mut MachineTypes,
+    platonic: &'a mut PlatonicRegionContents,
+    output_edges: OutputEdges,
+    isomorphism: GridIsomorphism,
+    // Only None if an ancestor was disturbed at change_time
+    last_disturbed_times: Option<&'a mut WorldMachinesMap<Number>>,
+  }
+
+  #[derive(Debug)]
+  pub struct WorldMachineView<'a> {
+    parent: &'a mut WorldRegionView<'a>,
+    index_within_parent: usize,
+  }
+
+  #[derive(Debug)]
+  pub struct WorldModuleView<'a> {
+    as_machine: &'a mut WorldMachineView<'a>,
+  }
+
+  impl<'a> WorldViewAspect<'a> for BaseMutAspect {
+    type Game = GameView<'a>;
+    type Region = WorldRegionView<'a>;
+    type Machine = WorldMachineView<'a>;
+    type Module = WorldModuleView<'a>;
+  }
+  impl<'a> WorldViewAspectGetMut<'a> for BaseMutAspect {
+    fn global_region_mut(game: &'a mut Self::Game) -> Self::Region {
+      let output_edges = game
+        .game
+        .global_region
+        .output_edges(&game.game.machine_types);
+      WorldRegionView {
+        globals: &game.globals,
+        machine_types: &mut game.game.machine_types,
+        platonic: &mut game.game.global_region,
+        output_edges,
+        isomorphism: GridIsomorphism::default(),
+        last_disturbed_times: Some(&mut game.game.last_disturbed_times),
+      }
+    }
+    fn get_machine_mut(region: &'a mut Self::Region, ids: ViewMachineIds) -> Self::Machine {
+      let machine = &region.platonic.machines[ids.index];
+      WorldMachineView {
+        parent: region,
+        index_within_parent: ids.index,
+      }
+    }
+    fn as_module_mut(machine: &'a mut Self::Machine) -> Self::Module {
+      WorldModuleView {
+        as_machine: machine,
+      }
+    }
+    fn inner_region_mut(module: &'a mut Self::Module) -> Self::Region {
+      let parent = module.as_machine.parent;
+      let platonic = unimplemented!();
+      let output_edges = platonic.output_edges(&parent.machine_types);
+      WorldRegionView {
+        globals: parent.globals,
+        machine_types: parent.machine_types,
+        platonic,
+        output_edges,
+        isomorphism: unimplemented!(),
+        last_disturbed_times: unimplemented!(),
+      } /*
+        WorldRegionView {
+          last_disturbed_times: module
+            .as_machine
+            .parent
+            .last_disturbed_times
+            .and_then(|times| {
+              times
+                .children
+                .get(&module.as_machine.platonic.id_within_region())
+            }),
+        }*/
+    }
+  }
+
+  impl<'a> Drop for WorldRegionView<'a> {
+    fn drop(&mut self) {
+      if let Some(times) = &mut self.last_disturbed_times {
+        times
+          .children
+          .retain(|key, value| !(value.here.is_empty() && value.children.is_empty()));
+      }
+    }
+  }
+}
+
 pub use self::future_view_aspect::FutureAspect;
 pub mod future_view_aspect {
   use super::*;
@@ -823,7 +934,7 @@ pub mod future_view_aspect {
           inner_start_time_and_module_future: machine.future.and_then(
             |machine_future| match &machine_future.future {
               Ok(MachineFuture::Module(module_machine_future)) => Some((
-                start_time + module_machine_future.start_time,
+                machine.parent.start_time_and_future.unwrap().0 + module_machine_future.start_time,
                 module_machine_future,
                 machine.parent.start_time_and_future.unwrap().1.disturbed_children.get(&machine.ids.id_within_region).unwrap_or_else(||
                     machine
