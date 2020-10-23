@@ -264,7 +264,7 @@ impl<'a> GameFutureBuilder<'a> {
         .map(|machine| MachineAndInputsFuture {
           inputs: self
             .machine_types
-            .input_locations(machine.platonic)
+            .input_locations(machine.platonic())
             .map(|input_location| {
               //debug!("{:?}", (input_location, fiat_inputs.iter().find (| (location,_) | *location == input_location)));
               fiat_inputs
@@ -757,6 +757,58 @@ pub mod base_view_aspect {
   impl<'a, T: GetSubaspect<'a, BaseAspect>> super::GameView<'a, T> {
     pub fn game(&'a self) -> &'a Game {
       T::get_game_aspect(&self.aspects).game
+    }
+  }
+
+  impl<'a, T: GetSubaspect<'a, BaseAspect>> super::WorldRegionView<'a, T> {
+    pub fn platonic(&'a self) -> &'a PlatonicRegionContents {
+      T::get_region_aspect(&self.aspects).platonic
+    }
+  }
+
+  impl<'a, T: GetSubaspect<'a, BaseAspect>> super::WorldMachineView<'a, T> {
+    pub fn platonic(&'a self) -> &'a PlatonicMachine {
+      T::get_machine_aspect(&self.aspects).platonic
+    }
+  }
+
+  impl<'a, T: GetSubaspect<'a, BaseAspect>> super::WorldModuleView<'a, T> {
+    pub fn platonic(&'a self) -> &'a PlatonicModule {
+      T::get_module_aspect(&self.aspects).platonic
+    }
+  }
+
+  pub struct MachinesIter<'a, T: WorldViewAspect<'a>> {
+    region: &'a <T as WorldViewAspect<'a>>::Region,
+    ids: std::vec::IntoIter<ViewMachineIds>,
+  }
+  impl<'a, T: WorldViewAspect<'a> + WorldViewAspectGet<'a>> Iterator for MachinesIter<'a, T> {
+    type Item = super::WorldMachineView<'a, T>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+      self.ids.next().map(|ids| super::WorldMachineView {
+        aspects: T::get_machine(self.region, ids),
+      })
+    }
+  }
+  impl<'a, T: GetSubaspect<'a, BaseAspect>> super::WorldRegionView<'a, T> {
+    pub fn machines(&'a self) -> MachinesIter<'a, T> {
+      let region_base = T::get_region_aspect(&self.aspects);
+      let ids: Vec<_> = region_base
+        .platonic
+        .machines
+        .iter()
+        .enumerate()
+        .map(|(index, machine)| ViewMachineIds {
+          index,
+          id_within_region: machine.id_within_region(),
+          type_id: machine.type_id,
+        })
+        .collect();
+      MachinesIter {
+        ids: ids.into_iter(),
+        region: &self.aspects,
+      }
     }
   }
 }
