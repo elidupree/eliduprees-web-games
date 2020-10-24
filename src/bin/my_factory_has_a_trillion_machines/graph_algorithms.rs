@@ -280,11 +280,8 @@ impl<'a> GameFutureBuilder<'a> {
       disturbed_children: Default::default(),
     };
 
-    let (output_edges, topological_ordering) = match region.as_module() {
-      Some(module) => self
-        .module_geometries
-        .get(&module.as_machine.platonic.type_id)
-        .unwrap(),
+    let (output_edges, topological_ordering) = match region.module_type_id() {
+      Some(id) => self.module_geometries.get(&id).unwrap(),
       None => &self.global_region_geometry,
     };
 
@@ -292,10 +289,10 @@ impl<'a> GameFutureBuilder<'a> {
     for &machine_index in topological_ordering {
       let machine: &WorldMachineView<(BaseAspect,)> = &machines[machine_index];
       let inputs = MachineObservedInputs {
-        input_flows: &result.machines[machine.index_within_region].inputs,
+        input_flows: &result.machines[machine.index_within_region()].inputs,
         start_time: machine.last_disturbed_time().unwrap_or(0),
       };
-      let future = machine.platonic().machine_type.future(inputs);
+      let future = machine.machine_type().future(inputs);
 
       let outputs = match (machine.as_module(), &future) {
         (Some(module), Ok(MachineFuture::Module(module_machine_future))) => {
@@ -351,7 +348,7 @@ impl<'a> GameFutureBuilder<'a> {
             .platonic
             .module_output_flows(inputs, module_machine_future, variation)
         }
-        (_, Ok(future)) => machine.platonic().machine_type.output_flows(inputs, future),
+        (_, Ok(future)) => machine.machine_type().output_flows(inputs, future),
         (_, Err(_)) => inputs![],
       };
 
@@ -361,8 +358,7 @@ impl<'a> GameFutureBuilder<'a> {
       for ((flow, destination), location) in
         outputs.into_iter().zip(&output_edges[machine_index]).zip(
           machine
-            .platonic()
-            .machine_type
+            .machine_type()
             .output_locations(machine.platonic().state.position),
         )
       {
@@ -674,6 +670,7 @@ pub mod base_view_aspect {
   pub struct WorldRegionView<'a> {
     game: GameView<'a>,
     platonic: &'a PlatonicRegionContents,
+    containing_module: Option<&'a WorldModuleView<'a>>,
     isomorphism: GridIsomorphism,
     last_disturbed_times: Option<&'a WorldMachinesMap<Number>>,
   }
@@ -706,6 +703,7 @@ pub mod base_view_aspect {
       WorldRegionView {
         game: *game,
         platonic: &game.game.global_region,
+        containing_module: None,
         isomorphism: GridIsomorphism::default(),
         last_disturbed_times: Some(&game.game.last_disturbed_times),
       }
@@ -740,6 +738,7 @@ pub mod base_view_aspect {
       WorldRegionView {
         game: module.game,
         platonic: &module.platonic.region,
+        containing_module: Some(module),
         isomorphism: module.as_machine.isomorphism,
         last_disturbed_times: module
           .as_machine
@@ -766,9 +765,40 @@ pub mod base_view_aspect {
     }
   }
 
+  impl<'a, T: GetSubaspect<'a, BaseAspect>> super::WorldRegionView<'a, T> {
+    pub fn module_type_id(&'a self) -> Option<MachineTypeId> {
+      T::get_region_aspect(&self.aspects)
+        .containing_module
+        .map(|module| module.as_machine.platonic.type_id)
+    }
+  }
+
   impl<'a, T: GetSubaspect<'a, BaseAspect>> super::WorldMachineView<'a, T> {
     pub fn platonic(&'a self) -> &'a PlatonicMachine {
       T::get_machine_aspect(&self.aspects).platonic
+    }
+  }
+
+  impl<'a, T: GetSubaspect<'a, BaseAspect>> super::WorldMachineView<'a, T> {
+    pub fn index_within_region(&'a self) -> usize {
+      T::get_machine_aspect(&self.aspects).index_within_parent
+    }
+  }
+
+  impl<'a, T: GetSubaspect<'a, BaseAspect>> super::WorldMachineView<'a, T> {
+    pub fn machine_type(&'a self) -> MachineTypeRef<'a> {
+      let aspect = T::get_machine_aspect(&self.aspects);
+      aspect.game.game.machine_types.get(aspect.platonic.type_id)
+    }
+  }
+
+  impl<'a, T: GetSubaspect<'a, BaseAspect>> super::WorldMachineView<'a, T> {
+    pub fn last_disturbed_time(&'a self) -> Option<Number> {
+      let aspect = T::get_machine_aspect(&self.aspects);
+      aspect
+        .parent
+        .last_disturbed_times
+        .and_then(|times| times.here.get(&aspect.platonic.id_within_region()).copied())
     }
   }
 
