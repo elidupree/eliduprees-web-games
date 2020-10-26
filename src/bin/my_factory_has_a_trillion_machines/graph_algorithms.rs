@@ -6,10 +6,9 @@ use arrayvec::ArrayVec;
 use flow_pattern::{FlowCollection, FlowPattern, MaterialFlow};
 use geometry::{GridIsomorphism, Number};
 use machine_data::{
-  Game, InputLocation, Inputs, MachineFuture, MachineIdWithinPlatonicRegion,
-  MachineMomentaryVisuals, MachineObservedInputs, MachineOperatingState, MachineTypeId,
-  MachineTypeRef, MachineTypeTrait, MachineTypes, Material, PlatonicMachine,
-  PlatonicRegionContents, WorldMachinesMap, MAX_COMPONENTS,
+  Game, InputLocation, Inputs, MachineFuture, MachineIdWithinPlatonicRegion, MachineObservedInputs,
+  MachineOperatingState, MachineTypeId, MachineTypeRef, MachineTypeTrait, MachineTypes, Material,
+  PlatonicMachine, PlatonicRegionContents, MAX_COMPONENTS,
 };
 use modules::{CanonicalModuleInputs, PlatonicModule};
 
@@ -296,10 +295,10 @@ impl<'a> GameFutureBuilder<'a> {
 
       let outputs = match (machine.as_module(), &future) {
         (Some(module), Ok(MachineFuture::Module(module_machine_future))) => {
-          let inner_region = module.region();
+          let inner_region = module.inner_region();
 
           let fiat_inputs: Vec<_> = module
-            .platonic
+            .platonic()
             .module_type
             .inputs
             .iter()
@@ -345,7 +344,7 @@ impl<'a> GameFutureBuilder<'a> {
             }
           };
           module
-            .platonic
+            .platonic()
             .module_output_flows(inputs, module_machine_future, variation)
         }
         (_, Ok(future)) => machine.machine_type().output_flows(inputs, future),
@@ -451,8 +450,8 @@ pub trait GetSubaspectMut<'a, T: WorldViewAspect<'a>>: WorldViewAspect<'a> {
   fn get_module_aspect_mut(module: &'a mut Self::Module) -> &'a mut T::Module;
 }
 
-pub trait RegionViewListMachines {
-  fn view_machine_ids(&self) -> Vec<ViewMachineIds>;
+pub trait BaseAspectShared<'a>: WorldViewAspect<'a> {
+  fn is_module(machine: &'a Self::Machine) -> bool;
 }
 
 #[derive(Debug)]
@@ -507,18 +506,26 @@ impl<'a, T: WorldViewAspectGet<'a>> WorldRegionView<'a, T> {
   }
 }
 
-impl<'a, T: WorldViewAspectGetMut<'a>> WorldMachineView<'a, T> {
-  pub fn as_module_mut(&'a mut self) -> WorldModuleView<'a, T> {
-    WorldModuleView {
-      aspects: T::as_module_mut(&mut self.aspects),
+impl<'a, T: WorldViewAspectGetMut<'a> + BaseAspectShared<'a>> WorldMachineView<'a, T> {
+  pub fn as_module_mut(&'a mut self) -> Option<WorldModuleView<'a, T>> {
+    if T::is_module(&self.aspects) {
+      Some(WorldModuleView {
+        aspects: T::as_module_mut(&mut self.aspects),
+      })
+    } else {
+      None
     }
   }
 }
 
-impl<'a, T: WorldViewAspectGet<'a>> WorldMachineView<'a, T> {
-  pub fn as_module(&'a self) -> WorldModuleView<'a, T> {
-    WorldModuleView {
-      aspects: T::as_module(&self.aspects),
+impl<'a, T: WorldViewAspectGet<'a> + BaseAspectShared<'a>> WorldMachineView<'a, T> {
+  pub fn as_module(&'a self) -> Option<WorldModuleView<'a, T>> {
+    if T::is_module(&self.aspects) {
+      Some(WorldModuleView {
+        aspects: T::as_module(&self.aspects),
+      })
+    } else {
+      None
     }
   }
 }
@@ -540,7 +547,10 @@ impl<'a, T: WorldViewAspectGet<'a>> WorldModuleView<'a, T> {
 }
 
 macro_rules! impl_world_views_for_aspect_tuple {
-   (($($Aspect: ident,)*), $Tuple: tt) => {
+   (($BaseAspect: ident, $($OtherAspect: ident,)*)) => {
+    impl_world_views_for_aspect_tuple!($BaseAspect, ($BaseAspect, $($OtherAspect,)*), ($BaseAspect, $($OtherAspect,)*));
+   };
+   ($BaseAspect: ident, ($($Aspect: ident,)*), $Tuple: tt) => {
 
 impl<'a> WorldViewAspect<'a> for $Tuple {
   type Game = ($(<$Aspect as WorldViewAspect<'a>>::Game,)*);
@@ -588,11 +598,17 @@ impl<'a> GetSubaspectMut<'a, $Aspect> for $Tuple {
     $Aspect
   }
 }
+
+impl<'a> BaseAspectShared<'a> for $Tuple {
+  fn is_module(machine: &'a Self::Machine) -> bool {
+    $BaseAspect::is_module(&machine.0)
+  }
+}
 )*
 
   };
   (&mut ($($Aspect: ident,)*)) => {
-impl_world_views_for_aspect_tuple!(($($Aspect,)*), ($($Aspect,)*));
+impl_world_views_for_aspect_tuple!(($($Aspect,)*));
 #[allow(non_snake_case)]
 impl<'a> WorldViewAspectGetMut<'a> for ($($Aspect,)*) {
   fn global_region_mut(game: &'a mut Self::Game) -> Self::Region {
@@ -623,7 +639,7 @@ impl<'a> WorldViewAspectGetMut<'a> for ($($Aspect,)*) {
   };
 
   (& ($($Aspect: ident,)*)) => {
-impl_world_views_for_aspect_tuple!(($($Aspect,)*), ($($Aspect,)*));
+impl_world_views_for_aspect_tuple!(($($Aspect,)*));
 #[allow(non_snake_case)]
 impl<'a> WorldViewAspectGet<'a> for ($($Aspect,)*) {
   fn global_region(game: &'a Self::Game) -> Self::Region {
@@ -749,6 +765,19 @@ pub mod base_view_aspect {
               .children
               .get(&module.as_machine.platonic.id_within_region())
           }),
+      }
+    }
+  }
+  impl<'a> BaseAspectShared<'a> for BaseAspect {
+    fn is_module(machine: &'a Self::Machine) -> bool {
+      match machine
+        .game
+        .game
+        .machine_types
+        .get(machine.platonic.type_id)
+      {
+        MachineTypeRef::Module(_) => true,
+        _ => false,
       }
     }
   }
@@ -939,6 +968,18 @@ pub mod base_mut_view_aspect {
                 .get(&module.as_machine.platonic.id_within_region())
             }),
         }*/
+    }
+  }
+  impl<'a> BaseAspectShared<'a> for BaseMutAspect {
+    fn is_module(machine: &'a Self::Machine) -> bool {
+      match machine
+        .parent
+        .machine_types
+        .get(machine.parent.platonic.machines[machine.index_within_parent].type_id)
+      {
+        MachineTypeRef::Module(_) => true,
+        _ => false,
+      }
     }
   }
 
