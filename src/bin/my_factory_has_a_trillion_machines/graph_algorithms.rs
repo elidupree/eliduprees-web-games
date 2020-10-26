@@ -947,15 +947,32 @@ pub mod base_mut_view_aspect {
     }
     fn inner_region_mut(module: &'a mut Self::Module) -> Self::Region {
       let parent = module.as_machine.parent;
-      let platonic = unimplemented!();
-      let output_edges = platonic.output_edges(&parent.machine_types);
+      let platonic_machine = &mut parent.platonic.machines[module.as_machine.index_within_parent];
+      let id_within_region = platonic_machine.id_within_region();
+      let isomorphism = platonic_machine.state.position * parent.isomorphism;
+      let old_platonic_module = match parent.machine_types.get(platonic_machine.type_id) {
+        MachineTypeRef::Module(m) => m,
+        _ => unreachable!(),
+      };
+      let mut new_platonic_module = old_platonic_module.clone();
+      let new_module_index = parent.machine_types.custom_modules.len();
+      platonic_machine.type_id = MachineTypeId::Module(new_module_index);
+      let output_edges = new_platonic_module
+        .region
+        .output_edges(&parent.machine_types);
+      parent
+        .machine_types
+        .custom_modules
+        .push(new_platonic_module);
       WorldRegionView {
         globals: parent.globals,
         machine_types: parent.machine_types,
         platonic,
         output_edges,
-        isomorphism: unimplemented!(),
-        last_disturbed_times: unimplemented!(),
+        isomorphism,
+        last_disturbed_times: parent
+          .last_disturbed_times
+          .and_then(|times| times.children.get_mut(&id_within_region)),
       } /*
         WorldRegionView {
           last_disturbed_times: module
@@ -990,6 +1007,12 @@ pub mod base_mut_view_aspect {
           .children
           .retain(|key, value| !(value.here.is_empty() && value.children.is_empty()));
       }
+    }
+  }
+
+  impl<'a> Drop for GameView<'a> {
+    fn drop(&mut self) {
+      self.game.canonicalize();
     }
   }
 }
