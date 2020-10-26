@@ -893,8 +893,8 @@ pub mod base_mut_view_aspect {
   #[derive(Debug)]
   pub struct WorldRegionView<'a> {
     globals: &'a ViewGlobals,
-    machine_types: &'a mut MachineTypes,
-    platonic: &'a mut PlatonicRegionContents,
+    game: &'a mut Game,
+    module_index: Option<usize>,
     output_edges: OutputEdges,
     isomorphism: GridIsomorphism,
     // Only None if an ancestor was disturbed at change_time
@@ -926,15 +926,14 @@ pub mod base_mut_view_aspect {
         .output_edges(&game.game.machine_types);
       WorldRegionView {
         globals: &game.globals,
-        machine_types: &mut game.game.machine_types,
-        platonic: &mut game.game.global_region,
+        game: &mut game.game,
+        module_index: None,
         output_edges,
         isomorphism: GridIsomorphism::default(),
         last_disturbed_times: Some(&mut game.game.last_disturbed_times),
       }
     }
     fn get_machine_mut(region: &'a mut Self::Region, ids: ViewMachineIds) -> Self::Machine {
-      let machine = &region.platonic.machines[ids.index];
       WorldMachineView {
         parent: region,
         index_within_parent: ids.index,
@@ -947,27 +946,29 @@ pub mod base_mut_view_aspect {
     }
     fn inner_region_mut(module: &'a mut Self::Module) -> Self::Region {
       let parent = module.as_machine.parent;
-      let platonic_machine = &mut parent.platonic.machines[module.as_machine.index_within_parent];
+      let platonic_machine =
+        &mut parent.platonic_mut().machines[module.as_machine.index_within_parent];
       let id_within_region = platonic_machine.id_within_region();
       let isomorphism = platonic_machine.state.position * parent.isomorphism;
-      let old_platonic_module = match parent.machine_types.get(platonic_machine.type_id) {
+      let old_platonic_module = match parent.game.machine_types.get(platonic_machine.type_id) {
         MachineTypeRef::Module(m) => m,
         _ => unreachable!(),
       };
       let mut new_platonic_module = old_platonic_module.clone();
-      let new_module_index = parent.machine_types.custom_modules.len();
+      let new_module_index = parent.game.machine_types.custom_modules.len();
       platonic_machine.type_id = MachineTypeId::Module(new_module_index);
       let output_edges = new_platonic_module
         .region
-        .output_edges(&parent.machine_types);
+        .output_edges(&parent.game.machine_types);
       parent
+        .game
         .machine_types
         .custom_modules
         .push(new_platonic_module);
       WorldRegionView {
         globals: parent.globals,
-        machine_types: parent.machine_types,
-        platonic,
+        game: parent.game,
+        module_index: Some(new_module_index),
         output_edges,
         isomorphism,
         last_disturbed_times: parent
@@ -991,11 +992,27 @@ pub mod base_mut_view_aspect {
     fn is_module(machine: &'a Self::Machine) -> bool {
       match machine
         .parent
+        .game
         .machine_types
-        .get(machine.parent.platonic.machines[machine.index_within_parent].type_id)
+        .get(machine.parent.platonic().machines[machine.index_within_parent].type_id)
       {
         MachineTypeRef::Module(_) => true,
         _ => false,
+      }
+    }
+  }
+
+  impl<'a> WorldRegionView<'a> {
+    fn platonic(&self) -> &PlatonicRegionContents {
+      match self.module_index {
+        Some(index) => &self.game.machine_types.custom_modules[index].region,
+        None => &self.game.global_region,
+      }
+    }
+    fn platonic_mut(&mut self) -> &mut PlatonicRegionContents {
+      match self.module_index {
+        Some(index) => &mut self.game.machine_types.custom_modules[index].region,
+        None => &mut self.game.global_region,
       }
     }
   }
