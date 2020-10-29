@@ -250,10 +250,10 @@ impl<'a> GameFutureBuilder<'a> {
       module_geometries,
     }
   }
-  pub fn region_future(
+  pub fn region_future<'b>(
     &self,
     undisturbed_modules_futures: &'a mut UndisturbedModulesFutures,
-    region: &WorldRegionView<(BaseAspect,)>,
+    region: &'b WorldRegionView<'b, (BaseAspect,)>,
     fiat_inputs: &[(InputLocation, MaterialFlow)],
   ) -> RegionFuture {
     //debug!("{:?}", fiat_inputs);
@@ -317,7 +317,7 @@ impl<'a> GameFutureBuilder<'a> {
             })
             .collect();
 
-          let variation = if inner_region.last_disturbed_times.is_some() {
+          let variation = if inner_region.last_disturbed_times().is_some() {
             // Disturbed, and therefore unique enough that we don't need to deduplicate the future
             let inner_future =
               self.region_future(undisturbed_modules_futures, &inner_region, &fiat_inputs);
@@ -859,6 +859,12 @@ pub mod base_view_aspect {
   impl<'a, T: GetSubaspect<'a, BaseAspect>> super::WorldRegionView<'a, T> {
     pub fn platonic(&'a self) -> &'a PlatonicRegionContents {
       self.get_aspect::<BaseAspect>().platonic
+    }
+  }
+
+  impl<'a, T: GetSubaspect<'a, BaseAspect>> super::WorldRegionView<'a, T> {
+    pub fn last_disturbed_times(&'a self) -> Option<&'a WorldMachinesMap<Number>> {
+      self.get_aspect::<BaseAspect>().last_disturbed_times
     }
   }
 
