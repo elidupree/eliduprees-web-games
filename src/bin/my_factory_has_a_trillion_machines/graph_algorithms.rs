@@ -603,7 +603,7 @@ impl<'a, T: WorldViewAspectAll> GameView<'a, T> {
 }
 
 impl<'a, T: WorldViewAspectAll> GameView<'a, T> {
-  pub fn get_aspect<'b, U: WorldViewAspectAll>(&self) -> &<U as WorldViewAspect<'a>>::Game
+  pub fn get_aspect<U: WorldViewAspectAll>(&self) -> &<U as WorldViewAspect<'a>>::Game
   where
     T: GetSubaspect<U>,
   {
@@ -936,11 +936,11 @@ pub mod base_view_aspect {
     }
   }
   impl BaseAspectShared for BaseAspect {
-    fn is_module<'a>(machine: &<Self as WorldViewAspect<'a>>::Machine) -> bool {
-      match machine.game.machine_types.get(machine.platonic.type_id) {
-        MachineTypeRef::Module(_) => true,
-        _ => false,
-      }
+    fn is_module(machine: &<Self as WorldViewAspect>::Machine) -> bool {
+      matches!(
+        machine.game.machine_types.get(machine.platonic.type_id),
+        MachineTypeRef::Module(_)
+      )
     }
   }
 
@@ -951,7 +951,7 @@ pub mod base_view_aspect {
   }
 
   impl<'a, T: GetSubaspect<BaseAspect>> super::WorldRegionView<'a, T> {
-    pub fn platonic<'b>(&'b self) -> &'b PlatonicRegionContents {
+    pub fn platonic(&self) -> &PlatonicRegionContents {
       self.get_aspect::<BaseAspect>().platonic
     }
   }
@@ -1195,7 +1195,7 @@ pub mod base_mut_view_aspect {
         MachineTypeRef::Module(m) => m,
         _ => unreachable!(),
       };
-      let mut new_platonic_module = old_platonic_module.clone();
+      let new_platonic_module = old_platonic_module.clone();
       let output_edges = new_platonic_module
         .region
         .output_edges(&parent.mutable.machine_types);
@@ -1247,15 +1247,14 @@ pub mod base_mut_view_aspect {
   }
   impl BaseAspectShared for BaseMutAspect {
     fn is_module(machine: &<Self as WorldViewAspect>::Machine) -> bool {
-      match machine
-        .parent
-        .mutable
-        .machine_types
-        .get(machine.parent.platonic().machines[machine.index_within_parent].type_id)
-      {
-        MachineTypeRef::Module(_) => true,
-        _ => false,
-      }
+      matches!(
+        machine
+          .parent
+          .mutable
+          .machine_types
+          .get(machine.parent.platonic().machines[machine.index_within_parent].type_id),
+        MachineTypeRef::Module(_)
+      )
     }
   }
 
@@ -1279,7 +1278,7 @@ pub mod base_mut_view_aspect {
       if let Some(times) = &mut self.mutable.last_disturbed_times {
         times
           .children
-          .retain(|key, value| !(value.here.is_empty() && value.children.is_empty()));
+          .retain(|_key, value| *value != WorldMachinesMap::<Number>::default());
       }
     }
   }
