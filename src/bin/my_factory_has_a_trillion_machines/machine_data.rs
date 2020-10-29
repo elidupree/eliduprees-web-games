@@ -442,7 +442,7 @@ impl MachineTypes {
   }
 }
 
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, Default)]
 pub struct WorldMachinesMap<T> {
   pub here: HashMap<MachineIdWithinPlatonicRegion, T>,
   pub children: HashMap<MachineIdWithinPlatonicRegion, WorldMachinesMap<T>>,
