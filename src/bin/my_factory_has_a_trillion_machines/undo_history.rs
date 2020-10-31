@@ -1,30 +1,36 @@
 use crate::geometry::Number;
 use crate::machine_data::Game;
-use graph_algorithms::{GameFuture, GameView, WorldMachineView, WorldModuleView, WorldRegionView};
+use graph_algorithms::{
+  BaseAspect, FutureAspect, GameFuture, GameView, WorldMachineView, WorldRegionView,
+};
 use live_prop_test::{live_prop_test, lpt_assert, lpt_assert_eq};
 use machine_data::{MachineTypeId, TIME_TO_MOVE_MATERIAL};
-use modules::CanonicalModuleInputs;
 use std::collections::HashSet;
 
+//#[live_prop_test]
 pub trait ModifyGame {
-  #[live_prop_test(
+  /*#[live_prop_test(
     precondition = "game.is_canonical()",
+    precondition = "future == &game.future()",
     postcondition = "check_modify_game(&old(game.clone()), game, time)"
-  )]
-  fn undo(&self, game: &mut Game, time: Number);
+  )]*/
+  fn undo(&self, game: &mut Game, future: &GameFuture, time: Number);
 }
 
 #[live_prop_test]
 pub trait UndoableModifyGame {
   #[live_prop_test(
     precondition = "game.is_canonical()",
+    precondition = "future == &game.future()",
     postcondition = "check_undoable_modify_game(&old(game.clone()), game, time, &*result)"
   )]
-  fn modify_game(&self, game: &mut Game, time: Number) -> Box<dyn ModifyGame>;
+  fn modify_game(&self, game: &mut Game, future: &GameFuture, time: Number) -> Box<dyn ModifyGame>;
 }
 
 fn check_modify_game(before: &Game, after: &Game, modify_time: Number) -> Result<(), String> {
   lpt_assert!(after.is_canonical());
+  let before_future = before.future();
+  let before_view = GameView::<Aspects>::new(before, &before_future);
   lpt_assert_eq!(
     after.inventory_before_last_change,
     before_view.inventory_at(modify_time)
@@ -35,7 +41,7 @@ fn check_modify_game(before: &Game, after: &Game, modify_time: Number) -> Result
   Ok(())
 }
 
-type Aspects = (Platonic, LastDisturbed);
+type Aspects = (BaseAspect, FutureAspect);
 
 fn check_undoable_modify_game<Undo: ModifyGame + ?Sized>(
   before: &Game,
@@ -44,29 +50,17 @@ fn check_undoable_modify_game<Undo: ModifyGame + ?Sized>(
   undo: &Undo,
 ) -> Result<(), String> {
   check_modify_game(before, after, modify_time)?;
-  let before_view = GameView {
-    game: before,
-    future: Some(future),
-    selected: None,
-  };
-  lpt_assert_eq!(
-    after.inventory_before_last_change,
-    before_view.inventory_at(modify_time)
-  );
-  lpt_assert!(after.is_canonical());
+  let before_future = before.future();
+  let before_view = GameView::<Aspects>::new(before, &before_future);
   // we'd like to assert that every absolute disturbed time is either the same as before or is now...
   // except how do we tell which machines are the "same"?
 
   let after_future = after.future();
-  let after_view = GameView {
-    game: after,
-    future: Some(&after_future),
-    selected: None,
-  };
-  check_undo(before_view, after_view, undo, modify_time)?;
+  let after_view = GameView::<Aspects>::new(after, &after_future);
+  check_undo(&before_view, &after_view, undo, modify_time)?;
   check_undo(
-    before_view,
-    after_view,
+    &before_view,
+    &after_view,
     undo,
     modify_time + TIME_TO_MOVE_MATERIAL * 33 + 67,
   )?;
@@ -80,30 +74,21 @@ struct CheckUndoneMap
   //modify_time: Number,
   //undone: GameViewWithFuture<'a>,
   undo_time: Number,
-  visited_module_pairs_without_explicit_world_data:
-    HashSet<[usize; 2]>,
+  visited_module_pairs_without_explicit_world_data: HashSet<[usize; 2]>,
 }
 
-fn check_undo<Undo: UndoModifyGame + ?Sized>(
-  before: GameView<Aspects>,
-  after: GameView<Aspects>,
+fn check_undo<Undo: ModifyGame + ?Sized>(
+  before: &GameView<Aspects>,
+  after: &GameView<Aspects>,
   undo: &Undo,
   undo_time: Number,
 ) -> Result<(), String> {
-  let mut undone = after.game.clone();
-  undo.undo(&mut undone, &after.future.unwrap(), undo_time);
-  lpt_assert!(undone.is_canonical());
-  lpt_assert_eq!(undone.last_change_time, undo_time);
-  lpt_assert_eq!(
-    undone.inventory_before_last_change,
-    after.inventory_at(undo_time)
-  );
+  let mut undone = after.game().clone();
+  undo.undo(&mut undone, &after.future(), undo_time);
+  check_modify_game(after.game(), &undone, undo_time)?;
   let undone_future = undone.future();
-  let undone = GameView {
-    game: &undone,
-    future: Some(&undone_future),
-    selected: None,
-  };
+  let undone = GameView::<Aspects>::new(&undone, &undone_future);
+
   CheckUndoneMap {
     //before,
     //modify_time,
@@ -114,20 +99,12 @@ fn check_undo<Undo: UndoModifyGame + ?Sized>(
   .maps_undo_compatible(before.global_region(), undone.global_region(), false)
 }
 
-fn module_canonical_inputs(module: WorldModuleView) -> Option<CanonicalModuleInputs> {
-  module.inner_start_time_and_module_future.map(
-    |(_inner_start_time, module_machine_future, _module_map_future)| {
-      module_machine_future.canonical_inputs.clone()
-    },
-  )
-}
-
 impl CheckUndoneMap {
   fn maps_undo_compatible(
     &mut self,
     before_map: WorldRegionView<Aspects>,
     undone_map: WorldRegionView<Aspects>,
-    any_ancestor_disturbed: bool,
+    any_ancestor_module_machine_disturbed_by_undo: bool,
   ) -> Result<(), String> {
     let before_machines: Vec<_> = before_map.machines().collect();
     let undone_machines: Vec<_> = undone_map.machines().collect();
@@ -136,7 +113,7 @@ impl CheckUndoneMap {
       self.machines_undo_compatible(
         before_machine,
         undone_machine,
-        any_ancestor_disturbed || undone_map.last_disturbed_times.is_none(),
+        any_ancestor_module_machine_disturbed_by_undo,
       )?;
     }
     Ok(())
@@ -146,13 +123,13 @@ impl CheckUndoneMap {
     &mut self,
     before_machine: WorldMachineView<Aspects>,
     undone_machine: WorldMachineView<Aspects>,
-    any_ancestor_disturbed: bool,
+    any_ancestor_module_machine_disturbed_by_undo: bool,
   ) -> Result<(), String> {
     lpt_assert_eq!(
       before_machine.platonic().state.position,
       undone_machine.platonic().state.position
     );
-    if any_ancestor_disturbed {
+    if any_ancestor_module_machine_disturbed_by_undo {
       lpt_assert_eq!(undone_machine.last_disturbed_time(), None);
     } else {
       lpt_assert!(
@@ -170,8 +147,13 @@ impl CheckUndoneMap {
       }
       (MachineTypeId::Module(before_index), MachineTypeId::Module(undone_index)) => {
         // short-circuit on undisturbed module pairings to avoid an exponential search.
-        if before_module.as_machine().last_disturbed_time().is_some()
-          || before_module.as_machine().last_disturbed_time().is_some()
+        let module_machine_disturbed = undone_machine.last_disturbed_time() == Some(self.undo_time);
+        let before_module = before_machine.as_module().unwrap();
+        let undone_module = undone_machine.as_module().unwrap();
+        let before_inner_region = before_module.inner_region();
+        let undone_inner_region = undone_module.inner_region();
+        if before_inner_region.last_disturbed_times().is_some()
+          || undone_inner_region.last_disturbed_times().is_some()
           || self
             .visited_module_pairs_without_explicit_world_data
             .insert([before_index, undone_index])
@@ -180,7 +162,11 @@ impl CheckUndoneMap {
             before_module.platonic().module_type,
             undone_module.platonic().module_type
           );
-          self.maps_undo_compatible(before_module.region(), undone_module.region())?;
+          self.maps_undo_compatible(
+            before_inner_region,
+            undone_inner_region,
+            any_ancestor_module_machine_disturbed_by_undo || module_machine_disturbed,
+          )?;
         }
       }
       _ => {

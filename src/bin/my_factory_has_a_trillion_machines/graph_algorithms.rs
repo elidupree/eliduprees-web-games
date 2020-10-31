@@ -841,6 +841,7 @@ pub mod base_view_aspect {
   use super::*;
   use machine_data::WorldMachinesMap;
 
+  #[derive(Debug)]
   pub enum BaseAspect {}
 
   pub type GameView<'a> = &'a Game;
@@ -945,7 +946,7 @@ pub mod base_view_aspect {
   }
 
   impl<'a, T: GetSubaspect<BaseAspect>> super::GameView<'a, T> {
-    pub fn game(&'a self) -> &'a Game {
+    pub fn game(&self) -> &Game {
       self.get_aspect::<BaseAspect>()
     }
   }
@@ -1052,6 +1053,7 @@ pub mod base_mut_view_aspect {
   use super::*;
   use machine_data::WorldMachinesMap;
 
+  #[derive(Debug)]
   pub enum BaseMutAspect {}
 
   impl BaseMutAspect {
@@ -1381,6 +1383,7 @@ pub mod future_view_aspect {
   use super::*;
   use modules::ModuleMachineFuture;
 
+  #[derive(Debug)]
   pub enum FutureAspect {}
 
   pub type GameView<'a> = &'a GameFuture;
@@ -1472,7 +1475,7 @@ pub mod future_view_aspect {
   }
 
   impl<'a, T: GetSubaspect<FutureAspect>> super::GameView<'a, T> {
-    pub fn future(&'a self) -> &'a GameFuture {
+    pub fn future(&self) -> &GameFuture {
       self.get_aspect::<FutureAspect>()
     }
   }
