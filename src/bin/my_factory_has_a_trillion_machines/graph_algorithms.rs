@@ -70,72 +70,72 @@ impl PlatonicRegionContents {
       })
       .collect()
   }
+  /*
+    pub fn build_machines(
+      &mut self,
+      machine_types: &mut MachineTypes,
+      machines: impl IntoIterator<Item = PlatonicMachine>,
+      now: Number,
+    ) {
+      unimplemented!()
+      /*let old_length = self.machines.len();
+      self.machines.extend(machines);
+      let mut disturbed = Vec::with_capacity(self.machines.len());
+      disturbed.extend(old_length..self.machines.len());
+      self.disturb_downstream(
+        machine_types,
+        &self.output_edges(machine_types),
+        disturbed,
+        now,
+      );*/
+    }
 
-  pub fn build_machines(
-    &mut self,
-    machine_types: &mut MachineTypes,
-    machines: impl IntoIterator<Item = PlatonicMachine>,
-    now: Number,
-  ) {
-    unimplemented!()
-    /*let old_length = self.machines.len();
-    self.machines.extend(machines);
-    let mut disturbed = Vec::with_capacity(self.machines.len());
-    disturbed.extend(old_length..self.machines.len());
-    self.disturb_downstream(
-      machine_types,
-      &self.output_edges(machine_types),
-      disturbed,
-      now,
-    );*/
-  }
+    pub fn remove_machines(
+      &mut self,
+      machine_types: &mut MachineTypes,
+      machines: Vec<usize>,
+      now: Number,
+    ) {
+      unimplemented!()
+      /*let mut disturbed = Vec::with_capacity(self.machines.len());
+      disturbed.extend_from_slice(&machines);
+      self.disturb_downstream(
+        machine_types,
+        &self.output_edges(machine_types),
+        disturbed,
+        now,
+      );
+      let mut index = 0;
+      self.machines.retain(|_machine| {
+        let result = !machines.contains(&index);
+        index += 1;
+        result
+      });*/
+    }
 
-  pub fn remove_machines(
-    &mut self,
-    machine_types: &mut MachineTypes,
-    machines: Vec<usize>,
-    now: Number,
-  ) {
-    unimplemented!()
-    /*let mut disturbed = Vec::with_capacity(self.machines.len());
-    disturbed.extend_from_slice(&machines);
-    self.disturb_downstream(
-      machine_types,
-      &self.output_edges(machine_types),
-      disturbed,
-      now,
-    );
-    let mut index = 0;
-    self.machines.retain(|_machine| {
-      let result = !machines.contains(&index);
-      index += 1;
-      result
-    });*/
-  }
-
-  pub fn modify_machines(
-    &mut self,
-    machine_types: &mut MachineTypes,
-    machines: Vec<usize>,
-    now: Number,
-    mut modify: impl FnMut(&mut PlatonicMachine),
-  ) {
-    unimplemented!()
-    /*let mut disturbed = Vec::with_capacity(self.machines.len());
-    disturbed.extend_from_slice(&machines);
-    self.disturb_downstream(
-      machine_types,
-      &self.output_edges(machine_types),
-      disturbed,
-      now,
-    );
-    for (index, machine) in self.machines.iter_mut().enumerate() {
-      if machines.contains(&index) {
-        (modify)(machine);
-      }
-    }*/
-  }
-
+    pub fn modify_machines(
+      &mut self,
+      machine_types: &mut MachineTypes,
+      machines: Vec<usize>,
+      now: Number,
+      mut modify: impl FnMut(&mut PlatonicMachine),
+    ) {
+      unimplemented!()
+      /*let mut disturbed = Vec::with_capacity(self.machines.len());
+      disturbed.extend_from_slice(&machines);
+      self.disturb_downstream(
+        machine_types,
+        &self.output_edges(machine_types),
+        disturbed,
+        now,
+      );
+      for (index, machine) in self.machines.iter_mut().enumerate() {
+        if machines.contains(&index) {
+          (modify)(machine);
+        }
+      }*/
+    }
+  */
   /*pub fn disturb_downstream(
     &mut self,
     machine_types: &mut MachineTypes,
@@ -384,7 +384,7 @@ impl Game {
     let mut undisturbed_modules = UndisturbedModulesFutures::default();
     let global_region = builder.region_future(
       &mut undisturbed_modules,
-      &GameView::new(self).global_region(),
+      &GameView::<(BaseAspect,)>::new(self).global_region(),
       &[],
     );
     GameFuture {
@@ -682,15 +682,21 @@ impl<'a> WorldViewAspect<'a> for $Tuple {
 
 #[allow(non_snake_case)]
 impl<'a> $crate::graph_algorithms::GameView<'a, $Tuple> {
-  fn new($($Aspect: <$Aspect as WorldViewAspect<'a>>::Game,)*) -> Self {
+  pub fn new($($Aspect: <$Aspect as WorldViewAspect<'a>>::Game,)*) -> Self {
     $crate::graph_algorithms::GameView {
       aspects: ($($Aspect,)*)
     }
   }
 }
 
+impl BaseAspectShared for $Tuple {
+  fn is_module<'a>(machine: &<Self as WorldViewAspect<'a>>::Machine) -> bool {
+    $BaseAspect::is_module(&machine.0)
+  }
+}
+
 $(
-#[allow(non_snake_case)]
+#[allow(non_snake_case, unused_variables)]
 impl GetSubaspect<$Aspect> for $Tuple {
   fn get_game_aspect<'a, 'b: 'a>(
     game: &'a <Self as WorldViewAspect<'b>>::Game,
@@ -717,7 +723,7 @@ impl GetSubaspect<$Aspect> for $Tuple {
     $Aspect
   }
 }
-#[allow(non_snake_case)]
+#[allow(non_snake_case, unused_variables)]
 impl GetSubaspectMut<$Aspect> for $Tuple {
   fn get_game_aspect_mut<'a, 'b: 'a>(
     game: &'a mut <Self as WorldViewAspect<'b>>::Game,
@@ -742,12 +748,6 @@ impl GetSubaspectMut<$Aspect> for $Tuple {
   ) -> &'a mut <$Aspect as WorldViewAspect<'b>>::Module {
     let $Tuple =  module;
     $Aspect
-  }
-}
-
-impl BaseAspectShared for $Tuple {
-  fn is_module<'a>(machine: &<Self as WorldViewAspect<'a>>::Machine) -> bool {
-    $BaseAspect::is_module(&machine.0)
   }
 }
 )*
@@ -1054,6 +1054,18 @@ pub mod base_mut_view_aspect {
 
   pub enum BaseMutAspect {}
 
+  impl BaseMutAspect {
+    #[allow(clippy::new_ret_no_self)]
+    pub fn new<'a>(game: &'a mut Game, change_time: Number, future: &GameFuture) -> GameView<'a> {
+      let view = super::GameView::<(BaseAspect, FutureAspect)>::new(game, future);
+      game.inventory_before_last_change = view.inventory_at(change_time);
+      GameView {
+        globals: ViewGlobals { change_time },
+        game,
+      }
+    }
+  }
+
   #[derive(Debug)]
   struct ViewGlobals {
     pub change_time: Number,
@@ -1183,6 +1195,7 @@ pub mod base_mut_view_aspect {
       module: &'a mut <Self as WorldViewAspect<'b>>::Module,
     ) -> <Self as WorldViewAspect<'a>>::Region {
       let parent = &mut module.as_machine.parent;
+      parent.disturb_downstream(module.as_machine.index_within_parent, false);
       let change_time = parent.immutable.globals.change_time;
       let new_module_index = parent.mutable.machine_types.custom_modules.len();
       let platonic_machine =
@@ -1258,6 +1271,21 @@ pub mod base_mut_view_aspect {
     }
   }
 
+  impl<'a> WorldRegionView<'a> {
+    fn platonic(&self) -> &PlatonicRegionContents {
+      match self.immutable.module_index {
+        Some(index) => &self.mutable.machine_types.custom_modules[index].region,
+        None => &self.mutable.global_region,
+      }
+    }
+    fn platonic_mut(&mut self) -> &mut PlatonicRegionContents {
+      match self.immutable.module_index {
+        Some(index) => &mut self.mutable.machine_types.custom_modules[index].region,
+        None => &mut self.mutable.global_region,
+      }
+    }
+  }
+
   impl<'a> ReborrowedRegion<'a> {
     fn platonic(&self) -> &PlatonicRegionContents {
       match self.immutable.module_index {
@@ -1270,6 +1298,64 @@ pub mod base_mut_view_aspect {
         Some(index) => &mut self.mutable.machine_types.custom_modules[index].region,
         None => &mut self.mutable.global_region,
       }
+    }
+  }
+
+  impl<'a> ReborrowedRegion<'a> {
+    pub fn disturb_downstream(
+      &mut self,
+      starting_machine_index: usize,
+      include_starting_machine: bool,
+    ) {
+      if let Some(times) = self.mutable.last_disturbed_times.take() {
+        let mut stack;
+        if include_starting_machine {
+          stack = vec![starting_machine_index];
+        } else {
+          // note: if we have a cycle, then it SHOULD be possible to disturb the starting machine
+          // if we come back around to it. So don't explicitly exclude it, just skip it at first.
+          stack = self.immutable.output_edges[starting_machine_index]
+            .iter()
+            .flatten()
+            .map(|&(destination_machine_index, _)| destination_machine_index)
+            .collect();
+        }
+        while let Some(index) = stack.pop() {
+          let id_within_region = self.platonic().machines[index].id_within_region();
+          let old = times
+            .here
+            .insert(id_within_region, self.immutable.globals.change_time);
+          if old != Some(self.immutable.globals.change_time) {
+            times.children.remove(&id_within_region);
+            for &(destination_machine_index, _) in
+              self.immutable.output_edges[index].iter().flatten()
+            {
+              stack.push(destination_machine_index);
+            }
+          }
+        }
+        self.mutable.last_disturbed_times = Some(times);
+      }
+    }
+  }
+
+  impl<'a, T: GetSubaspectMut<BaseMutAspect>> super::WorldRegionView<'a, T> {
+    pub fn insert_machines(&mut self, machines: impl IntoIterator<Item = PlatonicMachine>) {
+      let aspect = self.get_aspect_mut::<BaseMutAspect>();
+      let platonic = aspect.platonic_mut();
+      let first_new_index = platonic.machines.len();
+      platonic.machines.extend(machines);
+      let after_last_new_index = platonic.machines.len();
+      let output_edges = aspect
+        .platonic()
+        .output_edges(&aspect.mutable.machine_types);
+      aspect.immutable.output_edges = output_edges;
+      for index in first_new_index..after_last_new_index {
+        aspect.reborrow().disturb_downstream(index, true);
+      }
+    }
+    pub fn insert_machine(&mut self, machine: PlatonicMachine) {
+      self.insert_machines(std::iter::once(machine))
     }
   }
 
@@ -1393,6 +1479,7 @@ pub mod future_view_aspect {
 }
 
 impl_world_views_for_aspect_tuple!(&(BaseAspect,));
+impl_world_views_for_aspect_tuple!(&(BaseAspect, FutureAspect,));
 
 impl<'a, T: GetSubaspect<BaseAspect> + GetSubaspect<FutureAspect>> GameView<'a, T> {
   pub fn inventory_at(&'a self, time: Number) -> HashMap<Material, Number> {
