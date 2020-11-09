@@ -497,6 +497,7 @@ pub trait GetSubaspectMut<T: WorldViewAspectAll>: WorldViewAspectAll {
 
 pub trait BaseAspectShared: WorldViewAspectAll {
   fn is_module<'a>(machine: &<Self as WorldViewAspect<'a>>::Machine) -> bool;
+  fn isomorphism(region: &<Self as WorldViewAspect>::Region) -> GridIsomorphism;
 }
 
 #[derive(Debug)]
@@ -548,6 +549,12 @@ impl<'a, T: WorldViewAspectGet> WorldRegionView<'a, T> {
     WorldMachineView {
       aspects: T::get_machine(&self.aspects, ids),
     }
+  }
+}
+
+impl<'a, T: BaseAspectShared> WorldRegionView<'a, T> {
+  pub fn isomorphism(&self) -> GridIsomorphism {
+    T::isomorphism(&self.aspects)
   }
 }
 
@@ -692,6 +699,9 @@ impl<'a> $crate::graph_algorithms::GameView<'a, $Tuple> {
 impl $crate::graph_algorithms::BaseAspectShared for $Tuple {
   fn is_module<'a>(machine: &<Self as $crate::graph_algorithms::WorldViewAspect<'a>>::Machine) -> bool {
     $BaseAspect::is_module(&machine.0)
+  }
+  fn isomorphism(region: &<Self as WorldViewAspect>::Region) -> GridIsomorphism {
+    $BaseAspect::isomorphism(&region.0)
   }
 }
 
@@ -942,6 +952,9 @@ pub mod base_view_aspect {
         machine.game.machine_types.get(machine.platonic.type_id),
         MachineTypeRef::Module(_)
       )
+    }
+    fn isomorphism(region: &<Self as WorldViewAspect>::Region) -> GridIsomorphism {
+      region.isomorphism
     }
   }
 
@@ -1270,6 +1283,9 @@ pub mod base_mut_view_aspect {
           .get(machine.parent.platonic().machines[machine.index_within_parent].type_id),
         MachineTypeRef::Module(_)
       )
+    }
+    fn isomorphism(region: &<Self as WorldViewAspect>::Region) -> GridIsomorphism {
+      region.immutable.isomorphism
     }
   }
 

@@ -273,7 +273,7 @@ impl ModifyGameUndoable for AddRemoveMachines {
     let mut undo_added = Vec::new();
 
     fn handle_region(
-      region: WorldRegionView<AddRemoveMachinesAspects>,
+      mut region: WorldRegionView<AddRemoveMachinesAspects>,
       mut added: &mut [PlatonicMachine],
       mut removed: &mut [MachineGlobalId],
       undo_added: &mut Vec<PlatonicMachine>,
@@ -299,13 +299,16 @@ impl ModifyGameUndoable for AddRemoveMachines {
             if !(added_here.is_empty() && removed_here.is_empty()) {
               handle_region(module.inner_region(), added_here, removed_here, undo_added);
             }
-            true
           }
+          true
         }
       });
 
       if !added.is_empty() {
-        region.insert_global_machines(added);
+        region.insert_machines(added.iter().cloned().map(|mut machine| {
+          machine.state.position = machine.state.position / region.isomorphism();
+          machine
+        }));
       }
     }
 
@@ -315,6 +318,7 @@ impl ModifyGameUndoable for AddRemoveMachines {
       game_view.global_region_mut(),
       &mut self.added,
       &mut self.removed,
+      &mut undo_added,
     );
 
     AddRemoveMachines {
