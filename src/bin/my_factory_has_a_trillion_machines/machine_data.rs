@@ -13,6 +13,7 @@ use geometry::{Facing, GridIsomorphism, Number, Rotate, TransformedBy, Vector, V
 //use modules::ModuleMachine;
 use modules::PlatonicModule;
 use primitive_machines::{Assembler, Distributor};
+use undo_history::AddRemoveMachines;
 
 pub const MAX_COMPONENTS: usize = 256;
 pub const MAX_MACHINE_INPUTS: usize = 8;
@@ -42,6 +43,7 @@ pub struct PlatonicMachine {
 
 pub type MachineIdWithinPlatonicRegion =
   impl Copy + Clone + Ord + Hash + Debug + Default + Serialize + DeserializeOwned;
+pub type MachineGlobalId = Vector;
 impl PlatonicMachine {
   /// An ID that is guaranteed to be unique within its region.
   ///
@@ -49,9 +51,28 @@ impl PlatonicMachine {
   /// because this is used for sorting BEFORE modules are canonicalized.
   /// currently, position is enough to enforce unique ids within legal game states.
   /// if we make bridge-like machines later, this will need to get more sophisticated.
-  pub(crate) fn id_within_region(&self) -> MachineIdWithinPlatonicRegion {
+  pub fn id_within_region(&self) -> MachineIdWithinPlatonicRegion {
     let position = self.state.position.translation;
     (position[0], position[1])
+  }
+
+  /// An ID that is guaranteed to be unique among all machines in all regions.
+  ///
+  /// note: this must NOT include a module index,
+  /// because this is used for sorting BEFORE modules are canonicalized.
+  /// currently, position is enough to enforce unique ids within legal game states.
+  /// if we make bridge-like machines later, this will need to get more sophisticated.
+  ///
+  /// This global id can't even be the center of the machine, because there may be
+  /// another machine at the center of a module. Thus, we use a location that can't
+  /// be shared - the (-x, -y) corner, which is always solid.
+  pub fn global_id(
+    &self,
+    ancestors_isomorphism: GridIsomorphism,
+    machines_types: &MachineTypes,
+  ) -> MachineGlobalId {
+    let radius = machines_types.get(self.type_id).radius();
+    (self.state.position * ancestors_isomorphism).translation - Vector::new(radius - 1, radius - 1)
   }
 }
 
@@ -442,7 +463,8 @@ impl MachineTypes {
   }
 }
 
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, Default)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, Derivative)]
+#[derivative(Default(bound = ""))]
 pub struct WorldMachinesMap<T> {
   pub here: HashMap<MachineIdWithinPlatonicRegion, T>,
   pub children: HashMap<MachineIdWithinPlatonicRegion, WorldMachinesMap<T>>,
@@ -455,6 +477,8 @@ pub struct Game {
   pub last_disturbed_times: WorldMachinesMap<Number>,
   pub last_change_time: Number,
   pub inventory_before_last_change: HashMap<Material, Number>,
+  pub undo_stack: Vec<AddRemoveMachines>,
+  pub redo_stack: Vec<AddRemoveMachines>,
 }
 
 impl Game {

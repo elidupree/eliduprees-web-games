@@ -8,7 +8,7 @@ use geometry::{GridIsomorphism, Number};
 use machine_data::{
   Game, InputLocation, Inputs, MachineFuture, MachineIdWithinPlatonicRegion, MachineObservedInputs,
   MachineOperatingState, MachineTypeId, MachineTypeRef, MachineTypeTrait, MachineTypes, Material,
-  PlatonicMachine, PlatonicRegionContents, MAX_COMPONENTS,
+  PlatonicMachine, PlatonicRegionContents, WorldMachinesMap, MAX_COMPONENTS,
 };
 use modules::{CanonicalModuleInputs, PlatonicModule};
 
@@ -673,79 +673,79 @@ macro_rules! impl_world_views_for_aspect_tuple {
    };
    ($BaseAspect: ident, ($($Aspect: ident,)*), $Tuple: tt) => {
 
-impl<'a> WorldViewAspect<'a> for $Tuple {
-  type Game = ($(<$Aspect as WorldViewAspect<'a>>::Game,)*);
-  type Region = ($(<$Aspect as WorldViewAspect<'a>>::Region,)*);
-  type Machine = ($(<$Aspect as WorldViewAspect<'a>>::Machine,)*);
-  type Module = ($(<$Aspect as WorldViewAspect<'a>>::Module,)*);
+impl<'a> $crate::graph_algorithms::WorldViewAspect<'a> for $Tuple {
+  type Game = ($(<$Aspect as $crate::graph_algorithms::WorldViewAspect<'a>>::Game,)*);
+  type Region = ($(<$Aspect as $crate::graph_algorithms::WorldViewAspect<'a>>::Region,)*);
+  type Machine = ($(<$Aspect as $crate::graph_algorithms::WorldViewAspect<'a>>::Machine,)*);
+  type Module = ($(<$Aspect as $crate::graph_algorithms::WorldViewAspect<'a>>::Module,)*);
 }
 
 #[allow(non_snake_case)]
 impl<'a> $crate::graph_algorithms::GameView<'a, $Tuple> {
-  pub fn new($($Aspect: <$Aspect as WorldViewAspect<'a>>::Game,)*) -> Self {
+  pub fn new($($Aspect: <$Aspect as $crate::graph_algorithms::WorldViewAspect<'a>>::Game,)*) -> Self {
     $crate::graph_algorithms::GameView {
       aspects: ($($Aspect,)*)
     }
   }
 }
 
-impl BaseAspectShared for $Tuple {
-  fn is_module<'a>(machine: &<Self as WorldViewAspect<'a>>::Machine) -> bool {
+impl $crate::graph_algorithms::BaseAspectShared for $Tuple {
+  fn is_module<'a>(machine: &<Self as $crate::graph_algorithms::WorldViewAspect<'a>>::Machine) -> bool {
     $BaseAspect::is_module(&machine.0)
   }
 }
 
 $(
 #[allow(non_snake_case, unused_variables)]
-impl GetSubaspect<$Aspect> for $Tuple {
+impl $crate::graph_algorithms::GetSubaspect<$Aspect> for $Tuple {
   fn get_game_aspect<'a, 'b: 'a>(
-    game: &'a <Self as WorldViewAspect<'b>>::Game,
-  ) -> &'a <$Aspect as WorldViewAspect<'b>>::Game {
+    game: &'a <Self as $crate::graph_algorithms::WorldViewAspect<'b>>::Game,
+  ) -> &'a <$Aspect as $crate::graph_algorithms::WorldViewAspect<'b>>::Game {
     let $Tuple = game;
     $Aspect
   }
   fn get_region_aspect<'a, 'b: 'a>(
-    region: &'a <Self as WorldViewAspect<'b>>::Region,
-  ) -> &'a <$Aspect as WorldViewAspect<'b>>::Region {
+    region: &'a <Self as $crate::graph_algorithms::WorldViewAspect<'b>>::Region,
+  ) -> &'a <$Aspect as $crate::graph_algorithms::WorldViewAspect<'b>>::Region {
     let $Tuple =  region;
     $Aspect
   }
   fn get_machine_aspect<'a, 'b: 'a>(
-    machine: &'a <Self as WorldViewAspect<'b>>::Machine,
-  ) -> &'a <$Aspect as WorldViewAspect<'b>>::Machine {
+    machine: &'a <Self as $crate::graph_algorithms::WorldViewAspect<'b>>::Machine,
+  ) -> &'a <$Aspect as $crate::graph_algorithms::WorldViewAspect<'b>>::Machine {
     let $Tuple =  machine;
     $Aspect
   }
   fn get_module_aspect<'a, 'b: 'a>(
-    module: &'a <Self as WorldViewAspect<'b>>::Module,
-  ) -> &'a <$Aspect as WorldViewAspect<'b>>::Module {
+    module: &'a <Self as $crate::graph_algorithms::WorldViewAspect<'b>>::Module,
+  ) -> &'a <$Aspect as $crate::graph_algorithms::WorldViewAspect<'b>>::Module {
     let $Tuple =  module;
     $Aspect
   }
 }
 #[allow(non_snake_case, unused_variables)]
-impl GetSubaspectMut<$Aspect> for $Tuple {
+impl $crate::graph_algorithms::GetSubaspectMut<$Aspect> for $Tuple {
   fn get_game_aspect_mut<'a, 'b: 'a>(
-    game: &'a mut <Self as WorldViewAspect<'b>>::Game,
-  ) -> &'a mut <$Aspect as WorldViewAspect<'b>>::Game {
+    game: &'a mut <Self as $crate::graph_algorithms::WorldViewAspect<'b>>::Game,
+  ) -> &'a mut <$Aspect as $crate::graph_algorithms::WorldViewAspect<'b>>::Game {
     let $Tuple = game;
     $Aspect
   }
   fn get_region_aspect_mut<'a, 'b: 'a>(
-    region: &'a mut <Self as WorldViewAspect<'b>>::Region,
-  ) -> &'a mut <$Aspect as WorldViewAspect<'b>>::Region {
+    region: &'a mut <Self as $crate::graph_algorithms::WorldViewAspect<'b>>::Region,
+  ) -> &'a mut <$Aspect as $crate::graph_algorithms::WorldViewAspect<'b>>::Region {
     let $Tuple =  region;
     $Aspect
   }
   fn get_machine_aspect_mut<'a, 'b: 'a>(
-    machine: &'a mut <Self as WorldViewAspect<'b>>::Machine,
-  ) -> &'a mut <$Aspect as WorldViewAspect<'b>>::Machine {
+    machine: &'a mut <Self as $crate::graph_algorithms::WorldViewAspect<'b>>::Machine,
+  ) -> &'a mut <$Aspect as $crate::graph_algorithms::WorldViewAspect<'b>>::Machine {
     let $Tuple =  machine;
     $Aspect
   }
   fn get_module_aspect_mut<'a, 'b: 'a>(
-    module: &'a mut <Self as WorldViewAspect<'b>>::Module,
-  ) -> &'a mut <$Aspect as WorldViewAspect<'b>>::Module {
+    module: &'a mut <Self as $crate::graph_algorithms::WorldViewAspect<'b>>::Module,
+  ) -> &'a mut <$Aspect as $crate::graph_algorithms::WorldViewAspect<'b>>::Module {
     let $Tuple =  module;
     $Aspect
   }
@@ -757,35 +757,35 @@ impl GetSubaspectMut<$Aspect> for $Tuple {
 impl_world_views_for_aspect_tuple!(($($Aspect,)*));
 
 #[allow(non_snake_case)]
-impl WorldViewAspectGetMut for ($($Aspect,)*) {
+impl $crate::graph_algorithms::WorldViewAspectGetMut for ($($Aspect,)*) {
   fn global_region_mut<'a, 'b: 'a>(
-    game: &'a mut <Self as WorldViewAspect<'b>>::Game,
-  ) -> <Self as WorldViewAspect<'a>>::Region {
+    game: &'a mut <Self as $crate::graph_algorithms::WorldViewAspect<'b>>::Game,
+  ) -> <Self as $crate::graph_algorithms::WorldViewAspect<'a>>::Region {
     let ($($Aspect,)*) = game;
     ($(
       $Aspect::global_region_mut($Aspect),
     )*)
   }
   fn get_machine_mut<'a, 'b: 'a>(
-    region: &'a mut <Self as WorldViewAspect<'b>>::Region,
-    ids: ViewMachineIds,
-  ) -> <Self as WorldViewAspect<'a>>::Machine {
+    region: &'a mut <Self as $crate::graph_algorithms::WorldViewAspect<'b>>::Region,
+    ids: $crate::graph_algorithms::ViewMachineIds,
+  ) -> <Self as $crate::graph_algorithms::WorldViewAspect<'a>>::Machine {
     let ($($Aspect,)*) = region;
     ($(
       $Aspect::get_machine_mut($Aspect, ids),
     )*)
   }
   fn as_module_mut<'a, 'b: 'a>(
-    machine: &'a mut <Self as WorldViewAspect<'b>>::Machine
-  ) -> <Self as WorldViewAspect<'a>>::Module {
+    machine: &'a mut <Self as $crate::graph_algorithms::WorldViewAspect<'b>>::Machine
+  ) -> <Self as $crate::graph_algorithms::WorldViewAspect<'a>>::Module {
     let ($($Aspect,)*) = machine;
     ($(
       $Aspect::as_module_mut($Aspect),
     )*)
   }
   fn inner_region_mut<'a, 'b: 'a>(
-    module: &'a mut <Self as WorldViewAspect<'b>>::Module
-  ) -> <Self as WorldViewAspect<'a>>::Region {
+    module: &'a mut <Self as $crate::graph_algorithms::WorldViewAspect<'b>>::Module
+  ) -> <Self as $crate::graph_algorithms::WorldViewAspect<'a>>::Region {
     let ($($Aspect,)*) = module;
     ($(
       $Aspect::inner_region_mut($Aspect),
@@ -798,35 +798,35 @@ impl WorldViewAspectGetMut for ($($Aspect,)*) {
 impl_world_views_for_aspect_tuple!(($($Aspect,)*));
 
 #[allow(non_snake_case)]
-impl WorldViewAspectGet for ($($Aspect,)*) {
+impl $crate::graph_algorithms::WorldViewAspectGet for ($($Aspect,)*) {
   fn global_region<'a, 'b: 'a>(
-    game: &'a <Self as WorldViewAspect<'b>>::Game,
-  ) -> <Self as WorldViewAspect<'a>>::Region {
+    game: &'a <Self as $crate::graph_algorithms::WorldViewAspect<'b>>::Game,
+  ) -> <Self as $crate::graph_algorithms::WorldViewAspect<'a>>::Region {
     let ($($Aspect,)*) = game;
     ($(
       $Aspect::global_region($Aspect),
     )*)
   }
   fn get_machine<'a, 'b: 'a>(
-    region: &'a <Self as WorldViewAspect<'b>>::Region,
-    ids: ViewMachineIds,
-  ) -> <Self as WorldViewAspect<'a>>::Machine {
+    region: &'a <Self as $crate::graph_algorithms::WorldViewAspect<'b>>::Region,
+    ids: $crate::graph_algorithms::ViewMachineIds,
+  ) -> <Self as $crate::graph_algorithms::WorldViewAspect<'a>>::Machine {
     let ($($Aspect,)*) = region;
     ($(
       $Aspect::get_machine($Aspect, ids),
     )*)
   }
   fn as_module<'a, 'b: 'a>(
-    machine: &'a <Self as WorldViewAspect<'b>>::Machine
-  ) -> <Self as WorldViewAspect<'a>>::Module {
+    machine: &'a <Self as $crate::graph_algorithms::WorldViewAspect<'b>>::Machine
+  ) -> <Self as $crate::graph_algorithms::WorldViewAspect<'a>>::Module {
     let ($($Aspect,)*) = machine;
     ($(
       $Aspect::as_module($Aspect),
     )*)
   }
   fn inner_region<'a, 'b: 'a>(
-    module: &'a <Self as WorldViewAspect<'b>>::Module
-  ) -> <Self as WorldViewAspect<'a>>::Region {
+    module: &'a <Self as $crate::graph_algorithms::WorldViewAspect<'b>>::Module
+  ) -> <Self as $crate::graph_algorithms::WorldViewAspect<'a>>::Region {
     let ($($Aspect,)*) = module;
     ($(
       $Aspect::inner_region($Aspect),
@@ -1481,8 +1481,252 @@ pub mod future_view_aspect {
   }
 }
 
+pub use self::world_machines_map_view_aspect::WorldMachinesMapViewAspect;
+pub mod world_machines_map_view_aspect {
+  use super::*;
+  use machine_data::WorldMachinesMap;
+  use std::marker::PhantomData;
+
+  #[derive(Debug)]
+  pub struct WorldMachinesMapViewAspect<T, U> {
+    marker: PhantomData<*const (T, U)>,
+  }
+
+  pub type GameView<'a, T> = &'a WorldMachinesMap<T>;
+
+  #[derive(Copy, Clone, Debug)]
+  pub struct WorldRegionView<'a, T> {
+    node: Option<&'a WorldMachinesMap<T>>,
+  }
+
+  #[derive(Copy, Clone, Debug)]
+  pub struct WorldMachineView<'a, T> {
+    here: Option<&'a T>,
+    children: Option<&'a WorldMachinesMap<T>>,
+  }
+
+  #[derive(Copy, Clone, Debug)]
+  pub struct WorldModuleView<'a, T> {
+    children: Option<&'a WorldMachinesMap<T>>,
+  }
+
+  impl<'a, T: 'static, U: 'static> WorldViewAspect<'a> for WorldMachinesMapViewAspect<T, U> {
+    type Game = GameView<'a, T>;
+    type Region = WorldRegionView<'a, T>;
+    type Machine = WorldMachineView<'a, T>;
+    type Module = WorldModuleView<'a, T>;
+  }
+  impl<T: 'static, U: 'static> WorldViewAspectGet for WorldMachinesMapViewAspect<T, U> {
+    fn global_region<'a, 'b: 'a>(
+      game: &'a <Self as WorldViewAspect<'b>>::Game,
+    ) -> <Self as WorldViewAspect<'a>>::Region {
+      WorldRegionView { node: Some(game) }
+    }
+    fn get_machine<'a, 'b: 'a>(
+      region: &'a <Self as WorldViewAspect<'b>>::Region,
+      ids: ViewMachineIds,
+    ) -> <Self as WorldViewAspect<'a>>::Machine {
+      match region.node {
+        None => WorldMachineView {
+          here: None,
+          children: None,
+        },
+        Some(map) => WorldMachineView {
+          here: map.here.get(&ids.id_within_region),
+          children: map.children.get(&ids.id_within_region),
+        },
+      }
+    }
+    fn as_module<'a, 'b: 'a>(
+      machine: &'a <Self as WorldViewAspect<'b>>::Machine,
+    ) -> <Self as WorldViewAspect<'a>>::Module {
+      WorldModuleView {
+        children: machine.children,
+      }
+    }
+    fn inner_region<'a, 'b: 'a>(
+      module: &'a <Self as WorldViewAspect<'b>>::Module,
+    ) -> <Self as WorldViewAspect<'a>>::Region {
+      WorldRegionView {
+        node: module.children,
+      }
+    }
+  }
+
+  impl<'a, T: WorldViewAspectAll> super::WorldRegionView<'a, T> {
+    pub fn get_world_machines_map<U: 'static, V: 'static>(&self) -> Option<&'a WorldMachinesMap<U>>
+    where
+      T: GetSubaspect<WorldMachinesMapViewAspect<U, V>>,
+    {
+      self.get_aspect::<WorldMachinesMapViewAspect<U, V>>().node
+    }
+  }
+
+  impl<'a, T: WorldViewAspectAll> super::WorldMachineView<'a, T> {
+    pub fn get_world_machines_map_value_here<U: 'static, V: 'static>(&self) -> Option<&'a U>
+    where
+      T: GetSubaspect<WorldMachinesMapViewAspect<U, V>>,
+    {
+      let aspect = self.get_aspect::<WorldMachinesMapViewAspect<U, V>>();
+      aspect.here
+    }
+  }
+}
+
+pub use self::world_machines_map_mut_view_aspect::WorldMachinesMapMutViewAspect;
+pub mod world_machines_map_mut_view_aspect {
+  use super::*;
+  use machine_data::WorldMachinesMap;
+  use std::marker::PhantomData;
+
+  #[derive(Debug)]
+  pub struct WorldMachinesMapMutViewAspect<T, U> {
+    marker: PhantomData<*const (T, U)>,
+  }
+
+  pub type GameView<'a, T> = &'a mut WorldMachinesMap<T>;
+
+  #[derive(Debug)]
+  pub struct WorldRegionView<'a, T: PartialEq> {
+    node: &'a mut WorldMachinesMap<T>,
+  }
+
+  #[derive(Debug)]
+  pub struct WorldMachineView<'a, T> {
+    here: Option<&'a mut T>,
+    children: &'a mut WorldMachinesMap<T>,
+  }
+
+  #[derive(Debug)]
+  pub struct WorldModuleView<'a, T> {
+    children: &'a mut WorldMachinesMap<T>,
+  }
+
+  impl<'a, T: PartialEq + 'static, U: 'static> WorldViewAspect<'a>
+    for WorldMachinesMapMutViewAspect<T, U>
+  {
+    type Game = GameView<'a, T>;
+    type Region = WorldRegionView<'a, T>;
+    type Machine = WorldMachineView<'a, T>;
+    type Module = WorldModuleView<'a, T>;
+  }
+  impl<T: PartialEq + 'static, U: 'static> WorldViewAspectGetMut
+    for WorldMachinesMapMutViewAspect<T, U>
+  {
+    fn global_region_mut<'a, 'b: 'a>(
+      game: &'a mut <Self as WorldViewAspect<'b>>::Game,
+    ) -> <Self as WorldViewAspect<'a>>::Region {
+      WorldRegionView { node: game }
+    }
+    fn get_machine_mut<'a, 'b: 'a>(
+      region: &'a mut <Self as WorldViewAspect<'b>>::Region,
+      ids: ViewMachineIds,
+    ) -> <Self as WorldViewAspect<'a>>::Machine {
+      WorldMachineView {
+        here: region.node.here.get_mut(&ids.id_within_region),
+        children: region
+          .node
+          .children
+          .entry(ids.id_within_region)
+          .or_insert_with(Default::default),
+      }
+    }
+    fn as_module_mut<'a, 'b: 'a>(
+      machine: &'a mut <Self as WorldViewAspect<'b>>::Machine,
+    ) -> <Self as WorldViewAspect<'a>>::Module {
+      WorldModuleView {
+        children: machine.children,
+      }
+    }
+    fn inner_region_mut<'a, 'b: 'a>(
+      module: &'a mut <Self as WorldViewAspect<'b>>::Module,
+    ) -> <Self as WorldViewAspect<'a>>::Region {
+      WorldRegionView {
+        node: module.children,
+      }
+    }
+  }
+
+  impl<'a, T: PartialEq> Drop for WorldRegionView<'a, T> {
+    fn drop(&mut self) {
+      self
+        .node
+        .children
+        .retain(|_key, value| *value != WorldMachinesMap::<T>::default());
+    }
+  }
+
+  impl<'a, T: WorldViewAspectAll> super::WorldRegionView<'a, T> {
+    pub fn get_world_machines_map_mut<U: PartialEq + 'static, V: 'static>(
+      &mut self,
+    ) -> &mut WorldMachinesMap<U>
+    where
+      T: GetSubaspectMut<WorldMachinesMapMutViewAspect<U, V>>,
+    {
+      self
+        .get_aspect_mut::<WorldMachinesMapMutViewAspect<U, V>>()
+        .node
+    }
+  }
+
+  impl<'a, T: WorldViewAspectAll> super::WorldMachineView<'a, T> {
+    pub fn get_world_machines_map_value_here_mut<U: PartialEq + 'static, V: 'static>(
+      &mut self,
+    ) -> Option<&mut U>
+    where
+      T: GetSubaspectMut<WorldMachinesMapMutViewAspect<U, V>>,
+    {
+      self
+        .get_aspect_mut::<WorldMachinesMapMutViewAspect<U, V>>()
+        .here
+        .as_deref_mut()
+    }
+  }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum Selected {}
+pub type SelectedAspect = WorldMachinesMapViewAspect<(), Selected>;
+
+impl<'a, T: GetSubaspect<SelectedAspect>> GameView<'a, T> {
+  pub fn selected(&self) -> &'a WorldMachinesMap<()> {
+    self.get_aspect::<SelectedAspect>()
+  }
+}
+
+impl<'a, T: GetSubaspect<SelectedAspect>> WorldRegionView<'a, T> {
+  pub fn selected(&self) -> Option<&'a WorldMachinesMap<()>> {
+    self.get_world_machines_map::<(), Selected>()
+  }
+}
+
+impl<'a, T: GetSubaspect<SelectedAspect>> WorldMachineView<'a, T> {
+  pub fn selected(&self) -> bool {
+    self
+      .get_world_machines_map_value_here::<(), Selected>()
+      .is_some()
+  }
+}
+
+pub type SelectedMutAspect = WorldMachinesMapMutViewAspect<(), Selected>;
+
+impl<'a, T: GetSubaspectMut<SelectedMutAspect>> WorldRegionView<'a, T> {
+  pub fn selected_mut(&mut self) -> &mut WorldMachinesMap<()> {
+    self.get_world_machines_map_mut::<(), Selected>()
+  }
+}
+
+/*impl<'a, T: GetSubaspectMut<SelectedMutAspect>> WorldMachineView<'a, T> {
+  pub fn selected_mut(&self) -> &mut Option<()> {
+    self.get_world_machines_map_value_here_mut::<(), Selected>()
+  }
+}*/
+
 impl_world_views_for_aspect_tuple!(&(BaseAspect,));
 impl_world_views_for_aspect_tuple!(&(BaseAspect, FutureAspect,));
+impl_world_views_for_aspect_tuple!(&(BaseAspect, SelectedAspect, FutureAspect,));
+impl_world_views_for_aspect_tuple!(&mut (BaseAspect, SelectedMutAspect,));
+impl_world_views_for_aspect_tuple!(&mut (BaseMutAspect, SelectedMutAspect,));
 
 impl<'a, T: GetSubaspect<BaseAspect> + GetSubaspect<FutureAspect>> GameView<'a, T> {
   pub fn inventory_at(&'a self, time: Number) -> HashMap<Material, Number> {

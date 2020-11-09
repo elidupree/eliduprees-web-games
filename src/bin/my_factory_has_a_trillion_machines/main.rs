@@ -1,5 +1,6 @@
 //#![feature (nll)]
 #![feature(type_alias_impl_trait, move_ref_pattern)]
+#![feature(iter_partition_in_place)]
 #![recursion_limit = "256"]
 
 extern crate eliduprees_web_games;
@@ -56,14 +57,15 @@ macro_rules! debug {
   }
 }
 
+#[macro_use]
+pub mod machine_data;
+#[macro_use]
+pub mod graph_algorithms;
 pub use eliduprees_web_games::*;
 // hack-ish: modules marked pub to suppress dead code warnings from builds with different conditional compilation
 pub mod flow_pattern;
-pub mod misc;
-#[macro_use]
-pub mod machine_data;
 pub mod geometry;
-pub mod graph_algorithms;
+pub mod misc;
 pub mod modules;
 pub mod primitive_machines;
 pub mod undo_history;

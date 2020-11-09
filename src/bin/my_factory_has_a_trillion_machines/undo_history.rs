@@ -1,67 +1,117 @@
 use crate::geometry::Number;
 use crate::machine_data::Game;
+use geometry::GridIsomorphism;
 use graph_algorithms::{
-  BaseAspect, FutureAspect, GameFuture, GameView, WorldMachineView, WorldRegionView,
+  BaseAspect, BaseMutAspect, FutureAspect, GameFuture, GameView, SelectedAspect, SelectedMutAspect,
+  WorldMachineView, WorldRegionView,
 };
 use live_prop_test::{live_prop_test, lpt_assert, lpt_assert_eq};
-use machine_data::{MachineTypeId, TIME_TO_MOVE_MATERIAL};
+use machine_data::{
+  MachineGlobalId, MachineTypeId, PlatonicMachine, WorldMachinesMap, TIME_TO_MOVE_MATERIAL,
+};
 use std::collections::HashSet;
 
 //#[live_prop_test]
-pub trait ModifyGame {
+pub trait ModifyGame: Clone {
   /*#[live_prop_test(
     precondition = "game.is_canonical()",
     precondition = "future == &game.future()",
-    postcondition = "check_modify_game(&old(game.clone()), game, time)"
+    postcondition = "check_modify_game(&old(game.clone()), game, &old(selected.clone()), selected, time)"
   )]*/
-  fn undo(&self, game: &mut Game, future: &GameFuture, time: Number);
+  fn modify_game(
+    self,
+    game: &mut Game,
+    selected: &mut WorldMachinesMap<()>,
+    future: &GameFuture,
+    time: Number,
+  );
 }
 
 #[live_prop_test]
-pub trait UndoableModifyGame {
+pub trait ModifyGameUndoable: Clone {
+  type Undo: ModifyGame;
   #[live_prop_test(
     precondition = "game.is_canonical()",
     precondition = "future == &game.future()",
-    postcondition = "check_undoable_modify_game(&old(game.clone()), game, time, &*result)"
+    postcondition = "check_undoable_modify_game(&old(game.clone()), game, &old(selected.clone()), selected, time, &result)"
   )]
-  fn modify_game(&self, game: &mut Game, future: &GameFuture, time: Number) -> Box<dyn ModifyGame>;
+  fn modify_game_undoable(
+    self,
+    game: &mut Game,
+    selected: &mut WorldMachinesMap<()>,
+    future: &GameFuture,
+    time: Number,
+  ) -> Self::Undo;
 }
 
-fn check_modify_game(before: &Game, after: &Game, modify_time: Number) -> Result<(), String> {
-  lpt_assert!(after.is_canonical());
+impl<T: ModifyGameUndoable> ModifyGame for T {
+  fn modify_game(
+    self,
+    game: &mut Game,
+    selected: &mut WorldMachinesMap<()>,
+    future: &GameFuture,
+    time: Number,
+  ) {
+    self.modify_game_undoable(game, selected, future, time);
+  }
+}
+
+fn check_modify_game(
+  game_before: &Game,
+  game_after: &Game,
+  selected_before: &WorldMachinesMap<()>,
+  selected_after: &WorldMachinesMap<()>,
+  modify_time: Number,
+) -> Result<(), String> {
+  lpt_assert!(game_after.is_canonical());
+  // TODO implement this check:
+  /*
   let before_future = before.future();
+  let before_material_totals = before.material_totals();
   let before_view = GameView::<Aspects>::new(before, &before_future);
+  let after_material_totals = after.material_totals();
   lpt_assert_eq!(
-    after.inventory_before_last_change,
-    before_view.inventory_at(modify_time)
+    after.inventory_before_last_change + after_material_totals.global_region,
+    before_view.inventory_at(modify_time) + before_material_totals.global_region
   );
+  */
   // Note: Null changes COULD be allowed to not change last_change_time...
   // but also maybe they shouldn't be a ModifyGame at all, because they probably shouldn't go in the undo history?
-  lpt_assert_eq!(after.last_change_time, modify_time);
+  lpt_assert_eq!(game_after.last_change_time, modify_time);
   Ok(())
 }
 
-type Aspects = (BaseAspect, FutureAspect);
+type AspectsForCheckModifyGame = (BaseAspect, SelectedAspect, FutureAspect);
 
-fn check_undoable_modify_game<Undo: ModifyGame + ?Sized>(
-  before: &Game,
-  after: &Game,
+fn check_undoable_modify_game<Undo: ModifyGame>(
+  game_before: &Game,
+  game_after: &Game,
+  selected_before: &WorldMachinesMap<()>,
+  selected_after: &WorldMachinesMap<()>,
   modify_time: Number,
   undo: &Undo,
 ) -> Result<(), String> {
-  check_modify_game(before, after, modify_time)?;
-  let before_future = before.future();
-  let before_view = GameView::<Aspects>::new(before, &before_future);
+  check_modify_game(
+    game_before,
+    game_after,
+    selected_before,
+    selected_after,
+    modify_time,
+  )?;
+  let before_future = game_before.future();
+  let before_view =
+    GameView::<AspectsForCheckModifyGame>::new(game_before, selected_before, &before_future);
   // we'd like to assert that every absolute disturbed time is either the same as before or is now...
   // except how do we tell which machines are the "same"?
 
-  let after_future = after.future();
-  let after_view = GameView::<Aspects>::new(after, &after_future);
-  check_undo(&before_view, &after_view, undo, modify_time)?;
+  let after_future = game_after.future();
+  let after_view =
+    GameView::<AspectsForCheckModifyGame>::new(game_after, selected_after, &after_future);
+  check_undo(&before_view, &after_view, undo.clone(), modify_time)?;
   check_undo(
     &before_view,
     &after_view,
-    undo,
+    undo.clone(),
     modify_time + TIME_TO_MOVE_MATERIAL * 33 + 67,
   )?;
   Ok(())
@@ -77,17 +127,30 @@ struct CheckUndoneMap
   visited_module_pairs_without_explicit_world_data: HashSet<[usize; 2]>,
 }
 
-fn check_undo<Undo: ModifyGame + ?Sized>(
-  before: &GameView<Aspects>,
-  after: &GameView<Aspects>,
-  undo: &Undo,
+fn check_undo<Undo: ModifyGame>(
+  before: &GameView<AspectsForCheckModifyGame>,
+  after: &GameView<AspectsForCheckModifyGame>,
+  undo: Undo,
   undo_time: Number,
 ) -> Result<(), String> {
-  let mut undone = after.game().clone();
-  undo.undo(&mut undone, &after.future(), undo_time);
-  check_modify_game(after.game(), &undone, undo_time)?;
-  let undone_future = undone.future();
-  let undone = GameView::<Aspects>::new(&undone, &undone_future);
+  let mut undone_game = after.game().clone();
+  let mut undone_selected = after.selected().clone();
+  undo.modify_game(
+    &mut undone_game,
+    &mut undone_selected,
+    &after.future(),
+    undo_time,
+  );
+  check_modify_game(
+    after.game(),
+    &undone_game,
+    after.selected(),
+    &undone_selected,
+    undo_time,
+  )?;
+  let undone_future = undone_game.future();
+  let undone =
+    GameView::<AspectsForCheckModifyGame>::new(&undone_game, &undone_selected, &undone_future);
 
   CheckUndoneMap {
     //before,
@@ -102,8 +165,8 @@ fn check_undo<Undo: ModifyGame + ?Sized>(
 impl CheckUndoneMap {
   fn maps_undo_compatible(
     &mut self,
-    before_map: WorldRegionView<Aspects>,
-    undone_map: WorldRegionView<Aspects>,
+    before_map: WorldRegionView<AspectsForCheckModifyGame>,
+    undone_map: WorldRegionView<AspectsForCheckModifyGame>,
     any_ancestor_module_machine_disturbed_by_undo: bool,
   ) -> Result<(), String> {
     let before_machines: Vec<_> = before_map.machines().collect();
@@ -121,8 +184,8 @@ impl CheckUndoneMap {
 
   fn machines_undo_compatible(
     &mut self,
-    before_machine: WorldMachineView<Aspects>,
-    undone_machine: WorldMachineView<Aspects>,
+    before_machine: WorldMachineView<AspectsForCheckModifyGame>,
+    undone_machine: WorldMachineView<AspectsForCheckModifyGame>,
     any_ancestor_module_machine_disturbed_by_undo: bool,
   ) -> Result<(), String> {
     lpt_assert_eq!(
@@ -154,6 +217,8 @@ impl CheckUndoneMap {
         let undone_inner_region = undone_module.inner_region();
         if before_inner_region.last_disturbed_times().is_some()
           || undone_inner_region.last_disturbed_times().is_some()
+          || before_inner_region.selected().is_some()
+          || undone_inner_region.selected().is_some()
           || self
             .visited_module_pairs_without_explicit_world_data
             .insert([before_index, undone_index])
@@ -177,6 +242,85 @@ impl CheckUndoneMap {
       }
     }
     Ok(())
+  }
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+pub struct AddRemoveMachines {
+  added: Vec<PlatonicMachine>,
+  removed: Vec<MachineGlobalId>,
+}
+
+//impl_world_views_for_aspect_tuple!(&mut (BaseMutAspect, SelectedMutAspect,));
+
+type AddRemoveMachinesAspects = (BaseMutAspect, SelectedMutAspect);
+#[live_prop_test(use_trait_tests)]
+impl ModifyGameUndoable for AddRemoveMachines {
+  type Undo = AddRemoveMachines;
+
+  fn modify_game_undoable(
+    mut self,
+    game: &mut Game,
+    selected: &mut WorldMachinesMap<()>,
+    future: &GameFuture,
+    time: Number,
+  ) -> AddRemoveMachines {
+    let undo_removed: Vec<_> = self
+      .added
+      .iter()
+      .map(|machine| machine.global_id(GridIsomorphism::default(), &game.machine_types))
+      .collect();
+    let mut undo_added = Vec::new();
+
+    fn handle_region(
+      region: WorldRegionView<AddRemoveMachinesAspects>,
+      mut added: &mut [PlatonicMachine],
+      mut removed: &mut [MachineGlobalId],
+      undo_added: &mut Vec<PlatonicMachine>,
+    ) {
+      region.retain_machines(|machine| {
+        if removed.contains(&machine.global_id()) {
+          undo_added.push(machine.global_platonic().clone());
+          false
+        } else {
+          if let Some(module) = machine.as_module() {
+            let num_added_here = added
+              .iter_mut()
+              .partition_in_place(|machine| module.contains_global_id(machine));
+            let (added_here, added_elsewhere) = added.split_at_mut(num_added_here);
+            added = added_elsewhere;
+
+            let num_removed_here = added
+              .iter_mut()
+              .partition_in_place(|id| module.contains_global_id(id));
+            let (removed_here, removed_elsewhere) = removed.split_at_mut(num_added_here);
+            removed = removed_elsewhere;
+
+            if !(added_here.is_empty() && removed_here.is_empty()) {
+              handle_region(module.inner_region(), added_here, removed_here, undo_added);
+            }
+            true
+          }
+        }
+      });
+
+      if !added.is_empty() {
+        region.insert_global_machines(added);
+      }
+    }
+
+    let mut game_view =
+      GameView::<AddRemoveMachinesAspects>::new(BaseMutAspect::new(game, time, future), selected);
+    handle_region(
+      game_view.global_region_mut(),
+      &mut self.added,
+      &mut self.removed,
+    );
+
+    AddRemoveMachines {
+      added: undo_added,
+      removed: undo_removed,
+    }
   }
 }
 
