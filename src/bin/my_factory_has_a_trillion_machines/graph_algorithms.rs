@@ -1357,7 +1357,7 @@ pub mod base_mut_view_aspect {
     }
   }
 
-  impl<'a, T: GetSubaspectMut<BaseMutAspect>> super::WorldRegionView<'a, T> {
+  impl<'a, T: WorldViewAspectGetMut + GetSubaspectMut<BaseMutAspect>> super::WorldRegionView<'a, T> {
     pub fn insert_machines(&mut self, machines: impl IntoIterator<Item = PlatonicMachine>) {
       let aspect = self.get_aspect_mut::<BaseMutAspect>();
       let platonic = aspect.platonic_mut();
@@ -1374,6 +1374,34 @@ pub mod base_mut_view_aspect {
     }
     pub fn insert_machine(&mut self, machine: PlatonicMachine) {
       self.insert_machines(std::iter::once(machine))
+    }
+    pub fn retain_machines(&mut self, predicate: impl FnMut(super::WorldMachineView<T>) -> bool) {
+      self
+        .get_aspect_mut::<BaseMutAspect>()
+        .platonic_mut()
+        .machines = (0..self
+        .get_aspect_mut::<BaseMutAspect>()
+        .platonic()
+        .machines
+        .len())
+        .filter_map(|index| {
+          let machine = &self.get_aspect_mut::<BaseMutAspect>().platonic().machines[index];
+          let ids = ViewMachineIds {
+            index,
+            id_within_region: machine.id_within_region(),
+            type_id: machine.type_id,
+          };
+          if (predicate)(self.get_machine_mut(ids)) {
+            self
+              .get_aspect_mut::<BaseMutAspect>()
+              .reborrow()
+              .disturb_downstream(index, true);
+            Some(machine.clone())
+          } else {
+            None
+          }
+        })
+        .collect();
     }
   }
 

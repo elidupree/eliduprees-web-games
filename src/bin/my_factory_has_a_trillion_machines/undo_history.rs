@@ -283,7 +283,7 @@ impl ModifyGameUndoable for AddRemoveMachines {
           undo_added.push(machine.global_platonic().clone());
           false
         } else {
-          if let Some(module) = machine.as_module() {
+          if let Some(module) = machine.as_module_mut() {
             let num_added_here = added
               .iter_mut()
               .partition_in_place(|machine| module.contains_global_id(machine));
@@ -297,7 +297,12 @@ impl ModifyGameUndoable for AddRemoveMachines {
             removed = removed_elsewhere;
 
             if !(added_here.is_empty() && removed_here.is_empty()) {
-              handle_region(module.inner_region(), added_here, removed_here, undo_added);
+              handle_region(
+                module.inner_region_mut(),
+                added_here,
+                removed_here,
+                undo_added,
+              );
             }
           }
           true
