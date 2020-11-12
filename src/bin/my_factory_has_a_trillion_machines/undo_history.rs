@@ -11,13 +11,13 @@ use machine_data::{
 };
 use std::collections::HashSet;
 
-//#[live_prop_test]
+#[live_prop_test]
 pub trait ModifyGame: Clone {
-  /*#[live_prop_test(
+  #[live_prop_test(
     precondition = "game.is_canonical()",
     precondition = "future == &game.future()",
     postcondition = "check_modify_game(&old(game.clone()), game, &old(selected.clone()), selected, time)"
-  )]*/
+  )]
   fn modify_game(
     self,
     game: &mut Game,
@@ -274,44 +274,51 @@ impl ModifyGameUndoable for AddRemoveMachines {
 
     fn handle_region(
       mut region: WorldRegionView<AddRemoveMachinesAspects>,
-      mut added: &mut [PlatonicMachine],
-      mut removed: &mut [MachineGlobalId],
+      added: &mut [PlatonicMachine],
+      removed: &mut [MachineGlobalId],
       undo_added: &mut Vec<PlatonicMachine>,
     ) {
-      region.retain_machines(|machine| {
-        if removed.contains(&machine.global_id()) {
+      let mut num_added_below = 0;
+      let mut num_removed_below = 0;
+      let region_isomorphism = region.isomorphism();
+      region.retain_machines(|mut machine| {
+        if removed[num_removed_below..].contains(&machine.global_id()) {
           undo_added.push(machine.global_platonic().clone());
           false
         } else {
-          if let Some(module) = machine.as_module_mut() {
-            let num_added_here = added
-              .iter_mut()
-              .partition_in_place(|machine| module.contains_global_id(machine));
-            let (added_here, added_elsewhere) = added.split_at_mut(num_added_here);
-            added = added_elsewhere;
+          if let Some(mut module) = machine.as_module_mut() {
+            let num_added_here =
+              added[num_added_below..]
+                .iter_mut()
+                .partition_in_place(|added_machine| {
+                  module.contains_global_id(
+                    added_machine.global_id(GridIsomorphism::default(), module.machine_types()),
+                  )
+                });
 
-            let num_removed_here = added
+            let num_removed_here = removed[num_removed_below..]
               .iter_mut()
-              .partition_in_place(|id| module.contains_global_id(id));
-            let (removed_here, removed_elsewhere) = removed.split_at_mut(num_added_here);
-            removed = removed_elsewhere;
+              .partition_in_place(|&id| module.contains_global_id(id));
 
-            if !(added_here.is_empty() && removed_here.is_empty()) {
+            if num_added_here > 0 || num_removed_here > 0 {
               handle_region(
                 module.inner_region_mut(),
-                added_here,
-                removed_here,
+                &mut added[num_added_below..num_added_below + num_added_here],
+                &mut removed[num_removed_below..num_removed_below + num_removed_here],
                 undo_added,
               );
             }
+            num_added_below += num_added_here;
+            num_removed_below += num_removed_here;
           }
           true
         }
       });
 
-      if !added.is_empty() {
-        region.insert_machines(added.iter().cloned().map(|mut machine| {
-          machine.state.position = machine.state.position / region.isomorphism();
+      let added_here = &mut added[num_added_below..];
+      if !added_here.is_empty() {
+        region.insert_machines(added_here.iter().cloned().map(|mut machine| {
+          machine.state.position = machine.state.position / region_isomorphism;
           machine
         }));
       }

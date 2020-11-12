@@ -1064,7 +1064,7 @@ pub mod base_view_aspect {
 pub use self::base_mut_view_aspect::BaseMutAspect;
 pub mod base_mut_view_aspect {
   use super::*;
-  use machine_data::WorldMachinesMap;
+  use machine_data::{MachineGlobalId, WorldMachinesMap};
 
   #[derive(Debug)]
   pub enum BaseMutAspect {}
@@ -1375,7 +1375,10 @@ pub mod base_mut_view_aspect {
     pub fn insert_machine(&mut self, machine: PlatonicMachine) {
       self.insert_machines(std::iter::once(machine))
     }
-    pub fn retain_machines(&mut self, predicate: impl FnMut(super::WorldMachineView<T>) -> bool) {
+    pub fn retain_machines(
+      &mut self,
+      mut predicate: impl FnMut(super::WorldMachineView<T>) -> bool,
+    ) {
       self
         .get_aspect_mut::<BaseMutAspect>()
         .platonic_mut()
@@ -1402,6 +1405,55 @@ pub mod base_mut_view_aspect {
           }
         })
         .collect();
+    }
+  }
+
+  impl<'a, T: WorldViewAspectGetMut + GetSubaspect<BaseMutAspect>> super::WorldMachineView<'a, T> {
+    pub fn global_id(&self) -> MachineGlobalId {
+      let aspect = self.get_aspect::<BaseMutAspect>();
+      let platonic_region = aspect.parent.platonic();
+      let platonic_machine = &platonic_region.machines[aspect.index_within_parent];
+      platonic_machine.global_id(
+        aspect.parent.immutable.isomorphism,
+        aspect.parent.mutable.machine_types,
+      )
+    }
+    pub fn global_platonic(&self) -> PlatonicMachine {
+      let aspect = self.get_aspect::<BaseMutAspect>();
+      let platonic_region = aspect.parent.platonic();
+      let mut platonic_machine = platonic_region.machines[aspect.index_within_parent].clone();
+      platonic_machine.state.position =
+        platonic_machine.state.position * aspect.parent.immutable.isomorphism;
+      platonic_machine
+    }
+    pub fn machine_types(&self) -> &MachineTypes {
+      let aspect = self.get_aspect::<BaseMutAspect>();
+      &aspect.parent.mutable.machine_types
+    }
+  }
+
+  impl<'a, T: WorldViewAspectGetMut + GetSubaspect<BaseMutAspect>> super::WorldModuleView<'a, T> {
+    pub fn contains_global_id(&self, id: MachineGlobalId) -> bool {
+      let aspect = self.get_aspect::<BaseMutAspect>();
+      let platonic_region = aspect.as_machine.parent.platonic();
+      let platonic_machine =
+        platonic_region.machines[aspect.as_machine.index_within_parent].clone();
+      let platonic_module = aspect
+        .as_machine
+        .parent
+        .mutable
+        .machine_types
+        .get_module(platonic_machine.type_id);
+
+      let relative_position = id
+        - (platonic_machine.state.position * aspect.as_machine.parent.immutable.isomorphism)
+          .translation;
+      ::std::cmp::max(relative_position[0].abs(), relative_position[1].abs())
+        < platonic_module.module_type.inner_radius
+    }
+    pub fn machine_types(&self) -> &MachineTypes {
+      let aspect = self.get_aspect::<BaseMutAspect>();
+      &aspect.as_machine.parent.mutable.machine_types
     }
   }
 
