@@ -1399,7 +1399,7 @@ pub mod base_mut_view_aspect {
               .get_aspect_mut::<BaseMutAspect>()
               .reborrow()
               .disturb_downstream(index, true);
-            Some(machine.clone())
+            Some(self.get_aspect_mut::<BaseMutAspect>().platonic().machines[index].clone())
           } else {
             None
           }

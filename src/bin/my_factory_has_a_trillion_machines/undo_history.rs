@@ -57,10 +57,10 @@ impl<T: ModifyGameUndoable> ModifyGame for T {
 }
 
 fn check_modify_game(
-  game_before: &Game,
+  _game_before: &Game,
   game_after: &Game,
-  selected_before: &WorldMachinesMap<()>,
-  selected_after: &WorldMachinesMap<()>,
+  _selected_before: &WorldMachinesMap<()>,
+  _selected_after: &WorldMachinesMap<()>,
   modify_time: Number,
 ) -> Result<(), String> {
   lpt_assert!(game_after.is_canonical());
@@ -283,7 +283,7 @@ impl ModifyGameUndoable for AddRemoveMachines {
       let region_isomorphism = region.isomorphism();
       region.retain_machines(|mut machine| {
         if removed[num_removed_below..].contains(&machine.global_id()) {
-          undo_added.push(machine.global_platonic().clone());
+          undo_added.push(machine.global_platonic());
           false
         } else {
           if let Some(mut module) = machine.as_module_mut() {
