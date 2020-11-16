@@ -283,6 +283,7 @@ impl ModifyGameUndoable for AddRemoveMachines {
       let region_isomorphism = region.isomorphism();
       region.retain_machines(|mut machine| {
         if removed[num_removed_below..].contains(&machine.global_id()) {
+          machine.deselect();
           undo_added.push(machine.global_platonic());
           false
         } else {
@@ -340,72 +341,30 @@ impl ModifyGameUndoable for AddRemoveMachines {
   }
 }
 
-/*
-trait ModifyGameVisitor {
-  type GameView: GameView;
-  fn should_enter_module(module: &Self::GameView::MapView::ModuleView) -> bool;
-  fn modify_game(&mut self) {}
-}
-
-struct AbstractModifyGame<V: ModifyGameVisitor> {
-  game: V::GameView,
-  visitor: V,
-}
-
-impl<V: ModifyGameVisitor> AbstractModifyGame<V> {
-  pub fn modify_game(&mut self) {
-    self.modify_map(self.game.map());
+impl Game {
+  pub fn add_remove_machines(
+    &mut self,
+    action: AddRemoveMachines,
+    selected: &mut WorldMachinesMap<()>,
+    future: &GameFuture,
+    time: Number,
+  ) {
+    let undo = action.modify_game_undoable(self, selected, future, time);
+    self.redo_stack.clear();
+    self.undo_stack.push(undo);
   }
-  pub fn modify_map(&mut self, map: V::GameView::MapView) {
-    for machine in map.machines() {
-      if let Some(module) = machine.module() {
-        if self.visitor.should_enter_module(&module) {
-          self.modify_module(module);
-        }
-      }
+
+  pub fn undo(&mut self, selected: &mut WorldMachinesMap<()>, future: &GameFuture, time: Number) {
+    if let Some(undo) = self.undo_stack.pop() {
+      let redo = undo.modify_game_undoable(self, selected, future, time);
+      self.redo_stack.push(redo);
     }
   }
-  pub fn modify_module(&mut self, module: ModuleView) {}
-}
 
-fn delete_selected_machines_from_map(map: mutMapView_with_mut_selections_and_mut_last_disturbed) {
-  for machine_id in selections.children.keys() {
-    delete_selected_machines_from_map(map.get_machine(machine_id).module().unwrap().map())
-  }
-  if !selected.here.is_empty() {
-    map
-      .data
-      .machines
-      .retain(|machine| !map.selected.here.contains(machine.id()));
-    map
-      .last_disturbed
-      .here
-      .retain(|(machine_id, last_disturbed)| !map.selected.here.contains(machine_id));
-    map.selected.here.clear();
+  pub fn redo(&mut self, selected: &mut WorldMachinesMap<()>, future: &GameFuture, time: Number) {
+    if let Some(redo) = self.redo_stack.pop() {
+      let undo = redo.modify_game_undoable(self, selected, future, time);
+      self.undo_stack.push(undo);
+    }
   }
 }
-
-trait GameViewAugmentation {
-  type Map;
-  type Machine;
-  type Module;
-  fn map(&self) -> Self::Map;
-  fn machine(
-    &self,
-    augmentation_map: &Self::Map,
-    machine_data: &MachineView,
-  ) -> Option<Self::Machine>;
-  fn module(
-    &self,
-    augmentation_map: &Self::Map,
-    machine_id: &MachineIdWithinMap,
-    machine: &Self::Machine,
-  ) -> Option<Self::Module>;
-  fn module_map(&self);
-}
-
-pub struct WorldMachinesMap<T> {}
-pub struct WorldMachinesMapNode<T> {
-  here: HashMap<MachineIdWithinMap, T>,
-  children: HashMap<MachineIdWithinMap, RepresentedMachinesMapNode<T>>,
-}*/

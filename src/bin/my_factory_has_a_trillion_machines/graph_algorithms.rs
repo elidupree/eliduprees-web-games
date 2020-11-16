@@ -1689,8 +1689,8 @@ pub mod world_machines_map_mut_view_aspect {
 
   #[derive(Debug)]
   pub struct WorldMachineView<'a, T> {
-    here: Option<&'a mut T>,
-    children: &'a mut WorldMachinesMap<T>,
+    parent: &'a mut WorldMachinesMap<T>,
+    id_within_region: MachineIdWithinPlatonicRegion,
   }
 
   #[derive(Debug)]
@@ -1719,19 +1719,19 @@ pub mod world_machines_map_mut_view_aspect {
       ids: ViewMachineIds,
     ) -> <Self as WorldViewAspect<'a>>::Machine {
       WorldMachineView {
-        here: region.node.here.get_mut(&ids.id_within_region),
-        children: region
-          .node
-          .children
-          .entry(ids.id_within_region)
-          .or_insert_with(Default::default),
+        parent: region.node,
+        id_within_region: ids.id_within_region,
       }
     }
     fn as_module_mut<'a, 'b: 'a>(
       machine: &'a mut <Self as WorldViewAspect<'b>>::Machine,
     ) -> <Self as WorldViewAspect<'a>>::Module {
       WorldModuleView {
-        children: machine.children,
+        children: machine
+          .parent
+          .children
+          .entry(machine.id_within_region)
+          .or_insert_with(Default::default),
       }
     }
     fn inner_region_mut<'a, 'b: 'a>(
@@ -1766,16 +1766,24 @@ pub mod world_machines_map_mut_view_aspect {
   }
 
   impl<'a, T: WorldViewAspectAll> super::WorldMachineView<'a, T> {
-    pub fn get_world_machines_map_value_here_mut<U: PartialEq + 'static, V: 'static>(
+    pub fn insert_world_machines_map_value_here<U: PartialEq + 'static, V: 'static>(
       &mut self,
-    ) -> Option<&mut U>
+      value: U,
+    ) -> Option<U>
     where
       T: GetSubaspectMut<WorldMachinesMapMutViewAspect<U, V>>,
     {
-      self
-        .get_aspect_mut::<WorldMachinesMapMutViewAspect<U, V>>()
-        .here
-        .as_deref_mut()
+      let aspect = self.get_aspect_mut::<WorldMachinesMapMutViewAspect<U, V>>();
+      aspect.parent.here.insert(aspect.id_within_region, value)
+    }
+    pub fn remove_world_machines_map_value_here<U: PartialEq + 'static, V: 'static>(
+      &mut self,
+    ) -> Option<U>
+    where
+      T: GetSubaspectMut<WorldMachinesMapMutViewAspect<U, V>>,
+    {
+      let aspect = self.get_aspect_mut::<WorldMachinesMapMutViewAspect<U, V>>();
+      aspect.parent.here.remove(&aspect.id_within_region)
     }
   }
 }
@@ -1809,6 +1817,15 @@ pub type SelectedMutAspect = WorldMachinesMapMutViewAspect<(), Selected>;
 impl<'a, T: GetSubaspectMut<SelectedMutAspect>> WorldRegionView<'a, T> {
   pub fn selected_mut(&mut self) -> &mut WorldMachinesMap<()> {
     self.get_world_machines_map_mut::<(), Selected>()
+  }
+}
+
+impl<'a, T: GetSubaspectMut<SelectedMutAspect>> WorldMachineView<'a, T> {
+  pub fn select(&mut self) {
+    self.insert_world_machines_map_value_here::<(), Selected>(());
+  }
+  pub fn deselect(&mut self) {
+    self.remove_world_machines_map_value_here::<(), Selected>();
   }
 }
 
