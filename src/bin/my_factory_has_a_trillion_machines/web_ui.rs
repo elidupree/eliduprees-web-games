@@ -10,13 +10,13 @@ use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use stdweb;
 
-use geometry::{
-  Facing, GridIsomorphism, Number, Rotate, Rotation, TransformedBy, Vector, VectorExtension,
+use geometry::{Facing, GridIsomorphism, Number, Rotation, TransformedBy, Vector, VectorExtension};
+use graph_algorithms::{
+  BaseAspect, FutureAspect, GameFuture, GameView, SelectedAspect, WorldRegionView,
 };
-use graph_algorithms::{GameFuture, GameView, WorldRegionView};
 use machine_data::{
   Game, MachineState, MachineType, MachineTypeId, MachineTypeTrait, MachineTypes, Material,
-  PlatonicMachine, PlatonicRegionContents, TIME_TO_MOVE_MATERIAL,
+  PlatonicMachine, PlatonicRegionContents, WorldMachinesMap, TIME_TO_MOVE_MATERIAL,
 };
 use std::cmp::max;
 use std::collections::VecDeque;
@@ -75,6 +75,7 @@ struct MouseState {
 
 struct State {
   game: Game,
+  selected: WorldMachinesMap<()>,
   future: GameFuture,
   start_ui_time: f64,
   start_game_time: Number,
@@ -83,12 +84,10 @@ struct State {
   queued_mouse_moves: VecDeque<QueuedMouseMove>,
 }
 
+type StateViewAspects = (BaseAspect, SelectedAspect, FutureAspect);
 impl State {
-  fn view(&self) -> GameView {
-    GameView {
-      game: &self.game,
-      future: &self.future,
-    }
+  fn view(&self) -> GameView<StateViewAspects> {
+    GameView::<StateViewAspects>::new(&self.game, &self.selected, &self.future)
   }
 }
 
@@ -230,10 +229,13 @@ pub fn run_game() {
     },
     last_change_time: 0,
     inventory_before_last_change: Default::default(),
+    undo_stack: Vec::new(),
     machine_types: MachineTypes {
       presets: machine_presets(),
       custom_modules: Vec::new(),
     },
+    last_disturbed_times: WorldMachinesMap::default(),
+    redo_stack: Vec::new(),
   };
   game
     .inventory_before_last_change
@@ -242,6 +244,7 @@ pub fn run_game() {
 
   let state = Rc::new(RefCell::new(State {
     game,
+    selected: WorldMachinesMap::default(),
     future,
     start_ui_time: now(),
     start_game_time: 0,
@@ -378,21 +381,21 @@ fn smallest_region_containing(
 ) -> ModuleInstancePath {
   fn recurse(
     (position, radius): (Vector, Number),
-    region: WorldRegionView,
+    region: WorldRegionView<StateViewAspects>,
     nodes: &mut Vec<ModuleInstancePathNode>,
   ) {
     for machine in region.machines() {
       if let Some(module) = machine.as_module() {
-        let relative_position = position - machine.isomorphism.translation;
-        let available_radius = module.platonic.module_type.inner_radius - radius;
+        let relative_position = position - machine.isomorphism().translation;
+        let available_radius = module.platonic().module_type.inner_radius - radius;
         if max(relative_position[0].abs(), relative_position[1].abs()) <= available_radius {
           nodes.push(ModuleInstancePathNode {
-            isomorphism: machine.isomorphism,
-            machine_index_in_parent: machine.index_within_parent,
-            module_id: machine.platonic.type_id,
+            isomorphism: machine.isomorphism(),
+            machine_index_in_parent: machine.index_within_parent(),
+            module_id: machine.platonic().type_id,
             start_time: module.inner_start_time_and_module_future.map(|a| a.0),
           });
-          recurse((position, radius), module.region(), nodes);
+          recurse((position, radius), module.inner_region(), nodes);
         }
       }
     }
@@ -727,7 +730,11 @@ fn mouse_up(state: &mut State, samples: &DomSamples) {
   state.mouse.drag = None;
 }
 
-fn draw_region(samples: &DomSamples, region: WorldRegionView, absolute_time: Number) {
+fn draw_region(
+  samples: &DomSamples,
+  region: WorldRegionView<StateViewAspects>,
+  absolute_time: Number,
+) {
   for machine in region.machines() {
     let radius = machine.machine_type.radius();
     let size = Vector2::new(
@@ -735,26 +742,26 @@ fn draw_region(samples: &DomSamples, region: WorldRegionView, absolute_time: Num
       tile_canvas_size(samples)[1] * (radius * 2) as f32 / 2.0,
     );
     draw_rectangle(
-      canvas_position(samples, machine.isomorphism.translation),
+      canvas_position(samples, machine.isomorphism().translation),
       size,
-      machine_color(&machine.platonic),
+      machine_color(&machine.platonic()),
       "rounded-rectangle-transparent",
       Rotation::default(),
     );
     draw_rectangle(
-      canvas_position(samples, machine.isomorphism.translation),
+      canvas_position(samples, machine.isomorphism().translation),
       size,
-      machine_color(&machine.platonic),
-      machine.machine_type.icon(),
-      machine.isomorphism.rotation,
+      machine_color(&machine.platonic()),
+      machine.machine_type().icon(),
+      machine.isomorphism().rotation,
     );
   }
   for machine in region.machines() {
-    if machine.machine_type.radius() > 1 {
+    if machine.machine_type().radius() > 1 {
       for (input_location, expected_material) in machine
         .input_locations()
         .into_iter()
-        .zip(machine.machine_type.input_materials())
+        .zip(machine.machine_type().input_materials())
       {
         let pos = canvas_position(
           samples,
@@ -763,7 +770,7 @@ fn draw_region(samples: &DomSamples, region: WorldRegionView, absolute_time: Num
         draw_rectangle(
           pos,
           tile_canvas_size(samples),
-          machine_color(&machine.platonic),
+          machine_color(&machine.platonic()),
           "input",
           input_location.facing - Facing::default(),
         );
@@ -780,7 +787,7 @@ fn draw_region(samples: &DomSamples, region: WorldRegionView, absolute_time: Num
     }
   }
   for machine in region.machines() {
-    if machine.machine_type.radius() > 1 {
+    if machine.machine_type().radius() > 1 {
       for output_location in machine.output_locations() {
         draw_rectangle(
           canvas_position(
@@ -788,7 +795,7 @@ fn draw_region(samples: &DomSamples, region: WorldRegionView, absolute_time: Num
             output_location.position - output_location.facing.unit_vector(),
           ),
           tile_canvas_size(samples),
-          machine_color(&machine.platonic),
+          machine_color(&machine.platonic()),
           "input",
           output_location.facing.rotate_90(2) - Facing::default(),
         );
@@ -800,7 +807,7 @@ fn draw_region(samples: &DomSamples, region: WorldRegionView, absolute_time: Num
     if let Some(visuals) = machine.momentary_visuals(absolute_time) {
       for (location, material) in &visuals.materials {
         draw_rectangle(
-          canvas_position_from_f64(samples, location.transformed_by(machine.isomorphism)),
+          canvas_position_from_f64(samples, location.transformed_by(machine.isomorphism())),
           tile_canvas_size(samples) * 0.6,
           [0.0, 0.0, 0.0],
           material.icon(),
@@ -812,7 +819,7 @@ fn draw_region(samples: &DomSamples, region: WorldRegionView, absolute_time: Num
 
   for machine in region.machines() {
     if let Some(module) = machine.as_module() {
-      draw_region(samples, module.region(), absolute_time);
+      draw_region(samples, module.inner_region(), absolute_time);
     }
   }
 }

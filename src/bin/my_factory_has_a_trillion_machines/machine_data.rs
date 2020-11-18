@@ -250,7 +250,7 @@ pub trait MachineTypeTrait {
   }
 
   // Note: at the moment when a piece of material is handed off from one machine to another, the SOURCE machine is responsible for drawing it, and the destination machine should not draw it.
-  fn momentary_visuals(
+  fn relative_momentary_visuals(
     &self,
     inputs: MachineObservedInputs,
     future: &Self::Future,
@@ -317,10 +317,10 @@ impl<'a> MachineTypeTrait for MachineTypeRef<'a> {
     }
   }
 
-  fn momentary_visuals(&self, inputs: MachineObservedInputs, future: &Self::Future, time: Number)->MachineMomentaryVisuals {
+  fn relative_momentary_visuals(&self, inputs: MachineObservedInputs, future: &Self::Future, time: Number)->MachineMomentaryVisuals {
     match (self, future) {
-      $((MachineTypeRef::$Variant (value), MachineFuture::$Variant (future)) => value.momentary_visuals (inputs, future, time),)*
-      _=> panic!("Passed wrong future type to MachineType::momentary_visuals()"),
+      $((MachineTypeRef::$Variant (value), MachineFuture::$Variant (future)) => value.relative_momentary_visuals (inputs, future, time),)*
+      _=> panic!("Passed wrong future type to MachineType::relative_momentary_visuals()"),
     }
   }
 }

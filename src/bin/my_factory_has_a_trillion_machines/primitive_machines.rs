@@ -204,7 +204,7 @@ impl MachineTypeTrait for Distributor {
       .collect()
   }
 
-  fn momentary_visuals(
+  fn relative_momentary_visuals(
     &self,
     inputs: MachineObservedInputs,
     future: &Self::Future,
@@ -364,7 +364,7 @@ impl MachineTypeTrait for Assembler {
       })
       .collect()
   }
-  fn momentary_visuals(
+  fn relative_momentary_visuals(
     &self,
     inputs: MachineObservedInputs,
     future: &Self::Future,

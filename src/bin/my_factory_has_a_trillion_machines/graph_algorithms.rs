@@ -4,11 +4,12 @@ use std::collections::{hash_map, HashMap};
 use arrayvec::ArrayVec;
 
 use flow_pattern::{FlowCollection, FlowPattern, MaterialFlow};
-use geometry::{GridIsomorphism, Number};
+use geometry::{GridIsomorphism, Number, TransformedBy};
 use machine_data::{
-  Game, InputLocation, Inputs, MachineFuture, MachineIdWithinPlatonicRegion, MachineObservedInputs,
-  MachineOperatingState, MachineTypeId, MachineTypeRef, MachineTypeTrait, MachineTypes, Material,
-  PlatonicMachine, PlatonicRegionContents, WorldMachinesMap, MAX_COMPONENTS,
+  Game, InputLocation, Inputs, MachineFuture, MachineIdWithinPlatonicRegion,
+  MachineMomentaryVisuals, MachineObservedInputs, MachineOperatingState, MachineTypeId,
+  MachineTypeRef, MachineTypeTrait, MachineTypes, Material, PlatonicMachine,
+  PlatonicRegionContents, WorldMachinesMap, MAX_COMPONENTS,
 };
 use modules::{CanonicalModuleInputs, PlatonicModule};
 
@@ -992,11 +993,12 @@ pub mod base_view_aspect {
     {
       self.get_aspect::<BaseAspect>().platonic
     }
-  }
 
-  impl<'a, T: GetSubaspect<BaseAspect>> super::WorldMachineView<'a, T> {
     pub fn index_within_region(&self) -> usize {
       self.get_aspect::<BaseAspect>().index_within_parent
+    }
+    pub fn isomorphism(&self) -> GridIsomorphism {
+      self.get_aspect::<BaseAspect>().isomorphism
     }
   }
 
@@ -1575,6 +1577,26 @@ pub mod future_view_aspect {
       self.get_aspect::<FutureAspect>()
     }
   }
+
+  impl<'a, T: GetSubaspect<FutureAspect>> super::WorldMachineView<'a, T> {
+    pub fn region_start_time_and_machine_future(
+      &self,
+    ) -> Option<(Number, &MachineAndInputsFuture)> {
+      let aspect = self.get_aspect::<FutureAspect>();
+      aspect
+        .future
+        .map(|f| (aspect.parent.start_time_and_future.as_ref().unwrap().0, f))
+    }
+  }
+
+  impl<'a, T: GetSubaspect<FutureAspect>> super::WorldModuleView<'a, T> {
+    pub fn inner_start_time_and_module_future(
+      &self,
+    ) -> Option<(Number, &'a ModuleMachineFuture, &'a RegionFuture)> {
+      let aspect = self.get_aspect::<FutureAspect>();
+      aspect.inner_start_time_and_module_future
+    }
+  }
 }
 
 pub use self::world_machines_map_view_aspect::WorldMachinesMapViewAspect;
@@ -1850,6 +1872,49 @@ impl<'a, T: GetSubaspect<BaseAspect> + GetSubaspect<FutureAspect>> GameView<'a, 
         material_flow.flow.num_disbursed_between(interval);
     }
     inventory
+  }
+}
+
+impl<
+    'a,
+    T: GetSubaspect<BaseAspect> + GetSubaspect<FutureAspect> + WorldViewAspectGet + BaseAspectShared,
+  > WorldMachineView<'a, T>
+{
+  /// returns None if this machine doesn't have a future at all (i.e. is inside a non-operating module)
+  pub fn momentary_visuals(&self, absolute_time: Number) -> Option<MachineMomentaryVisuals> {
+    let (region_start_time, machine_future) = self.region_start_time_and_machine_future()?;
+    let local_time = absolute_time - region_start_time;
+    let inputs = MachineObservedInputs {
+      input_flows: &machine_future.inputs,
+      start_time: self.last_disturbed_time().unwrap_or(0),
+    };
+    let mut visuals = match &machine_future.future {
+      Err(operating_state) => MachineMomentaryVisuals {
+        operating_state: operating_state.clone(),
+        materials: Vec::new(),
+      },
+      Ok(future) => match self.as_module().and_then(|module| {
+        module
+          .inner_start_time_and_module_future()
+          .map(|stuff| (module, stuff))
+      }) {
+        Some((module, (_inner_start_time, module_machine_future, module_region_future))) => {
+          module.platonic().module_relative_momentary_visuals(
+            inputs,
+            module_machine_future,
+            local_time,
+            module_region_future,
+          )
+        }
+        None => self
+          .machine_type()
+          .relative_momentary_visuals(inputs, future, local_time),
+      },
+    };
+    for (location, _material) in &mut visuals.materials {
+      *location = location.transformed_by(self.isomorphism());
+    }
+    Some(visuals)
   }
 }
 

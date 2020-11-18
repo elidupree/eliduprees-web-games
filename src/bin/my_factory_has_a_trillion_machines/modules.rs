@@ -150,7 +150,7 @@ impl PlatonicModule {
       .collect()
   }
 
-  pub fn module_momentary_visuals(
+  pub fn module_relative_momentary_visuals(
     &self,
     inputs: MachineObservedInputs,
     module_machine_future: &ModuleMachineFuture,
@@ -304,7 +304,7 @@ impl MachineTypeTrait for PlatonicModule {
     panic!("called Module::output_flows(); I'm using a hack where, for modules, you must use Module::module_output_flows instead");
   }
 
-  fn momentary_visuals(
+  fn relative_momentary_visuals(
     &self,
     _inputs: MachineObservedInputs,
     _future: &Self::Future,
