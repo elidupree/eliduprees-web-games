@@ -247,8 +247,8 @@ impl CheckUndoneMap {
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub struct AddRemoveMachines {
-  added: Vec<PlatonicMachine>,
-  removed: Vec<MachineGlobalId>,
+  pub added: Vec<PlatonicMachine>,
+  pub removed: Vec<MachineGlobalId>,
 }
 
 //impl_world_views_for_aspect_tuple!(&mut (BaseMutAspect, SelectedMutAspect,));

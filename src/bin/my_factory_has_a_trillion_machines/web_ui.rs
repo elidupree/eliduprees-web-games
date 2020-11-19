@@ -23,6 +23,7 @@ use machine_data::{
 use std::cmp::max;
 use std::collections::VecDeque;
 use std::mem;
+use undo_history::AddRemoveMachines;
 //use misc;
 //use modules::{self, Module};
 
@@ -366,116 +367,32 @@ pub fn run_game() {
   stdweb::event_loop();
 }
 
-//as the output of a convenience function, it's intentional that a bunch of this data is redundant
-struct ModuleInstancePathNode {
-  machine_index_in_parent: usize,
-  module_id: MachineTypeId,
-  isomorphism: GridIsomorphism,
-  start_time: Option<Number>,
-}
-struct ModuleInstancePath {
-  nodes: Vec<ModuleInstancePathNode>,
-}
-
-fn smallest_region_containing(
+fn with_smallest_region_containing<F: FnOnce(WorldRegionView<StateViewAspects>) -> R, R>(
   state: &State,
   (position, radius): (Vector, Number),
-) -> ModuleInstancePath {
-  fn recurse(
-    (position, radius): (Vector, Number),
+  callback: F,
+) -> R {
+  fn recurse<F: FnOnce(WorldRegionView<StateViewAspects>) -> R, R>(
     region: WorldRegionView<StateViewAspects>,
-    nodes: &mut Vec<ModuleInstancePathNode>,
-  ) {
+    (position, radius): (Vector, Number),
+    callback: F,
+  ) -> R {
     for machine in region.machines() {
       if let Some(module) = machine.as_module() {
         let relative_position = position - machine.isomorphism().translation;
         let available_radius = module.platonic().module_type.inner_radius - radius;
         if max(relative_position[0].abs(), relative_position[1].abs()) <= available_radius {
-          nodes.push(ModuleInstancePathNode {
-            isomorphism: machine.isomorphism(),
-            machine_index_in_parent: machine.index_within_parent(),
-            module_id: machine.platonic().type_id,
-            start_time: module.inner_start_time_and_module_future.map(|a| a.0),
-          });
-          recurse((position, radius), module.inner_region(), nodes);
+          return recurse(module.inner_region(), (position, radius), callback);
         }
       }
     }
+    callback(region)
   }
-
-  let mut nodes = Vec::new();
-
-  recurse((position, radius), state.view().global_region(), &mut nodes);
-
-  return ModuleInstancePath { nodes };
-}
-
-impl ModuleInstancePath {
-  fn get_region<'a>(
-    &self,
-    game: &'a Game,
-  ) -> (&'a PlatonicRegionContents, GridIsomorphism, Option<Number>) {
-    match self.nodes.last() {
-      None => (&game.global_region, GridIsomorphism::default(), Some(0)),
-      Some(ModuleInstancePathNode {
-        module_id,
-        isomorphism,
-        start_time,
-        ..
-      }) => (
-        &game.machine_types.get_module(*module_id).region,
-        *isomorphism,
-        *start_time,
-      ),
-    }
-  }
-
-  fn modify_region(
-    mut self,
-    game: &mut Game,
-    modify: impl FnOnce(&mut MachineTypes, &mut PlatonicRegionContents),
-  ) {
-    let node = match self.nodes.pop() {
-      Some(node) => node,
-      None => {
-        (modify)(&mut game.machine_types, &mut game.global_region);
-        return;
-      }
-    };
-
-    let mut module = game.machine_types.get_module(node.module_id).clone();
-    (modify)(&mut game.machine_types, &mut module.region);
-    let mut new_module_index = game.machine_types.custom_modules.len();
-    game.machine_types.custom_modules.push(module);
-
-    while let Some(parent_node) = self.nodes.pop() {
-      let mut parent_module = game.machine_types.get_module(parent_node.module_id).clone();
-      parent_module.region.machines[node.machine_index_in_parent].type_id =
-        MachineTypeId::Module(new_module_index);
-      let new_parent_module_index = game.machine_types.custom_modules.len();
-      game.machine_types.custom_modules.push(parent_module);
-
-      new_module_index = new_parent_module_index;
-    }
-
-    game.global_region.machines[node.machine_index_in_parent].type_id =
-      MachineTypeId::Module(new_module_index);
-  }
+  recurse(state.view().global_region(), (position, radius), callback)
 }
 
 fn build_machine(state: &mut State, machine_type_id: MachineTypeId, position: GridIsomorphism) {
   let machine_type = state.game.machine_types.get(machine_type_id);
-  let path = smallest_region_containing(state, (position.translation, machine_type.radius()));
-  let (region, isomorphism, start_time) = path.get_region(&state.game);
-
-  if region.machines.iter().any(|machine| {
-    let radius = state.game.machine_types.get(machine.type_id).radius() + machine_type.radius();
-    let offset = (position / (machine.state.position * isomorphism)).translation;
-    offset[0].abs() < radius && offset[1].abs() < radius
-  }) {
-    // can't build – something is in the way
-    return;
-  }
 
   let inventory = state.view().inventory_at(state.current_game_time);
   for (amount, material) in machine_type.cost() {
@@ -488,29 +405,45 @@ fn build_machine(state: &mut State, machine_type_id: MachineTypeId, position: Gr
     }
   }
 
-  let machine_type = state.game.machine_types.get(machine_type_id);
-  for (amount, material) in machine_type.cost() {
+  let obstructed = with_smallest_region_containing(
+    state,
+    (position.translation, machine_type.radius()),
+    |region| {
+      region.machines().any(|machine| {
+        let radius = machine.machine_type().radius() + machine_type.radius();
+        let offset = (position / machine.isomorphism()).translation;
+        offset[0].abs() < radius && offset[1].abs() < radius
+      })
+    },
+  );
+
+  if obstructed {
+    // can't build – something is in the way
+    return;
+  }
+
+  //let machine_type = state.game.machine_types.get(machine_type_id);
+  /*for (amount, material) in machine_type.cost() {
     *state
       .game
       .inventory_before_last_change
       .get_mut(&material)
       .unwrap() -= amount;
-  }
-  let inner_now = start_time.map_or(0, |start_time| state.current_game_time - start_time);
+  }*/
 
-  path.modify_region(&mut state.game, |machine_types, region| {
-    region.build_machines(
-      machine_types,
-      vec![PlatonicMachine {
+  state.game.add_remove_machines(
+    AddRemoveMachines {
+      added: vec![PlatonicMachine {
         type_id: machine_type_id,
-        state: MachineState {
-          position: position / isomorphism,
-          last_disturbed_time: inner_now,
-        },
+        state: MachineState { position },
       }],
-      inner_now,
-    );
-  });
+      removed: vec![],
+    },
+    &mut state.selected,
+    &state.future,
+    state.current_game_time,
+  );
+
   recalculate_future(state);
 }
 
@@ -603,6 +536,7 @@ fn mouse_move(state: &mut State, samples: &DomSamples, position: MousePosition) 
           == hovering_area(state, samples, drag.original_position).0
           || samples.current_mode == "Conveyor")
       {
+        /*
         let path = smallest_region_containing(state, (previous.tile_center, 1));
         let (region, isomorphism, start_time) = path.get_region(&state.game);
         let inner_position = previous.tile_center.transformed_by(isomorphism.inverse());
@@ -626,6 +560,7 @@ fn mouse_move(state: &mut State, samples: &DomSamples, position: MousePosition) 
           });
           recalculate_future(state);
         }
+        */
       }
     }
   }
@@ -678,6 +613,7 @@ fn mouse_maybe_held(state: &mut State, samples: &DomSamples) {
         ..Default::default()
       })
     {
+      /*
       let path = smallest_region_containing(state, hover);
       let (region, isomorphism, start_time) = path.get_region(&state.game);
       let inner_position = position.tile_center.transformed_by(isomorphism.inverse());
@@ -704,6 +640,7 @@ fn mouse_maybe_held(state: &mut State, samples: &DomSamples) {
         });
         recalculate_future(state);
       }
+      */
     }
   }
 }
