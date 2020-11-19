@@ -1076,6 +1076,7 @@ pub mod base_mut_view_aspect {
     pub fn new<'a>(game: &'a mut Game, change_time: Number, future: &GameFuture) -> GameView<'a> {
       let view = super::GameView::<(BaseAspect, FutureAspect)>::new(game, future);
       game.inventory_before_last_change = view.inventory_at(change_time);
+      game.last_change_time = change_time;
       GameView {
         globals: ViewGlobals { change_time },
         game,
