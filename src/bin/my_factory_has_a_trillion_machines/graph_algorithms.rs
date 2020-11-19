@@ -1880,6 +1880,13 @@ impl<
     T: GetSubaspect<BaseAspect> + GetSubaspect<FutureAspect> + WorldViewAspectGet + BaseAspectShared,
   > WorldMachineView<'a, T>
 {
+  pub fn input_locations(&self) -> impl Iterator<Item = InputLocation> {
+    self.machine_type().input_locations(self.isomorphism())
+  }
+  pub fn output_locations(&self) -> impl Iterator<Item = InputLocation> {
+    self.machine_type().output_locations(self.isomorphism())
+  }
+
   /// returns None if this machine doesn't have a future at all (i.e. is inside a non-operating module)
   pub fn momentary_visuals(&self, absolute_time: Number) -> Option<MachineMomentaryVisuals> {
     let (region_start_time, machine_future) = self.region_start_time_and_machine_future()?;

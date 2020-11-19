@@ -10,7 +10,9 @@ use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use stdweb;
 
-use geometry::{Facing, GridIsomorphism, Number, Rotation, TransformedBy, Vector, VectorExtension};
+use geometry::{
+  Facing, GridIsomorphism, Number, Rotate, Rotation, TransformedBy, Vector, VectorExtension,
+};
 use graph_algorithms::{
   BaseAspect, FutureAspect, GameFuture, GameView, SelectedAspect, WorldRegionView,
 };
@@ -736,7 +738,7 @@ fn draw_region(
   absolute_time: Number,
 ) {
   for machine in region.machines() {
-    let radius = machine.machine_type.radius();
+    let radius = machine.machine_type().radius();
     let size = Vector2::new(
       tile_canvas_size(samples)[0] * (radius * 2) as f32 / 2.0,
       tile_canvas_size(samples)[1] * (radius * 2) as f32 / 2.0,
@@ -778,7 +780,7 @@ fn draw_region(
           draw_rectangle(
             pos,
             tile_canvas_size(samples) * 0.8,
-            machine_color(&machine.platonic),
+            machine_color(&machine.platonic()),
             material.icon(),
             Rotation::default(),
           );
