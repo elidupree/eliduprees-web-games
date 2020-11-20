@@ -124,7 +124,7 @@ struct CheckUndoneMap
   //modify_time: Number,
   //undone: GameViewWithFuture<'a>,
   undo_time: Number,
-  visited_module_pairs_without_explicit_world_data: HashSet<[usize; 2]>,
+  visited_module_pairs_without_explicit_world_data: HashSet<[MachineTypeId; 2]>,
 }
 
 fn check_undo<Undo: ModifyGame>(
@@ -201,18 +201,14 @@ impl CheckUndoneMap {
       );
     }
 
-    match (
-      before_machine.platonic().type_id,
-      undone_machine.platonic().type_id,
-    ) {
-      (MachineTypeId::Preset(before_index), MachineTypeId::Preset(undone_index)) => {
-        lpt_assert_eq!(before_index, undone_index)
-      }
-      (MachineTypeId::Module(before_index), MachineTypeId::Module(undone_index)) => {
+    match (before_machine.as_module(), undone_machine.as_module()) {
+      (None, None) => lpt_assert_eq!(
+        before_machine.platonic().type_id,
+        undone_machine.platonic().type_id
+      ),
+      (Some(before_module), Some(undone_module)) => {
         // short-circuit on undisturbed module pairings to avoid an exponential search.
         let module_machine_disturbed = undone_machine.last_disturbed_time() == Some(self.undo_time);
-        let before_module = before_machine.as_module().unwrap();
-        let undone_module = undone_machine.as_module().unwrap();
         let before_inner_region = before_module.inner_region();
         let undone_inner_region = undone_module.inner_region();
         if before_inner_region.last_disturbed_times().is_some()
@@ -221,7 +217,10 @@ impl CheckUndoneMap {
           || undone_inner_region.selected().is_some()
           || self
             .visited_module_pairs_without_explicit_world_data
-            .insert([before_index, undone_index])
+            .insert([
+              before_machine.platonic().type_id,
+              undone_machine.platonic().type_id,
+            ])
         {
           lpt_assert_eq!(
             before_module.platonic().module_type,
@@ -237,7 +236,8 @@ impl CheckUndoneMap {
       _ => {
         return Err(format!(
           "One machine was a module and the other wasn't: {:?}, {:?}",
-          before_machine, undone_machine
+          before_machine.platonic().type_id,
+          undone_machine.platonic().type_id
         ))
       }
     }

@@ -1218,11 +1218,12 @@ pub mod base_mut_view_aspect {
       let new_module_index = parent.mutable.machine_types.custom_modules.len();
       let platonic_machine =
         &mut parent.platonic_mut().machines[module.as_machine.index_within_parent];
+      let old_type_id = platonic_machine.type_id;
       platonic_machine.type_id = MachineTypeId::Module(new_module_index);
       let platonic_machine = platonic_machine.clone(); // cheap and just makes the lifetimes easier
       let id_within_region = platonic_machine.id_within_region();
       let isomorphism = platonic_machine.state.position * parent.immutable.isomorphism;
-      let old_platonic_module = match parent.mutable.machine_types.get(platonic_machine.type_id) {
+      let old_platonic_module = match parent.mutable.machine_types.get(old_type_id) {
         MachineTypeRef::Module(m) => m,
         _ => unreachable!(),
       };
