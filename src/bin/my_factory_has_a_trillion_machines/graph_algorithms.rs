@@ -1395,6 +1395,7 @@ pub mod base_mut_view_aspect {
       &mut self,
       mut predicate: impl FnMut(super::WorldMachineView<T>) -> bool,
     ) {
+      let mut deleted_ids = Vec::new();
       self
         .get_aspect_mut::<BaseMutAspect>()
         .platonic_mut()
@@ -1421,10 +1422,35 @@ pub mod base_mut_view_aspect {
             .disturb_downstream(index, true);*/
             Some(self.get_aspect_mut::<BaseMutAspect>().platonic().machines[index].clone())
           } else {
+            // deleted machines definitely disturb;
+            // it presumably doesn't matter whether we include the machine itself
+            deleted_ids.push(ids.id_within_region);
+            self
+              .get_aspect_mut::<BaseMutAspect>()
+              .reborrow()
+              .disturb_downstream(index, false);
             None
           }
         })
         .collect();
+      for id in deleted_ids {
+        self
+          .get_aspect_mut::<BaseMutAspect>()
+          .mutable
+          .last_disturbed_times
+          .as_mut()
+          .unwrap()
+          .here
+          .remove(&id);
+        self
+          .get_aspect_mut::<BaseMutAspect>()
+          .mutable
+          .last_disturbed_times
+          .as_mut()
+          .unwrap()
+          .children
+          .remove(&id);
+      }
     }
   }
 

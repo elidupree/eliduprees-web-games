@@ -33,7 +33,7 @@ pub trait ModifyGameUndoable: Clone {
   #[live_prop_test(
     precondition = "game.is_canonical()",
     precondition = "future == &game.future()",
-    //postcondition = "check_undoable_modify_game(&old(game.clone()), game, &old(selected.clone()), selected, time, &result)"
+    postcondition = "check_undoable_modify_game(&old(game.clone()), game, &old(selected.clone()), selected, time, &result)"
   )]
   fn modify_game_undoable(
     self,
@@ -107,11 +107,18 @@ fn check_undoable_modify_game<Undo: ModifyGame>(
   let after_future = game_after.future();
   let after_view =
     GameView::<AspectsForCheckModifyGame>::new(game_after, selected_after, &after_future);
-  check_undo(&before_view, &after_view, undo.clone(), modify_time)?;
   check_undo(
     &before_view,
     &after_view,
     undo.clone(),
+    modify_time,
+    modify_time,
+  )?;
+  check_undo(
+    &before_view,
+    &after_view,
+    undo.clone(),
+    modify_time,
     modify_time + TIME_TO_MOVE_MATERIAL * 33 + 67,
   )?;
   Ok(())
@@ -121,7 +128,7 @@ struct CheckUndoneMap
 //<'a>
 {
   //before: GameViewWithFuture<'a>,
-  //modify_time: Number,
+  modify_time: Number,
   //undone: GameViewWithFuture<'a>,
   undo_time: Number,
   visited_module_pairs_without_explicit_world_data: HashSet<[MachineTypeId; 2]>,
@@ -131,6 +138,7 @@ fn check_undo<Undo: ModifyGame>(
   before: &GameView<AspectsForCheckModifyGame>,
   after: &GameView<AspectsForCheckModifyGame>,
   undo: Undo,
+  modify_time: Number,
   undo_time: Number,
 ) -> Result<(), String> {
   let mut undone_game = after.game().clone();
@@ -154,7 +162,7 @@ fn check_undo<Undo: ModifyGame>(
 
   CheckUndoneMap {
     //before,
-    //modify_time,
+    modify_time,
     //undone,
     undo_time,
     visited_module_pairs_without_explicit_world_data: HashSet::new(),
@@ -192,13 +200,19 @@ impl CheckUndoneMap {
       before_machine.platonic().state.position,
       undone_machine.platonic().state.position
     );
+    let uldt = undone_machine.last_disturbed_time();
     if any_ancestor_module_machine_disturbed_by_undo {
-      lpt_assert_eq!(undone_machine.last_disturbed_time(), None);
-    } else {
-      lpt_assert!(
-        undone_machine.last_disturbed_time() == before_machine.last_disturbed_time()
-          || undone_machine.last_disturbed_time() == Some(self.undo_time)
-      );
+      lpt_assert_eq!(uldt, None);
+    } else if uldt != before_machine.last_disturbed_time() && uldt != Some(self.undo_time) {
+      if uldt == Some(self.modify_time) {
+        return Err(format!("Machine that was disturbed by the modify was not disturbed a second time by the undo: {:?}", undone_machine.platonic().type_id));
+      } else {
+        return Err(format!(
+          "Machine was disturbed at a totally unexpected time ({:?}): {:?}",
+          uldt,
+          undone_machine.platonic().type_id
+        ));
+      }
     }
 
     match (before_machine.as_module(), undone_machine.as_module()) {
