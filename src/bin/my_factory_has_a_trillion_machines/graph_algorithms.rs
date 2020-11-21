@@ -255,6 +255,7 @@ impl<'a> GameFutureBuilder<'a> {
     &self,
     undisturbed_modules_futures: &'a mut UndisturbedModulesFutures,
     region: &'b WorldRegionView<'b, (BaseAspect,)>,
+    region_start_time: Number,
     fiat_inputs: &[(InputLocation, MaterialFlow)],
   ) -> RegionFuture {
     //debug!("{:?}", fiat_inputs);
@@ -290,7 +291,9 @@ impl<'a> GameFutureBuilder<'a> {
       let machine: &WorldMachineView<(BaseAspect,)> = &machines[machine_index];
       let inputs = MachineObservedInputs {
         input_flows: &result.machines[machine.index_within_region()].inputs,
-        start_time: machine.last_disturbed_time().unwrap_or(0),
+        start_time: machine
+          .last_disturbed_time()
+          .map_or(0, |t| t - region_start_time),
       };
       let future = machine.machine_type().future(inputs);
 
@@ -320,8 +323,12 @@ impl<'a> GameFutureBuilder<'a> {
 
           let variation = if inner_region.last_disturbed_times().is_some() {
             // Disturbed, and therefore unique enough that we don't need to deduplicate the future
-            let inner_future =
-              self.region_future(undisturbed_modules_futures, &inner_region, &fiat_inputs);
+            let inner_future = self.region_future(
+              undisturbed_modules_futures,
+              &inner_region,
+              module_machine_future.start_time,
+              &fiat_inputs,
+            );
             result
               .disturbed_children
               .entry(machine.platonic().id_within_region())
@@ -334,8 +341,12 @@ impl<'a> GameFutureBuilder<'a> {
             match platonic_module_futures.get(&module_machine_future.canonical_inputs) {
               Some(e) => e,
               None => {
-                let inner_future =
-                  self.region_future(undisturbed_modules_futures, &inner_region, &fiat_inputs);
+                let inner_future = self.region_future(
+                  undisturbed_modules_futures,
+                  &inner_region,
+                  module_machine_future.start_time,
+                  &fiat_inputs,
+                );
 
                 match undisturbed_modules_futures.get_mut(&machine.platonic().type_id).unwrap().entry(module_machine_future.canonical_inputs.clone()) {
                   hash_map::Entry::Occupied(_) => unreachable!("A module's future was modified during calculation of its submodules' futures. Did a module get put inside itself somehow?"),
@@ -386,6 +397,7 @@ impl Game {
     let global_region = builder.region_future(
       &mut undisturbed_modules,
       &GameView::<(BaseAspect,)>::new(self).global_region(),
+      0,
       &[],
     );
     GameFuture {
@@ -1399,10 +1411,14 @@ pub mod base_mut_view_aspect {
             type_id: machine.type_id,
           };
           if (predicate)(self.get_machine_mut(ids)) {
-            self
-              .get_aspect_mut::<BaseMutAspect>()
-              .reborrow()
-              .disturb_downstream(index, true);
+            // Note: We need to disturb this machine if it was, itself, modified
+            // but currently we don't provide any way to modify a machine through its own view
+            // (only to delete and insert machines)
+            // so we don't need to do this
+            /*self
+            .get_aspect_mut::<BaseMutAspect>()
+            .reborrow()
+            .disturb_downstream(index, true);*/
             Some(self.get_aspect_mut::<BaseMutAspect>().platonic().machines[index].clone())
           } else {
             None
@@ -1895,7 +1911,9 @@ impl<
     let local_time = absolute_time - region_start_time;
     let inputs = MachineObservedInputs {
       input_flows: &machine_future.inputs,
-      start_time: self.last_disturbed_time().unwrap_or(0),
+      start_time: self
+        .last_disturbed_time()
+        .map_or(0, |t| t - region_start_time),
     };
     let mut visuals = match &machine_future.future {
       Err(operating_state) => MachineMomentaryVisuals {

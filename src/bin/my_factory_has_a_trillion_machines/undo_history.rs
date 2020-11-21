@@ -33,7 +33,7 @@ pub trait ModifyGameUndoable: Clone {
   #[live_prop_test(
     precondition = "game.is_canonical()",
     precondition = "future == &game.future()",
-    postcondition = "check_undoable_modify_game(&old(game.clone()), game, &old(selected.clone()), selected, time, &result)"
+    //postcondition = "check_undoable_modify_game(&old(game.clone()), game, &old(selected.clone()), selected, time, &result)"
   )]
   fn modify_game_undoable(
     self,
