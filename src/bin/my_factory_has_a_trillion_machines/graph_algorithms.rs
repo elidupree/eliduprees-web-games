@@ -291,6 +291,7 @@ impl<'a> GameFutureBuilder<'a> {
       let machine: &WorldMachineView<(BaseAspect,)> = &machines[machine_index];
       let inputs = MachineObservedInputs {
         input_flows: &result.machines[machine.index_within_region()].inputs,
+        // in units of inner time in `region`
         start_time: machine
           .last_disturbed_time()
           .map_or(0, |t| t - region_start_time),
@@ -314,6 +315,7 @@ impl<'a> GameFutureBuilder<'a> {
                   loc,
                   MaterialFlow {
                     material: f.material,
+                    // 0 inner time is the start time for modules
                     flow: FlowPattern::new(0, f.rate()),
                   },
                 )
@@ -326,7 +328,7 @@ impl<'a> GameFutureBuilder<'a> {
             let inner_future = self.region_future(
               undisturbed_modules_futures,
               &inner_region,
-              module_machine_future.start_time,
+              region_start_time + module_machine_future.start_time,
               &fiat_inputs,
             );
             result
@@ -334,6 +336,7 @@ impl<'a> GameFutureBuilder<'a> {
               .entry(machine.platonic().id_within_region())
               .or_insert(inner_future) // should always insert, but doing it this way to get a reference back
           } else {
+            // Undisturbed - deduplicate the future
             let platonic_module_futures = undisturbed_modules_futures
               .entry(machine.platonic().type_id)
               .or_default();
@@ -344,7 +347,8 @@ impl<'a> GameFutureBuilder<'a> {
                 let inner_future = self.region_future(
                   undisturbed_modules_futures,
                   &inner_region,
-                  module_machine_future.start_time,
+                  // region_start_time is only used relative to disturbed-times; it doesn't matter for undisturbed modules
+                  0,
                   &fiat_inputs,
                 );
 

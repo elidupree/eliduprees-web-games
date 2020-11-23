@@ -8,7 +8,7 @@ use std::collections::HashSet;
 use std::fmt::Debug;
 use std::hash::Hash;
 
-use flow_pattern::MaterialFlow;
+use flow_pattern::{Flow, MaterialFlow};
 use geometry::{Facing, GridIsomorphism, Number, Rotate, TransformedBy, Vector, VectorExtension};
 //use modules::ModuleMachine;
 use modules::PlatonicModule;
@@ -118,6 +118,7 @@ pub enum MachineOperatingState {
   InCycle,
 }
 
+#[derive(Debug)]
 pub struct MachineMomentaryVisuals {
   pub operating_state: MachineOperatingState,
   pub materials: Vec<(Vector2<f64>, Material)>,
@@ -239,7 +240,7 @@ pub trait MachineTypeTrait {
   #[live_prop_test(
     precondition = "inputs.input_flows.len() == self.num_inputs()",
     postcondition = "result.len() == self.num_outputs()",
-    postcondition = "output_times_valid(inputs, &result)"
+    postcondition = "check_output_flows(self, inputs, future, &result)"
   )]
   fn output_flows(
     &self,
@@ -334,8 +335,10 @@ machine_type_enums! {
   Distributor as Distributor, Assembler as Assembler, PlatonicModule as Module, //Mine, ModuleMachine, // Conveyor,
 }
 
-fn output_times_valid(
+fn check_output_flows<T: MachineTypeTrait + ?Sized>(
+  machine: &T,
   inputs: MachineObservedInputs,
+  future: &T::Future,
   outputs: &[Option<MaterialFlow>],
 ) -> Result<(), String> {
   for output in outputs {
@@ -346,6 +349,68 @@ fn output_times_valid(
         output,
         inputs.start_time
       );
+    }
+  }
+
+  fn has_near(
+    visuals: &MachineMomentaryVisuals,
+    material: Material,
+    location: InputLocation,
+    extra_leeway: f64,
+  ) -> bool {
+    let leeway = extra_leeway + 0.0000001;
+    visuals.materials.iter().any(|&(l, m)| {
+      m == material && {
+        let rel = l - location.position.to_f64();
+        rel[0].abs() <= leeway && rel[1].abs() <= leeway
+      }
+    })
+  }
+
+  let speed_leeway = machine.radius() as f64 * 2.0 / TIME_TO_MOVE_MATERIAL as f64;
+
+  for (output, output_location) in outputs.iter().zip(machine.relative_output_locations()) {
+    if let Some(output) = output {
+      for i in 0..5 {
+        let time = output.nth_disbursement_time(i).unwrap();
+        let visuals = machine.relative_momentary_visuals(inputs, future, time);
+        lpt_assert!(
+          has_near(&visuals, output.material, output_location, 0.0),
+          "Outputs must be displayed at exactly the output location at disbursement times: {:?}",
+          (i, time, output, output_location, visuals)
+        );
+        let visuals = machine.relative_momentary_visuals(inputs, future, time + 1);
+        lpt_assert!(
+          !has_near(&visuals, output.material, output_location, speed_leeway),
+          "There must be no materials near the output location right after disbursement times: {:?}",
+          (i, time, output, output_location, visuals)
+        );
+      }
+    }
+  }
+  for (input, input_location) in inputs
+    .input_flows
+    .iter()
+    .zip(machine.relative_input_locations())
+  {
+    if let Some(input) = input {
+      for i in 0..5 {
+        let time = input.nth_disbursement_time(i).unwrap();
+        let visuals = machine.relative_momentary_visuals(inputs, future, time);
+        lpt_assert!(
+          !has_near(&visuals, input.material, input_location, speed_leeway),
+          "Inputs must not be displayed near the input location at disbursement times: {:?}",
+          (i, time, input, input_location, visuals)
+        );
+        // can't always require displaying inputs, as some inputs may be deleted;
+        // TODO come up with a way to selectively make the assertion for non-deleted inputs
+        /*let visuals = machine.relative_momentary_visuals(inputs, future, time + 1);
+        lpt_assert!(
+          has_near(&visuals, input.material, input_location, speed_leeway),
+          "Inputs must be displayed near the input location right after disbursement times: {:?}",
+          (i, time, input, input_location, visuals)
+        );*/
+      }
     }
   }
   Ok(())

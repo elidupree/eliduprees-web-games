@@ -1,6 +1,6 @@
 #![allow(unused_imports)]
 use arrayvec::ArrayVec;
-use live_prop_test::live_prop_test;
+use live_prop_test::{live_prop_test, lpt_assert};
 use std::cmp::{max, min};
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -13,9 +13,9 @@ use geometry::{Facing, Number, Vector, VectorExtension};
 use graph_algorithms::RegionFuture;
 use machine_data::{
   Game, InputLocation, Inputs, MachineMomentaryVisuals, MachineObservedInputs,
-  MachineOperatingState, MachineType, MachineTypeId, MachineTypeTrait, MachineTypes, Material,
-  PlatonicMachine, PlatonicRegionContents, StandardMachineInfo, MAX_COMPONENTS,
-  TIME_TO_MOVE_MATERIAL,
+  MachineOperatingState, MachineType, MachineTypeId, MachineTypeRef, MachineTypeTrait,
+  MachineTypes, Material, PlatonicMachine, PlatonicRegionContents, StandardMachineInfo,
+  MAX_COMPONENTS, TIME_TO_MOVE_MATERIAL,
 };
 
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Default)]
@@ -118,6 +118,7 @@ pub fn canonical_module_input(input: MaterialFlow) -> Option<MaterialFlowRate> {
   })
 }
 
+#[live_prop_test]
 impl PlatonicModule {
   fn internal_outputs(&self, variation: &RegionFuture) -> Inputs<Option<MaterialFlow>> {
     self
@@ -134,6 +135,11 @@ impl PlatonicModule {
       .collect()
   }
 
+  #[live_prop_test(
+    precondition = "_inputs.input_flows.len() == self.num_inputs()",
+    postcondition = "result.len() == self.num_outputs()",
+    postcondition = "check_module_output_flows(&self, _inputs, module_machine_future, variation, &result)"
+  )]
   pub fn module_output_flows(
     &self,
     _inputs: MachineObservedInputs,
@@ -172,30 +178,34 @@ impl PlatonicModule {
       .enumerate()
     {
       if let (Some(outer_input), Some(inner_input)) = (outer_input, inner_input) {
-        let material_inner_output_time =
-          inner_input.first_disbursement_time_geq(max(0, inner_time));
-        let material_outer_output_time =
-          material_inner_output_time + module_machine_future.start_time;
-        let material_outer_input_time = outer_input
-          .last_disbursement_time_leq(material_outer_output_time - TIME_TO_MOVE_MATERIAL)
-          .unwrap();
+        let first_relevant_output_inner_index =
+          inner_input.num_disbursed_before(max(0, inner_time));
+        for index in first_relevant_output_inner_index..=first_relevant_output_inner_index + 1 {
+          let material_output_inner_time = inner_input.nth_disbursement_time(index).unwrap();
+          assert!(material_output_inner_time >= 0);
+          let material_output_outer_time =
+            material_output_inner_time + module_machine_future.start_time;
+          let material_input_outer_time = outer_input
+            .last_disbursement_time_leq(material_output_outer_time - TIME_TO_MOVE_MATERIAL)
+            .unwrap();
 
-        // >, not >=; don't draw at the moment of input, fitting the general rule that the source machine draws the material
-        if outer_time > material_outer_input_time {
-          operating_state = MachineOperatingState::Operating;
-          let output_fraction = (outer_time - material_outer_input_time) as f64
-            / (material_outer_output_time - material_outer_input_time) as f64;
-          let input_location = self.module_type.inputs[input_index]
-            .outer_location
-            .position
-            .to_f64();
-          let output_location = self.module_type.inputs[input_index]
-            .inner_location
-            .position
-            .to_f64();
-          let location =
-            input_location * (1.0 - output_fraction) + output_location * output_fraction;
-          materials.push((location, inner_input.material));
+          // >, not >=; don't draw at the moment of input, fitting the general rule that the source machine draws the material
+          if outer_time > material_input_outer_time {
+            operating_state = MachineOperatingState::Operating;
+            let output_fraction = (outer_time - material_input_outer_time) as f64
+              / (material_output_outer_time - material_input_outer_time) as f64;
+            let input_location = self.module_type.inputs[input_index]
+              .outer_location
+              .position
+              .to_f64();
+            let output_location = self.module_type.inputs[input_index]
+              .inner_location
+              .position
+              .to_f64();
+            let location =
+              input_location * (1.0 - output_fraction) + output_location * output_fraction;
+            materials.push((location, inner_input.material));
+          }
         }
       }
     }
@@ -231,6 +241,95 @@ impl PlatonicModule {
       materials,
     }
   }
+}
+
+fn check_module_output_flows(
+  module: &PlatonicModule,
+  inputs: MachineObservedInputs,
+  module_machine_future: &ModuleMachineFuture,
+  variation: &RegionFuture,
+  outputs: &[Option<MaterialFlow>],
+) -> Result<(), String> {
+  for output in outputs {
+    if let Some(output) = output {
+      lpt_assert!(
+        output.flow.start_time() >= inputs.start_time,
+        "output {:?} started before start time {}",
+        output,
+        inputs.start_time
+      );
+    }
+  }
+
+  fn has_near(
+    visuals: &MachineMomentaryVisuals,
+    material: Material,
+    location: InputLocation,
+    extra_leeway: f64,
+  ) -> bool {
+    let leeway = extra_leeway + 0.0000001;
+    visuals.materials.iter().any(|&(l, m)| {
+      m == material && {
+        let rel = l - location.position.to_f64();
+        rel[0].abs() <= leeway && rel[1].abs() <= leeway
+      }
+    })
+  }
+
+  let speed_leeway = 2.0 / TIME_TO_MOVE_MATERIAL as f64;
+
+  for (output, output_location) in outputs.iter().zip(module.relative_output_locations()) {
+    if let Some(output) = output {
+      for i in 0..5 {
+        let time = output.nth_disbursement_time(i).unwrap();
+        let visuals =
+          module.module_relative_momentary_visuals(inputs, module_machine_future, time, variation);
+        lpt_assert!(
+          has_near(&visuals, output.material, output_location, 0.0),
+          "Outputs must be displayed at exactly the output location at disbursement times: {:?}",
+          (i, time, output, output_location, visuals)
+        );
+        let visuals = module.module_relative_momentary_visuals(
+          inputs,
+          module_machine_future,
+          time + 1,
+          variation,
+        );
+        lpt_assert!(
+          !has_near(&visuals, output.material, output_location, speed_leeway),
+          "There must be no materials near the output location right after disbursement times: {:?}",
+          (i, time, output, output_location, visuals)
+        );
+      }
+    }
+  }
+  for (input, input_location) in inputs
+    .input_flows
+    .iter()
+    .zip(module.relative_input_locations())
+  {
+    if let Some(input) = input {
+      for i in 0..5 {
+        let time = input.nth_disbursement_time(i).unwrap();
+        let visuals =
+          module.module_relative_momentary_visuals(inputs, module_machine_future, time, variation);
+        lpt_assert!(
+          !has_near(&visuals, input.material, input_location, speed_leeway),
+          "Inputs must not be displayed near the input location at disbursement times: {:?}",
+          (i, time, input, input_location, visuals)
+        );
+        // can't always require displaying inputs, as some inputs may be deleted;
+        // TODO come up with a way to selectively make the assertion for non-deleted inputs
+        /*let visuals = module.module_relative_momentary_visuals(inputs, module_machine_future, time + 1, variation);
+        lpt_assert!(
+          has_near(&visuals, input.material, input_location, speed_leeway),
+          "Inputs must be displayed near the input location right after disbursement times: {:?}",
+          (i, time, input, input_location, visuals)
+        );*/
+      }
+    }
+  }
+  Ok(())
 }
 
 #[live_prop_test(use_trait_tests)]

@@ -240,7 +240,7 @@ impl MachineTypeTrait for Distributor {
       let (input_time, input_index) = cropped_inputs
         .nth_disbursement_geq_time(input_index_since_start, inputs.start_time)
         .unwrap();
-      if input_time > time {
+      if input_time >= time {
         break;
       }
       //assert!(n <= previous_disbursements + self.inputs.len() + self.outputs.len() - 1);
@@ -370,11 +370,14 @@ impl MachineTypeTrait for Assembler {
     future: &Self::Future,
     time: Number,
   ) -> MachineMomentaryVisuals {
+    // the output disbursement moment is the last moment we're responsible for displaying the material
+    // materials can continue being outputted until the end of the NEXT assembly, plus TIME_TO_MOVE_MATERIAL
+    // therefore,
     let first_relevant_assembly_start_index = max(
       0,
       future
         .assembly_start_pattern
-        .num_disbursed_between([inputs.start_time, time - self.assembly_duration])
+        .num_disbursed_before(time - self.assembly_duration - TIME_TO_MOVE_MATERIAL)
         - 1,
     );
 
@@ -383,7 +386,7 @@ impl MachineTypeTrait for Assembler {
     for assembly_start_index in first_relevant_assembly_start_index.. {
       let assembly_start_time = future
         .assembly_start_pattern
-        .nth_disbursement_time_geq(assembly_start_index, inputs.start_time)
+        .nth_disbursement_time(assembly_start_index)
         .unwrap();
       let assembly_finish_time = assembly_start_time + self.assembly_duration;
       let mut too_late = assembly_start_time >= time;
@@ -400,7 +403,7 @@ impl MachineTypeTrait for Assembler {
             let input_time = material_flow
               .nth_disbursement_time_geq(input_index, inputs.start_time)
               .unwrap();
-            if input_time > time {
+            if input_time >= time {
               continue;
             }
             too_late = false;
@@ -425,8 +428,8 @@ impl MachineTypeTrait for Assembler {
             let output_time = flow
               .nth_disbursement_time_geq(output_index, inputs.start_time)
               .unwrap();
-            assert!(output_time > assembly_finish_time);
-            if time < output_time {
+            assert!(output_time >= assembly_finish_time + TIME_TO_MOVE_MATERIAL);
+            if time <= output_time {
               let output_location = output.location.position.to_f64();
               let assembly_location = Vector2::new(0.0, 0.0);
               let assembly_fraction =
