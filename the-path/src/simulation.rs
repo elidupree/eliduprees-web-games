@@ -157,7 +157,7 @@ pub struct Click {
   pub time: f64,
 }
 
-pub type Generator = ::rand::ChaChaRng;
+pub type Generator = ::rand_xoshiro::Xoshiro256PlusPlus;
 
 #[derive(Derivative)]
 #[derivative(Default)]

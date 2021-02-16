@@ -2,7 +2,7 @@ use super::*;
 
 use boolinator::Boolinator;
 use nalgebra::Vector2;
-use rand::Rng;
+use rand::{Rng, SeedableRng};
 use std::collections::{BTreeMap, HashMap};
 
 use std::cell::Cell;
@@ -87,6 +87,8 @@ pub enum PointerState {
   },
 }
 
+pub type Generator = ::rand_xoshiro::Xoshiro256PlusPlus;
+
 #[derive(Derivative)]
 #[derivative(Default)]
 pub struct State {
@@ -102,8 +104,8 @@ pub struct State {
   #[derivative(Default(value = "Vector2::new (0.0, 0.0)"))]
   pub map_offset: Vector2<f64>,
 
-  #[derivative(Default(value = "Box::new(::rand::ChaChaRng::new_unseeded())"))]
-  pub generator: Box<Rng>,
+  #[derivative(Default(value = "Generator::from_seed([1; 32])"))]
+  pub generator: Generator,
   pub constants: Rc<Constants>,
   pub now: f64,
 }

@@ -15,8 +15,9 @@ extern crate lyon;
 extern crate nalgebra;
 extern crate ordered_float;
 extern crate rand;
+extern crate rand_xoshiro;
 
-use rand::Rng;
+use rand::{Rng, SeedableRng};
 use stdweb::unstable::TryInto;
 
 use nalgebra::Vector2;
@@ -54,7 +55,7 @@ fn draw_game(game: &Game) {
 
 fn new_game() -> State {
   State {
-    generator: Box::new(rand::thread_rng()),
+    generator: Generator::from_rng(rand::thread_rng()).unwrap(),
 
     ..Default::default()
   }

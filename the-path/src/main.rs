@@ -15,6 +15,7 @@ extern crate lyon;
 extern crate nalgebra;
 extern crate ordered_float;
 extern crate rand;
+extern crate rand_xoshiro;
 
 use rand::{Rng, SeedableRng};
 use stdweb::unstable::TryInto;
