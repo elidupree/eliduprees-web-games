@@ -1,13 +1,9 @@
-
-
 use boolinator::Boolinator;
 use nalgebra::Vector2;
-use rand::{SeedableRng};
+use rand::SeedableRng;
 use std::collections::{BTreeMap, HashMap};
 
-
 use std::rc::Rc;
-
 
 pub type Index = u64;
 

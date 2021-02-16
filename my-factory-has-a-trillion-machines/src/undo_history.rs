@@ -1,14 +1,14 @@
-use crate::geometry::Number;
-use crate::machine_data::Game;
 use crate::geometry::GridIsomorphism;
+use crate::geometry::Number;
 use crate::graph_algorithms::{
   BaseAspect, BaseMutAspect, FutureAspect, GameFuture, GameView, SelectedAspect, SelectedMutAspect,
   WorldMachineView, WorldRegionView,
 };
-use live_prop_test::{live_prop_test, lpt_assert, lpt_assert_eq};
+use crate::machine_data::Game;
 use crate::machine_data::{
   MachineGlobalId, MachineTypeId, PlatonicMachine, WorldMachinesMap, TIME_TO_MOVE_MATERIAL,
 };
+use live_prop_test::{live_prop_test, lpt_assert, lpt_assert_eq};
 use std::collections::HashSet;
 
 #[live_prop_test]

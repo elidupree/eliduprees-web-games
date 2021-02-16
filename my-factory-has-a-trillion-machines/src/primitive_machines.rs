@@ -1,10 +1,12 @@
-use crate::flow_pattern::{CroppedFlow, Flow, FlowCollection, FlowPattern, MaterialFlow, RATE_DIVISOR};
+use crate::flow_pattern::{
+  CroppedFlow, Flow, FlowCollection, FlowPattern, MaterialFlow, RATE_DIVISOR,
+};
 use crate::geometry::{Number, VectorExtension};
-use live_prop_test::live_prop_test;
 use crate::machine_data::{
   InputLocation, Inputs, MachineMomentaryVisuals, MachineObservedInputs, MachineOperatingState,
   MachineType, MachineTypeTrait, Material, StandardMachineInfo, TIME_TO_MOVE_MATERIAL,
 };
+use live_prop_test::live_prop_test;
 use nalgebra::Vector2;
 use std::cmp::{max, min};
 use std::convert::TryFrom;

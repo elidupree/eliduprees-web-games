@@ -17,21 +17,15 @@ extern crate ordered_float;
 extern crate rand;
 extern crate rand_xoshiro;
 
-use rand::{SeedableRng};
-
-
-
-
-
-
+use rand::SeedableRng;
 
 mod draw;
 mod misc;
 mod simulation;
 pub use crate::draw::*;
-pub use eliduprees_web_games_lib::*;
 pub use crate::misc::*;
 pub use crate::simulation::*;
+pub use eliduprees_web_games_lib::*;
 
 enum MenuState {
   Playing,

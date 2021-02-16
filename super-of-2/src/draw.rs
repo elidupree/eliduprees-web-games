@@ -1,8 +1,6 @@
 use super::*;
 
-
 use std::collections::BTreeSet;
-
 
 impl State {
   pub fn draw(&self) {

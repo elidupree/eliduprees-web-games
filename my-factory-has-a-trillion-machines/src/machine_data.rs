@@ -9,7 +9,9 @@ use std::fmt::Debug;
 use std::hash::Hash;
 
 use crate::flow_pattern::{Flow, MaterialFlow};
-use crate::geometry::{Facing, GridIsomorphism, Number, Rotate, TransformedBy, Vector, VectorExtension};
+use crate::geometry::{
+  Facing, GridIsomorphism, Number, Rotate, TransformedBy, Vector, VectorExtension,
+};
 //use modules::ModuleMachine;
 use crate::modules::PlatonicModule;
 use crate::primitive_machines::{Assembler, Distributor};
