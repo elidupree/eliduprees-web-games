@@ -1,7 +1,7 @@
-use flow_pattern::{CroppedFlow, Flow, FlowCollection, FlowPattern, MaterialFlow, RATE_DIVISOR};
-use geometry::{Number, VectorExtension};
+use crate::flow_pattern::{CroppedFlow, Flow, FlowCollection, FlowPattern, MaterialFlow, RATE_DIVISOR};
+use crate::geometry::{Number, VectorExtension};
 use live_prop_test::live_prop_test;
-use machine_data::{
+use crate::machine_data::{
   InputLocation, Inputs, MachineMomentaryVisuals, MachineObservedInputs, MachineOperatingState,
   MachineType, MachineTypeTrait, Material, StandardMachineInfo, TIME_TO_MOVE_MATERIAL,
 };

@@ -38,12 +38,12 @@ mod inputs;
 mod randomization;
 mod rendering;
 mod ui;
-pub use data::*;
-pub use inputs::*;
-pub use misc::*;
-pub use randomization::*;
-pub use rendering::*;
-pub use ui::*;
+pub use crate::data::*;
+pub use crate::inputs::*;
+pub use crate::misc::*;
+pub use crate::randomization::*;
+pub use crate::rendering::*;
+pub use crate::ui::*;
 
 #[derive(Clone)]
 pub enum PlaybackTime {
@@ -116,7 +116,7 @@ fn redraw_app(state: &Rc<RefCell<State>>) {
       element
     }
 
-    let sample_rate = 500.0;
+    let _sample_rate = 500.0;
     //let envelope_samples = display_samples (sample_rate, sound.duration(), | time | sound.envelope.sample (time));
 
     js! {clear_callbacks();}
@@ -580,12 +580,12 @@ fn render_loop(state: Rc<RefCell<State>>) {
         if state.loop_playback {
           play(state, playback.samples_getter);
         } else {
-          let samples = playback.samples_getter.get(&state.rendering_state);
+          let _samples = playback.samples_getter.get(&state.rendering_state);
           //samples.redraw (None, & state.rendering_state.constants);
           state.playback_state = None;
         }
       } else if let PlaybackTime::RunningSinceAudioTime(_) = playback.time {
-        let samples = playback.samples_getter.get(&state.rendering_state);
+        let _samples = playback.samples_getter.get(&state.rendering_state);
         //samples.redraw (Some(offset), & state.rendering_state.constants);
       }
       redraw_waveform_canvas(state);
@@ -599,7 +599,7 @@ fn play<G: 'static + GetterBase<From = RenderingState, To = RenderedSamples>>(
   state: &mut State,
   getter: Getter<G>,
 ) {
-  let samples = getter.get(&state.rendering_state);
+  let _samples = getter.get(&state.rendering_state);
   /*if let Some(ref playback) = state.playback_state {
     let old_samples = playback.samples_getter.get (&state.rendering_state);
     if old_samples.serial_number != samples.serial_number {

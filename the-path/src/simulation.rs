@@ -592,7 +592,7 @@ impl State {
       match object.kind {
         Kind::Monster(ref mut monster) => {
           if monster.attack_progress == 0.0 || monster.attack_progress >= 1.0 {
-            let mut speed_limit = 0.1;
+            let speed_limit = 0.1;
             let mut acceleration = random_vector_within_length(&mut self.generator, 0.1);
             monster.eye_direction += safe_normalize(object.velocity) * duration;
             monster.eye_direction = safe_normalize(monster.eye_direction);

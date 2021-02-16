@@ -20,17 +20,17 @@ extern crate rand_xoshiro;
 use rand::{Rng, SeedableRng};
 use stdweb::unstable::TryInto;
 
-use std::cell::RefCell;
-use std::rc::Rc;
+
+
 use std::str::FromStr;
 
 mod draw;
 mod misc;
 mod simulation;
-pub use draw::*;
+pub use crate::draw::*;
 pub use eliduprees_web_games_lib::*;
-pub use misc::*;
-pub use simulation::*;
+pub use crate::misc::*;
+pub use crate::simulation::*;
 
 enum MenuState {
   MainMenuAppearing(f64),

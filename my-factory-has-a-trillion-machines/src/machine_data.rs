@@ -8,12 +8,12 @@ use std::collections::HashSet;
 use std::fmt::Debug;
 use std::hash::Hash;
 
-use flow_pattern::{Flow, MaterialFlow};
-use geometry::{Facing, GridIsomorphism, Number, Rotate, TransformedBy, Vector, VectorExtension};
+use crate::flow_pattern::{Flow, MaterialFlow};
+use crate::geometry::{Facing, GridIsomorphism, Number, Rotate, TransformedBy, Vector, VectorExtension};
 //use modules::ModuleMachine;
-use modules::PlatonicModule;
-use primitive_machines::{Assembler, Distributor};
-use undo_history::AddRemoveMachines;
+use crate::modules::PlatonicModule;
+use crate::primitive_machines::{Assembler, Distributor};
+use crate::undo_history::AddRemoveMachines;
 
 pub const MAX_COMPONENTS: usize = 256;
 pub const MAX_MACHINE_INPUTS: usize = 8;

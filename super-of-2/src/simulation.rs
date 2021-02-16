@@ -1,13 +1,13 @@
-use super::*;
+
 
 use boolinator::Boolinator;
 use nalgebra::Vector2;
-use rand::{Rng, SeedableRng};
+use rand::{SeedableRng};
 use std::collections::{BTreeMap, HashMap};
 
-use std::cell::Cell;
+
 use std::rc::Rc;
-use std::str::FromStr;
+
 
 pub type Index = u64;
 
@@ -206,10 +206,10 @@ impl State {
   }
 
   pub fn simulate(&mut self, duration: f64) {
-    let tick_start = self.now;
+    let _tick_start = self.now;
     self.now += duration;
-    let now = self.now;
-    let constants = self.constants.clone();
+    let _now = self.now;
+    let _constants = self.constants.clone();
 
     match self.pointer_state {
       PointerState::DragEntity { entity, current } => {

@@ -3,15 +3,15 @@ use std::collections::{hash_map, HashMap};
 
 use arrayvec::ArrayVec;
 
-use flow_pattern::{FlowCollection, FlowPattern, MaterialFlow};
-use geometry::{GridIsomorphism, Number, TransformedBy};
-use machine_data::{
+use crate::flow_pattern::{FlowCollection, FlowPattern, MaterialFlow};
+use crate::geometry::{GridIsomorphism, Number, TransformedBy};
+use crate::machine_data::{
   Game, InputLocation, Inputs, MachineFuture, MachineIdWithinPlatonicRegion,
   MachineMomentaryVisuals, MachineObservedInputs, MachineOperatingState, MachineTypeId,
   MachineTypeRef, MachineTypeTrait, MachineTypes, Material, PlatonicMachine,
   PlatonicRegionContents, WorldMachinesMap, MAX_COMPONENTS,
 };
-use modules::{CanonicalModuleInputs, PlatonicModule};
+use crate::modules::{CanonicalModuleInputs, PlatonicModule};
 
 pub type OutputEdges = ArrayVec<[Inputs<Option<(usize, usize)>>; MAX_COMPONENTS]>;
 
@@ -866,7 +866,7 @@ impl $crate::graph_algorithms::WorldViewAspectGet for ($($Aspect,)*) {
 pub use self::base_view_aspect::BaseAspect;
 pub mod base_view_aspect {
   use super::*;
-  use machine_data::WorldMachinesMap;
+  use crate::machine_data::WorldMachinesMap;
 
   #[derive(Debug)]
   pub enum BaseAspect {}
@@ -1082,7 +1082,7 @@ pub mod base_view_aspect {
 pub use self::base_mut_view_aspect::BaseMutAspect;
 pub mod base_mut_view_aspect {
   use super::*;
-  use machine_data::{MachineGlobalId, WorldMachinesMap};
+  use crate::machine_data::{MachineGlobalId, WorldMachinesMap};
 
   #[derive(Debug)]
   pub enum BaseMutAspect {}
@@ -1527,7 +1527,7 @@ pub mod base_mut_view_aspect {
 pub use self::future_view_aspect::FutureAspect;
 pub mod future_view_aspect {
   use super::*;
-  use modules::ModuleMachineFuture;
+  use crate::modules::ModuleMachineFuture;
 
   #[derive(Debug)]
   pub enum FutureAspect {}
@@ -1650,7 +1650,7 @@ pub mod future_view_aspect {
 pub use self::world_machines_map_view_aspect::WorldMachinesMapViewAspect;
 pub mod world_machines_map_view_aspect {
   use super::*;
-  use machine_data::WorldMachinesMap;
+  use crate::machine_data::WorldMachinesMap;
   use std::marker::PhantomData;
 
   #[derive(Debug)]
@@ -1742,7 +1742,7 @@ pub mod world_machines_map_view_aspect {
 pub use self::world_machines_map_mut_view_aspect::WorldMachinesMapMutViewAspect;
 pub mod world_machines_map_mut_view_aspect {
   use super::*;
-  use machine_data::WorldMachinesMap;
+  use crate::machine_data::WorldMachinesMap;
   use std::marker::PhantomData;
 
   #[derive(Debug)]

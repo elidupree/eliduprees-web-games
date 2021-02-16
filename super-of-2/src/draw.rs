@@ -1,8 +1,8 @@
 use super::*;
 
-use ordered_float::OrderedFloat;
+
 use std::collections::BTreeSet;
-use stdweb::unstable::TryInto;
+
 
 impl State {
   pub fn draw(&self) {

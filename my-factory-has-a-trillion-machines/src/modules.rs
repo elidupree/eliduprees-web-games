@@ -6,12 +6,12 @@ use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::rc::Rc;
 
-use flow_pattern::{
+use crate::flow_pattern::{
   Flow, FlowCollection, FlowPattern, FlowRate, MaterialFlow, MaterialFlowRate, RATE_DIVISOR,
 };
-use geometry::{Facing, Number, Vector, VectorExtension};
-use graph_algorithms::RegionFuture;
-use machine_data::{
+use crate::geometry::{Facing, Number, Vector, VectorExtension};
+use crate::graph_algorithms::RegionFuture;
+use crate::machine_data::{
   Game, InputLocation, Inputs, MachineMomentaryVisuals, MachineObservedInputs,
   MachineOperatingState, MachineType, MachineTypeId, MachineTypeRef, MachineTypeTrait,
   MachineTypes, Material, PlatonicMachine, PlatonicRegionContents, StandardMachineInfo,

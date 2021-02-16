@@ -1,11 +1,11 @@
 //use std::hash::{Hash, Hasher};
 //use std::cmp::{max};
 
-use geometry::Number;
-use machine_data::Material;
+use crate::geometry::Number;
+use crate::machine_data::Material;
 use num::Integer;
 pub const RATE_DIVISOR: Number =
-  ::machine_data::TIME_TO_MOVE_MATERIAL * 2 * 2 * 2 * 2 * 2 * 2 * 3 * 3 * 3 * 5 * 5;
+  crate::machine_data::TIME_TO_MOVE_MATERIAL * 2 * 2 * 2 * 2 * 2 * 2 * 3 * 3 * 3 * 5 * 5;
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Default)]
 pub struct FlowRate {
