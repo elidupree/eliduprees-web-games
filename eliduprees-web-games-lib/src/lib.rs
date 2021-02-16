@@ -1,5 +1,5 @@
 #![recursion_limit = "256"]
-#![feature(slice_patterns, specialization)]
+#![feature(specialization)]
 
 #[macro_use]
 extern crate stdweb;

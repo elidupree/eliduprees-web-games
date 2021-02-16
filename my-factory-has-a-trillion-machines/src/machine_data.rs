@@ -511,7 +511,7 @@ impl MachineTypes {
       .output_locations(machine.state.position)
   }
 
-  pub fn modules<'a>(&'a self) -> impl Iterator<Item = (MachineTypeId, &'a PlatonicModule)> + 'a {
+  pub fn modules(&self) -> impl Iterator<Item = (MachineTypeId, &PlatonicModule)> {
     self
       .presets
       .iter()
@@ -549,7 +549,7 @@ pub struct Game {
 }
 
 impl Game {
-  pub fn platonic_regions<'a>(&'a self) -> impl Iterator<Item = &'a PlatonicRegionContents> + 'a {
+  pub fn platonic_regions(&self) -> impl Iterator<Item = &PlatonicRegionContents> {
     std::iter::once(&self.global_region).chain(
       self
         .machine_types
@@ -557,9 +557,7 @@ impl Game {
         .map(|(_id, module)| &module.region),
     )
   }
-  pub fn platonic_machines_mut<'a>(
-    &'a mut self,
-  ) -> impl Iterator<Item = &'a mut PlatonicMachine> + 'a {
+  pub fn platonic_machines_mut(&mut self) -> impl Iterator<Item = &'_ mut PlatonicMachine> + '_ {
     std::iter::once(&mut self.global_region)
       .chain(
         self

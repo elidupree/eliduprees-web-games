@@ -1,6 +1,4 @@
-//#![feature (nll)]
-#![feature(type_alias_impl_trait, move_ref_pattern)]
-#![feature(iter_partition_in_place)]
+#![feature(type_alias_impl_trait, iter_partition_in_place)]
 #![recursion_limit = "256"]
 
 extern crate eliduprees_web_games_lib;

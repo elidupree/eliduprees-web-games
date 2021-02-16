@@ -426,6 +426,8 @@ pub trait WorldViewAspect<'a> {
 }
 pub trait WorldViewAspectAll: for<'a> WorldViewAspect<'a> {}
 impl<T: for<'a> WorldViewAspect<'a>> WorldViewAspectAll for T {}
+
+#[allow(clippy::wrong_self_convention)]
 pub trait WorldViewAspectGetMut: WorldViewAspectAll {
   fn global_region_mut<'a, 'b: 'a>(
     game: &'a mut <Self as WorldViewAspect<'b>>::Game,
@@ -443,6 +445,8 @@ pub trait WorldViewAspectGetMut: WorldViewAspectAll {
     module: &'a mut <Self as WorldViewAspect<'b>>::Module,
   ) -> <Self as WorldViewAspect<'a>>::Region;
 }
+
+#[allow(clippy::wrong_self_convention)]
 pub trait WorldViewAspectGet: WorldViewAspectAll {
   fn global_region<'a, 'b: 'a>(
     game: &'a <Self as WorldViewAspect<'b>>::Game,
@@ -513,7 +517,7 @@ pub trait GetSubaspectMut<T: WorldViewAspectAll>: WorldViewAspectAll {
 }
 
 pub trait BaseAspectShared: WorldViewAspectAll {
-  fn is_module<'a>(machine: &<Self as WorldViewAspect<'a>>::Machine) -> bool;
+  fn is_module(machine: &<Self as WorldViewAspect>::Machine) -> bool;
   fn isomorphism(region: &<Self as WorldViewAspect>::Region) -> GridIsomorphism;
 }
 
@@ -553,7 +557,7 @@ impl<'a, T: WorldViewAspectGet> GameView<'a, T> {
   }
 }
 
-impl<'a, T: WorldViewAspectGetMut> WorldRegionView<'a, T> {
+impl<T: WorldViewAspectGetMut> WorldRegionView<'_, T> {
   pub fn get_machine_mut(&mut self, ids: ViewMachineIds) -> WorldMachineView<T> {
     WorldMachineView {
       aspects: T::get_machine_mut(&mut self.aspects, ids),
