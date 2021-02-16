@@ -1,7 +1,7 @@
 #![recursion_limit = "256"]
 #![feature(slice_patterns)]
 
-extern crate eliduprees_web_games;
+extern crate eliduprees_web_games_lib;
 
 #[macro_use]
 extern crate stdweb;
@@ -27,7 +27,7 @@ mod draw;
 mod misc;
 mod simulation;
 pub use draw::*;
-pub use eliduprees_web_games::*;
+pub use eliduprees_web_games_lib::*;
 pub use misc::*;
 pub use simulation::*;
 

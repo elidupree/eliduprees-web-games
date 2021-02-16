@@ -1,7 +1,7 @@
 #![feature(never_type, nll)]
 #![recursion_limit = "256"]
 
-extern crate eliduprees_web_games;
+extern crate eliduprees_web_games_lib;
 
 #[macro_use]
 extern crate stdweb;
@@ -26,7 +26,7 @@ use std::rc::Rc;
 use stdweb::Value;
 //use stdweb::unstable::TryInto;
 pub use array_ext::Array;
-pub use eliduprees_web_games::*;
+pub use eliduprees_web_games_lib::*;
 use ordered_float::OrderedFloat;
 use stdweb::web::{self, TypedArray};
 

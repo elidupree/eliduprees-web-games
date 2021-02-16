@@ -1,0 +1,28 @@
+[package]
+name = "my-factory-has-a-trillion-machines"
+version = "0.1.0"
+authors = ["Eli Dupree <vcs@elidupree.com>"]
+
+[dependencies]
+eliduprees-web-games-lib = { path = "../eliduprees-web-games-lib" }
+stdweb = "0.4"
+serde = {version = "1", features = ["rc"]}
+serde_derive = "1"
+serde_json = "1"
+num = "0.2"
+nalgebra = {version = "0.16", features = ["serde-serialize"]}
+rand = "0.7"
+rand_xoshiro = "0.4"
+derivative = "1.0"
+ordered-float = "0.2"
+boolinator = "2.4"
+arrayvec = {version = "0.4.7", features = ["serde-1"]}
+array_ext = "0.2"
+#glium = "0.23"
+siphasher = "0.2.3"
+itertools = "0.7.3"
+live-prop-test = {git = "https://github.com/elidupree/live-prop-test", version = "0.1", features = ["stdweb"]}
+extend = "0.3.0"
+
+[dev-dependencies]
+proptest = "0.8.7"

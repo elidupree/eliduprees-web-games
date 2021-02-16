@@ -3,7 +3,7 @@
 #![feature(iter_partition_in_place)]
 #![recursion_limit = "256"]
 
-extern crate eliduprees_web_games;
+extern crate eliduprees_web_games_lib;
 
 #[cfg(any(target_arch = "wasm32", target_arch = "asmjs"))]
 #[macro_use]
@@ -61,7 +61,7 @@ macro_rules! debug {
 pub mod machine_data;
 #[macro_use]
 pub mod graph_algorithms;
-pub use eliduprees_web_games::*;
+pub use eliduprees_web_games_lib::*;
 // hack-ish: modules marked pub to suppress dead code warnings from builds with different conditional compilation
 pub mod flow_pattern;
 pub mod geometry;

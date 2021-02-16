@@ -1,6 +1,6 @@
 use super::*;
 
-use eliduprees_web_games::js_unwrap;
+use eliduprees_web_games_lib::js_unwrap;
 use nalgebra::Vector2;
 use num::Integer;
 use siphasher::sip::SipHasher;
