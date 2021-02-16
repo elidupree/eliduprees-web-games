@@ -2,6 +2,7 @@
 name = "webfxr"
 version = "0.1.0"
 authors = ["Eli Dupree <vcs@elidupree.com>"]
+edition = "2018"
 
 [dependencies]
 eliduprees-web-games-lib = { path = "../eliduprees-web-games-lib" }
