@@ -3,12 +3,6 @@
 
 #[macro_use]
 extern crate stdweb;
-extern crate arrayvec;
-extern crate boolinator;
-extern crate lyon;
-extern crate nalgebra;
-extern crate ordered_float;
-extern crate rand;
 
 use rand::Rng;
 use stdweb::unstable::TryInto;
