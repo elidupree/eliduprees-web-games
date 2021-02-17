@@ -8,6 +8,7 @@ use crate::machine_data::{
 };
 use live_prop_test::live_prop_test;
 use nalgebra::Vector2;
+use serde::{Deserialize, Serialize};
 use std::cmp::{max, min};
 use std::convert::TryFrom;
 

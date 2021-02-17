@@ -1,26 +1,12 @@
 #![feature(type_alias_impl_trait, iter_partition_in_place)]
 #![recursion_limit = "256"]
 
-extern crate eliduprees_web_games_lib;
-
 #[cfg(any(target_arch = "wasm32", target_arch = "asmjs"))]
 #[macro_use]
 extern crate stdweb;
-extern crate serde;
-#[macro_use]
-extern crate serde_derive;
-#[macro_use]
-extern crate derivative;
-extern crate arrayvec;
-extern crate extend;
-extern crate nalgebra;
-extern crate num;
 #[cfg(test)]
 #[macro_use]
 extern crate proptest;
-extern crate itertools;
-extern crate live_prop_test;
-extern crate siphasher;
 
 #[allow(unused_macros)]
 #[cfg(any(target_arch = "wasm32", target_arch = "asmjs"))]

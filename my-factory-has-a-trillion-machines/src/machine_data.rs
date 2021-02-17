@@ -1,7 +1,8 @@
 use arrayvec::ArrayVec;
+use derivative::Derivative;
 use live_prop_test::{live_prop_test, lpt_assert, lpt_assert_eq};
 use nalgebra::Vector2;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::cmp::max;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -12,7 +13,6 @@ use crate::flow_pattern::{Flow, MaterialFlow};
 use crate::geometry::{
   Facing, GridIsomorphism, Number, Rotate, TransformedBy, Vector, VectorExtension,
 };
-//use modules::ModuleMachine;
 use crate::modules::PlatonicModule;
 use crate::primitive_machines::{Assembler, Distributor};
 use crate::undo_history::AddRemoveMachines;

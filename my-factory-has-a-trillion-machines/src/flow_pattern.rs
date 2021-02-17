@@ -4,6 +4,7 @@
 use crate::geometry::Number;
 use crate::machine_data::Material;
 use num::Integer;
+use serde::{Deserialize, Serialize};
 pub const RATE_DIVISOR: Number =
   crate::machine_data::TIME_TO_MOVE_MATERIAL * 2 * 2 * 2 * 2 * 2 * 2 * 3 * 3 * 3 * 5 * 5;
 

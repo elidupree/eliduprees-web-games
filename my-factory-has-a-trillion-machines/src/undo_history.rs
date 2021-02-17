@@ -9,6 +9,7 @@ use crate::machine_data::{
   MachineGlobalId, MachineTypeId, PlatonicMachine, WorldMachinesMap, TIME_TO_MOVE_MATERIAL,
 };
 use live_prop_test::{live_prop_test, lpt_assert, lpt_assert_eq};
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
 #[live_prop_test]

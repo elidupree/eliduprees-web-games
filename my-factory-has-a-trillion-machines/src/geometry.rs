@@ -1,5 +1,7 @@
+use derivative::Derivative;
 use extend::ext;
 use nalgebra::Vector2;
+use serde::{Deserialize, Serialize};
 use std::ops::Neg;
 use std::ops::{Div, Mul, Sub};
 

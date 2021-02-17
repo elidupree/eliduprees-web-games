@@ -1,6 +1,7 @@
 #![allow(unused_imports)]
 use arrayvec::ArrayVec;
 use live_prop_test::{live_prop_test, lpt_assert};
+use serde::{Deserialize, Serialize};
 use std::cmp::{max, min};
 use std::collections::HashMap;
 use std::collections::VecDeque;
