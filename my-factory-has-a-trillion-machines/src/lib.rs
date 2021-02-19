@@ -1,9 +1,6 @@
 #![feature(type_alias_impl_trait, iter_partition_in_place)]
 #![recursion_limit = "256"]
 
-#[cfg(any(target_arch = "wasm32", target_arch = "asmjs"))]
-#[macro_use]
-extern crate stdweb;
 #[cfg(test)]
 #[macro_use]
 extern crate proptest;
@@ -57,28 +54,7 @@ pub mod undo_history;
 #[cfg(any(target_arch = "wasm32", target_arch = "asmjs"))]
 mod web_ui;
 
-#[cfg(any(target_arch = "wasm32", target_arch = "asmjs"))]
-fn main() {
-  stdweb::initialize();
-  println!("Starting emscripten build");
-
-  // borrowed from console_error_panic_hook
-  fn hook_impl(info: &std::panic::PanicInfo) {
-    let mut msg = info.to_string();
-    msg.push_str("\n\nStack:\n\n");
-    let stack: String = js_unwrap!(return Error().stack;);
-    msg.push_str(&stack);
-    msg.push_str("\n\n");
-    console!(error, msg);
-  }
-  std::panic::set_hook(Box::new(hook_impl));
-
-  live_prop_test::initialize();
-
-  web_ui::run_game();
-}
-
-#[cfg(not(any(target_arch = "wasm32", target_arch = "asmjs")))]
+/*#[cfg(not(any(target_arch = "wasm32", target_arch = "asmjs")))]
 fn main() {
   //println!( "Non-emscripten builds don't do anything right now");
   /*MachinesGraph::new (vec![
@@ -117,4 +93,4 @@ fn main() {
     &[],
   );
   println!("{:?}", future);*/
-}
+}*/

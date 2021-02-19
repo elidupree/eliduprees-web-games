@@ -1,15 +1,14 @@
 "use strict";
 
-window.leaflet = L;
+import init, { MouseCssPositionOnMap, ClickType, rust_init, do_frame, rust_mousedown, rust_mousemove, rust_mouseup, }
+  from '/my-factory-has-a-trillion-machines/pkg/my_factory_has_a_trillion_machines.js';
 
-window.Module = window.Module || {};
-//Module.canvas = document.getElementById ("canvas");
-Module.TOTAL_STACK = 128*1024*1024;
-Module.TOTAL_MEMORY = 256*1024*1024;
+async function run() {
+  await init();
 
-window.devicePixelRatio = window.devicePixelRatio || 1.0;
-
-window.context = document.getElementById("canvas").getContext('2d');
+const leaflet = L;
+const canvas = document.getElementById("canvas");
+const context = canvas.getContext('2d');
 
 var roundUpToPowerOfTwo = (n) => {
   console.assert(n >= 1 && n <= (1 << 30), "roundUpToPowerOfTwo range error");
@@ -34,12 +33,15 @@ window.mouse_coords = function (event) {
   var offset = canvas.getBoundingClientRect();
   var x = (event.clientX - offset.left);
   var y = offset.height - (event.clientY - offset.top);
-  return [x,y,offset.width,offset.height];
+  return new MouseCssPositionOnMap({
+    x, y,
+    width: offset.width,
+    height: offset.height,
+  })
 };
 window.mouse_callback = function (callback) {
   return function(event) {
-    var xywh = mouse_coords(event);
-    (callback)(xywh[0],xywh[1],xywh[2],xywh[3]);
+    (callback)(mouse_coords(event));
   }
 };
 
@@ -131,3 +133,117 @@ window.leaflet_map = leaflet.map ('leaflet_map', {
 
 leaflet.marker ([0, 0]).addTo (leaflet_map).bindPopup ("thingy thingy").openPopup();
 
+
+const app_element = document.getElementById("app");
+const inventory_element = document.getElementById("inventory");
+
+
+function mousedown_callback(event) {
+  (rust_mousedown)(mouse_coords(event), new ClickType({buttons: event.buttons, shift: event.shiftKey, ctrl: event.ctrlKey}));
+};
+
+var dpr = window.devicePixelRatio || 1.0;
+var width = 800;
+var height = 800;
+var physical_width = height*dpr;
+var physical_height = width*dpr;
+canvas.style.width = width+"px";
+canvas.style.height = height+"px";
+canvas.width = physical_width;
+canvas.height = physical_height;
+leaflet_map.on("mousedown", function(event) { mousedown_callback(event.originalEvent); });
+//window.leaflet_map.on("contextmenu", function(e) {e.preventDefault()});
+document.body.addEventListener("mouseup", mouse_callback (rust_mouseup));
+document.body.addEventListener("mousemove", mouse_callback (rust_mousemove));
+
+
+window.init_machine_type = function (name) {
+  const id = `machine_choice_${name}`;
+  const radio = document.createElement("input");
+  radio.type = "radio";
+  radio.id = id;
+  radio.name = "machine_choice";
+  radio.value = name;
+  radio.checked = (name === "Iron mine");
+  const label = document.createElement("label");
+  label.setAttribute("for", id);
+  label.textContent = name;
+  let onclick;
+  if (name === "Conveyor") {
+    onclick = () => leaflet_map.dragging.disable();
+  } else {
+    onclick = () => leaflet_map.dragging.enable();
+  }
+  radio.addEventListener("click", onclick);
+  app_element.appendChild(radio);
+  app_element.appendChild(label);
+    console.log(clear_canvas);
+};
+
+window.gather_dom_samples = function () {
+  var map_zoom = leaflet_map.getZoom();
+  var offset = canvas.getBoundingClientRect();
+  return {
+    map_zoom: map_zoom,
+    map_css_scale: leaflet_map.getZoomScale(leaflet_map.getZoom(), 0),
+    map_world_center: [leaflet_map.getCenter().lng, leaflet_map.getCenter().lat],
+    canvas_backing_size: [context.canvas.width, context.canvas.height],
+    canvas_css_size: [offset.width, offset.height],
+    device_pixel_ratio: window.devicePixelRatio,
+    current_mode: document.querySelector("input[name=machine_choice]:checked").value,
+  };
+};
+
+window.clear_canvas = function () {
+  context.fillStyle = "white";
+  context.fillRect(0, 0, context.canvas.width, context.canvas.height);
+};
+
+window.draw_sprite = function (
+  sprite, cx, cy, sx, sy, quarter_turns_from_posx_towards_posy,
+) {
+  context.save();
+  //context.scale(context.canvas.width, context.canvas.height);
+  context.translate (cx, cy);
+  context.rotate (-(Math.PI*0.5) * quarter_turns_from_posx_towards_posy);
+
+  var sprite = loaded_sprites[sprite];
+
+  context.drawImage (sprite, -sx/2.0,-sy/2.0, sx,sy);
+  /*context.globalCompositeOperation = "lighter";
+  var r = @{color[0]*255.0};
+  var g = @{color[1]*255.0};
+  var b = @{color[2]*255.0};
+  context.fillStyle = "rgb("+r+","+g+","+b+")";
+  context.fillRect (@{corner[0]},@{corner[1]}, @{size [0]},@{size [1]});*/
+
+  context.restore();
+};
+
+window.update_inventory = function (inventory) {
+  for (const [material, amount] of Object.entries(inventory)) {
+    const id = `inventory_${material}`;
+    let element = document.getElementById(id);
+    if (element === null) {
+      element = document.createElement("div");
+      element.id = id;
+      inventory_element.appendChild(element);
+    }
+    element.textContent = `${material}: ${amount}`;
+  }
+};
+
+
+  rust_init();
+
+  function frame() {
+    window.requestAnimationFrame(frame);
+    if (window.loaded_sprites === undefined) {
+      return;
+    }
+    do_frame();
+  }
+  frame();
+}
+
+run();

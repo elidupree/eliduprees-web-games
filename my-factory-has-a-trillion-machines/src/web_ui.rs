@@ -1,49 +1,126 @@
 use super::*;
 
-use eliduprees_web_games_lib::js_unwrap;
 use nalgebra::Vector2;
 use num::Integer;
+use serde::Deserialize;
 use siphasher::sip::SipHasher;
 use std::cell::RefCell;
-//use std::cmp::{max, min};
+use std::cmp::max;
+use std::collections::VecDeque;
 use std::hash::{Hash, Hasher};
-use std::rc::Rc;
-use stdweb;
+use std::mem;
+use wasm_bindgen::prelude::*;
 
-use geometry::{Facing, GridIsomorphism, Number, Rotate, Rotation, Vector, VectorExtension};
-use graph_algorithms::{
+use crate::geometry::{Facing, GridIsomorphism, Number, Rotate, Rotation, Vector, VectorExtension};
+use crate::graph_algorithms::{
   BaseAspect, FutureAspect, GameFuture, GameView, SelectedAspect, WorldRegionView,
 };
-use machine_data::{
+use crate::machine_data::{
   Game, MachineState, MachineType, MachineTypeId, MachineTypeTrait, MachineTypes, Material,
   PlatonicMachine, PlatonicRegionContents, WorldMachinesMap, TIME_TO_MOVE_MATERIAL,
 };
-use std::cmp::max;
-use std::collections::VecDeque;
-use std::mem;
-use undo_history::AddRemoveMachines;
+use crate::undo_history::AddRemoveMachines;
 //use misc;
 //use modules::{self, Module};
 
+mod js {
+  use wasm_bindgen::prelude::*;
+
+  #[wasm_bindgen]
+  extern "C" {
+    pub fn init_machine_type(machine_type_name: String);
+    pub fn gather_dom_samples() -> JsValue;
+    // this wants to return (), but that gets me "clear_canvas is not defined" for some reason
+    pub fn clear_canvas() -> JsValue;
+    pub fn draw_sprite(
+      sprite: &str,
+      cx: f32,
+      cy: f32,
+      sx: f32,
+      sy: f32,
+      quarter_turns_from_posx_towards_posy: u8,
+    );
+    pub fn update_inventory(inventory: JsValue);
+  }
+}
+
+thread_local! {
+  static STATE: RefCell<State> = {
+    let mut game = Game {
+      global_region: PlatonicRegionContents {
+        machines: Vec::new(),
+      },
+      last_change_time: 0,
+      inventory_before_last_change: Default::default(),
+      undo_stack: Vec::new(),
+      machine_types: MachineTypes {
+        presets: machine_presets(),
+        custom_modules: Vec::new(),
+      },
+      last_disturbed_times: WorldMachinesMap::default(),
+      redo_stack: Vec::new(),
+    };
+    game
+      .inventory_before_last_change
+      .insert(Material::Iron, 1000);
+    let future = game.future();
+    RefCell::new(State {
+      game,
+      selected: WorldMachinesMap::default(),
+      future,
+      start_ui_time: now(),
+      start_game_time: 0,
+      current_game_time: 0,
+      mouse: Default::default(),
+      queued_mouse_moves: VecDeque::new(),
+    })
+  }
+}
+
+fn with_state<R>(f: impl FnOnce(&mut State) -> R) -> R {
+  STATE.with(|state| {
+    let mut guard = state.borrow_mut();
+    (f)(&mut *guard)
+  })
+}
+
 #[derive(Copy, Clone)]
-struct MousePosition {
+struct MouseGridPosition {
   tile_center: Vector,
   nearest_lines: Vector,
 }
 
-#[derive(Copy, Clone)]
-struct QueuedMouseMove {
-  x: f64,
-  y: f64,
-  width: f64,
-  height: f64,
+#[wasm_bindgen]
+#[derive(Copy, Clone, Deserialize)]
+pub struct MouseCssPositionOnMap {
+  pub x: f64,
+  pub y: f64,
+  pub width: f64,
+  pub height: f64,
 }
 
+#[wasm_bindgen]
+impl MouseCssPositionOnMap {
+  #[wasm_bindgen(constructor)]
+  pub fn from_js_value(v: JsValue) -> Self {
+    v.into_serde().unwrap()
+  }
+}
+
+#[wasm_bindgen]
 #[derive(PartialEq, Eq, Clone, Deserialize)]
-struct ClickType {
-  buttons: u16,
-  shift: bool,
-  ctrl: bool,
+pub struct ClickType {
+  pub buttons: u16,
+  pub shift: bool,
+  pub ctrl: bool,
+}
+
+#[wasm_bindgen]
+impl ClickType {
+  #[wasm_bindgen(constructor)]
+  pub fn from_js_value(v: JsValue) -> Self {
+    v.into_serde().unwrap()
+  }
 }
 
 const REGULAR_CLICK: ClickType = ClickType {
@@ -58,11 +135,9 @@ impl Default for ClickType {
   }
 }
 
-js_deserializable!(ClickType);
-
 #[derive(Clone)]
 struct DragState {
-  original_position: MousePosition,
+  original_position: MouseGridPosition,
   click_type: ClickType,
   moved: bool,
 }
@@ -70,8 +145,8 @@ struct DragState {
 #[derive(Default)]
 struct MouseState {
   drag: Option<DragState>,
-  position: Option<MousePosition>,
-  previous_position: Option<MousePosition>,
+  position: Option<MouseGridPosition>,
+  previous_position: Option<MouseGridPosition>,
 }
 
 struct State {
@@ -82,7 +157,7 @@ struct State {
   start_game_time: Number,
   current_game_time: Number,
   mouse: MouseState,
-  queued_mouse_moves: VecDeque<QueuedMouseMove>,
+  queued_mouse_moves: VecDeque<MouseCssPositionOnMap>,
 }
 
 type StateViewAspects = (BaseAspect, SelectedAspect, FutureAspect);
@@ -102,23 +177,10 @@ struct DomSamples {
   device_pixel_ratio: f64,
   current_mode: String,
 }
-js_deserializable!(DomSamples);
 
 impl DomSamples {
   fn gather() -> Self {
-    js_unwrap! {
-      var map_zoom = leaflet_map.getZoom();
-      var offset = canvas.getBoundingClientRect();
-      return {
-        map_zoom: map_zoom,
-        map_css_scale: leaflet_map.getZoomScale(leaflet_map.getZoom(), 0),
-        map_world_center: [leaflet_map.getCenter().lng, leaflet_map.getCenter().lat],
-        canvas_backing_size: [context.canvas.width, context.canvas.height],
-        canvas_css_size: [offset.width, offset.height],
-        device_pixel_ratio: window.devicePixelRatio,
-        current_mode: $("input:radio[name=machine_choice]:checked").val(),
-      };
-    }
+    js::gather_dom_samples().into_serde().unwrap()
   }
   fn map_backing_scale(&self) -> f64 {
     self.map_css_scale * self.device_pixel_ratio
@@ -165,10 +227,10 @@ fn tile_canvas_size(samples: &DomSamples) -> Vector2<f32> {
   let scale = samples.map_backing_scale() * 2.0;
   Vector2::new(scale as f32, scale as f32)
 }
-fn tile_position(samples: &DomSamples, css_position: Vector2<f64>) -> MousePosition {
+fn tile_position(samples: &DomSamples, css_position: Vector2<f64>) -> MouseGridPosition {
   let world = samples.map_world_center
     + (css_position - samples.canvas_css_size * 0.5) / samples.map_css_scale;
-  MousePosition {
+  MouseGridPosition {
     tile_center: Vector::new(
       (world[0] * 0.5).floor() as Number * 2 + 1,
       (world[1] * 0.5).floor() as Number * 2 + 1,
@@ -183,33 +245,18 @@ fn tile_position(samples: &DomSamples, css_position: Vector2<f64>) -> MousePosit
 fn draw_rectangle(
   center: Vector2<f32>,
   size: Vector2<f32>,
-  color: [f32; 3],
+  _color: [f32; 3],
   sprite: &str,
   rotation: Rotation,
 ) {
-  //let mut center = center;
-  //center[1] = 1.0-center[1];
-  let corner = -size / 2.0;
-  debug!("{:?}", (center, size));
-  js! {
-    context.save();
-    //context.scale(context.canvas.width, context.canvas.height);
-    context.translate (@{center [0]},@{center [1]});
-    context.rotate (-(Math.PI*0.5) * @{rotation.quarter_turns_from_posx_towards_posy()});
-
-    var sprite = loaded_sprites[@{sprite}];
-
-    context.drawImage (sprite, @{corner[0]},@{corner[1]}, @{size [0]},@{size [1]});
-    /*context.globalCompositeOperation = "lighter";
-    var r = @{color[0]*255.0};
-    var g = @{color[1]*255.0};
-    var b = @{color[2]*255.0};
-    context.fillStyle = "rgb("+r+","+g+","+b+")";
-    context.fillRect (@{corner[0]},@{corner[1]}, @{size [0]},@{size [1]});*/
-
-    context.restore();
-  };
-  /*sprite_offset.rotate_90((4-facing)%4);*/
+  js::draw_sprite(
+    sprite,
+    center[0],
+    center[1],
+    size[0],
+    size[1],
+    rotation.quarter_turns_from_posx_towards_posy(),
+  );
 }
 
 fn inside_machine(
@@ -223,146 +270,74 @@ fn inside_machine(
   offset[0].abs() < radius && offset[1].abs() < radius
 }
 
-pub fn run_game() {
-  let mut game = Game {
-    global_region: PlatonicRegionContents {
-      machines: Vec::new(),
-    },
-    last_change_time: 0,
-    inventory_before_last_change: Default::default(),
-    undo_stack: Vec::new(),
-    machine_types: MachineTypes {
-      presets: machine_presets(),
-      custom_modules: Vec::new(),
-    },
-    last_disturbed_times: WorldMachinesMap::default(),
-    redo_stack: Vec::new(),
-  };
-  game
-    .inventory_before_last_change
-    .insert(Material::Iron, 1000);
-  let future = game.future();
+#[wasm_bindgen]
+pub fn rust_init() {
+  std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+  live_prop_test::initialize();
 
-  let state = Rc::new(RefCell::new(State {
-    game,
-    selected: WorldMachinesMap::default(),
-    future,
-    start_ui_time: now(),
-    start_game_time: 0,
-    current_game_time: 0,
-    mouse: Default::default(),
-    queued_mouse_moves: VecDeque::new(),
-  }));
+  // let json_callback = {
+  //   let state = state.clone();
+  //   move |input: String| {
+  //     println!("{}", &input);
+  //     if let Ok(game) = serde_json::from_str::<Game>(&input) {
+  //       let mut state = state.borrow_mut();
+  //       state.start_ui_time = now();
+  //       state.start_game_time = game.last_change_time;
+  //       state.current_game_time = game.last_change_time;
+  //       state.game = game;
+  //       recalculate_future(&mut state);
+  //     }
+  //   }
+  // };
 
-  let json_callback = {
-    let state = state.clone();
-    move |input: String| {
-      println!("{}", &input);
-      if let Ok(game) = serde_json::from_str::<Game>(&input) {
-        let mut state = state.borrow_mut();
-        state.start_ui_time = now();
-        state.start_game_time = game.last_change_time;
-        state.current_game_time = game.last_change_time;
-        state.game = game;
-        recalculate_future(&mut state);
-      }
+  // js! {
+  //   $("#json").click(function() {$(this).select();})
+  //     .on ("input", function() {@{json_callback}($(this).val())});
+  // }
+  with_state(|state| {
+    for name in state
+      .game
+      .machine_types
+      .presets
+      .iter()
+      .map(|machine_type| machine_type.as_ref().name().to_owned())
+    {
+      js::init_machine_type(name);
     }
-  };
-
-  js! {
-    $("#json").click(function() {$(this).select();})
-      .on ("input", function() {@{json_callback}($(this).val())});
-  }
-
-  let mousedown_callback = {
-    let state = state.clone();
-    move |x: f64, y: f64, _width: f64, _height: f64, click_type: ClickType| {
-      let samples = DomSamples::gather();
-      mouse_move(
-        &mut state.borrow_mut(),
-        &samples,
-        tile_position(&samples, Vector2::new(x, y)),
-      );
-      mouse_down(&mut state.borrow_mut(), &samples, click_type);
-    }
-  };
-  let mouseup_callback = {
-    let state = state.clone();
-    move |x: f64, y: f64, _width: f64, _height: f64| {
-      let samples = DomSamples::gather();
-      mouse_move(
-        &mut state.borrow_mut(),
-        &samples,
-        tile_position(&samples, Vector2::new(x, y)),
-      );
-      mouse_up(&mut state.borrow_mut(), &samples);
-    }
-  };
-  let mousemove_callback = {
-    let state = state.clone();
-    move |x: f64, y: f64, width: f64, height: f64| {
-      queue_mouse_move(
-        &mut state.borrow_mut(),
-        QueuedMouseMove {
-          x,
-          y,
-          width,
-          height,
-        },
-      );
-    }
-  };
-
-  js! {
-    window.mousedown_callback = function(event) {
-      var xywh = mouse_coords(event);
-      (@{mousedown_callback})(xywh[0],xywh[1],xywh[2],xywh[3], {buttons: event.buttons, shift: event.shiftKey, ctrl: event.ctrlKey});
-    };
-  }
-  js! {
-    var dpr = window.devicePixelRatio || 1.0;
-    var width = 800;
-    var height = 800;
-    var physical_width = height*dpr;
-    var physical_height = width*dpr;
-    $("#canvas").css({width: width+"px", height:height+"px"})
-      .attr ("width", physical_width).attr ("height", physical_height);
-    leaflet_map.on("mousedown", function(event) { mousedown_callback(event.originalEvent); });
-    //window.leaflet_map.on("contextmenu", function(e) {e.preventDefault()});
-    $("body")
-      .on("mouseup", mouse_callback (@{mouseup_callback}))
-      .on("mousemove", mouse_callback (@{mousemove_callback}));
-  }
-
-  for name in state
-    .borrow()
-    .game
-    .machine_types
-    .presets
-    .iter()
-    .map(|machine_type| machine_type.as_ref().name().to_owned())
-    .chain(vec![])
-  {
-    let id = format!("Machine_choice_{}", &name);
-    js! {
-      $("<input>", {type: "radio", id:@{& id}, name: "machine_choice", value: @{&name}, checked:@{name == "Iron mine"}})
-        .on("click", function(e) {
-          if (@{&name} === "Conveyor") {
-            leaflet_map.dragging.disable();
-          } else {
-            leaflet_map.dragging.enable();
-          }
-        })
-        .appendTo ($("#app"));
-      $("<label>", {for:@{& id}, text: @{&name}}).appendTo ($("#app"));
-    }
-  }
-
-  run(move |_inputs| {
-    do_frame(&state);
   });
+}
 
-  stdweb::event_loop();
+#[wasm_bindgen]
+pub fn rust_mousedown(position: MouseCssPositionOnMap, click_type: ClickType) {
+  with_state(|state| {
+    let samples = DomSamples::gather();
+    mouse_move(
+      state,
+      &samples,
+      tile_position(&samples, Vector2::new(position.x, position.y)),
+    );
+    mouse_down(state, &samples, click_type);
+  })
+}
+
+#[wasm_bindgen]
+pub fn rust_mouseup(position: MouseCssPositionOnMap) {
+  with_state(|state| {
+    let samples = DomSamples::gather();
+    mouse_move(
+      state,
+      &samples,
+      tile_position(&samples, Vector2::new(position.x, position.y)),
+    );
+    mouse_up(state, &samples);
+  })
+}
+
+#[wasm_bindgen]
+pub fn rust_mousemove(position: MouseCssPositionOnMap) {
+  with_state(|state| {
+    queue_mouse_move(state, position);
+  })
 }
 
 fn with_smallest_region_containing<F: FnOnce(WorldRegionView<StateViewAspects>) -> R, R>(
@@ -458,7 +433,11 @@ fn recalculate_future(state: &mut State) {
   }*/
 }
 
-fn hovering_area(state: &State, samples: &DomSamples, position: MousePosition) -> (Vector, Number) {
+fn hovering_area(
+  state: &State,
+  samples: &DomSamples,
+  position: MouseGridPosition,
+) -> (Vector, Number) {
   if let Some(machine_type) = state
     .game
     .machine_types
@@ -479,13 +458,13 @@ fn hovering_area(state: &State, samples: &DomSamples, position: MousePosition) -
   }
 }
 
-fn queue_mouse_move(state: &mut State, mouse_move: QueuedMouseMove) {
+fn queue_mouse_move(state: &mut State, mouse_move: MouseCssPositionOnMap) {
   if state.queued_mouse_moves.len() >= 100 {
     state.queued_mouse_moves.pop_front();
   }
   state.queued_mouse_moves.push_back(mouse_move);
 }
-fn mouse_move(state: &mut State, samples: &DomSamples, position: MousePosition) {
+fn mouse_move(state: &mut State, samples: &DomSamples, position: MouseGridPosition) {
   let facing = match state.mouse.position {
     None => Facing::default(),
     Some(previous_position) => {
@@ -761,52 +740,44 @@ fn draw_region(
   }
 }
 
-fn do_frame(state: &Rc<RefCell<State>>) {
-  if js_unwrap! {return window.loaded_sprites === undefined;} {
-    return;
-  }
-
+#[wasm_bindgen]
+pub fn do_frame() {
   let samples = DomSamples::gather();
 
-  let mut state = state.borrow_mut();
-  let state = &mut *state;
+  with_state(|state| {
+    let mut tweaked_samples = samples.clone();
+    for MouseCssPositionOnMap {
+      x,
+      y,
+      width,
+      height,
+    } in mem::take(&mut state.queued_mouse_moves)
+    {
+      // just in case there was a queued mouse move followed by a redraw,
+      // make sure to get the positioning correct based on the size at the time
+      tweaked_samples.canvas_css_size = Vector2::new(width, height);
+      mouse_move(
+        state,
+        &samples,
+        tile_position(&tweaked_samples, Vector2::new(x, y)),
+      );
+    }
 
-  let mut tweaked_samples = samples.clone();
-  for QueuedMouseMove {
-    x,
-    y,
-    width,
-    height,
-  } in mem::take(&mut state.queued_mouse_moves)
-  {
-    // just in case there was a queued mouse move followed by a redraw,
-    // make sure to get the positioning correct based on the size at the time
-    tweaked_samples.canvas_css_size = Vector2::new(width, height);
-    mouse_move(
-      state,
+    let fractional_time = state.start_game_time as f64
+      + (now() - state.start_ui_time) * TIME_TO_MOVE_MATERIAL as f64 * 2.0;
+    state.current_game_time = fractional_time as Number;
+
+    js::clear_canvas();
+
+    //target.clear_color(1.0, 1.0, 1.0, 1.0);
+    draw_region(
       &samples,
-      tile_position(&tweaked_samples, Vector2::new(x, y)),
+      state.view().global_region(),
+      state.current_game_time,
     );
-  }
 
-  let fractional_time = state.start_game_time as f64
-    + (now() - state.start_ui_time) * TIME_TO_MOVE_MATERIAL as f64 * 2.0;
-  state.current_game_time = fractional_time as Number;
-
-  js! {
-    context.fillStyle = "white";
-    context.fillRect(0, 0, context.canvas.width, context.canvas.height);
-  }
-
-  //target.clear_color(1.0, 1.0, 1.0, 1.0);
-  draw_region(
-    &samples,
-    state.view().global_region(),
-    state.current_game_time,
-  );
-
-  js! { $("#inventory").empty();}
-  for (material, amount) in state.view().inventory_at(state.current_game_time) {
-    js! { $("#inventory").append(@{format!("{:?}: {}", material, amount)});}
-  }
+    js::update_inventory(
+      JsValue::from_serde(&state.view().inventory_at(state.current_game_time)).unwrap(),
+    );
+  })
 }
