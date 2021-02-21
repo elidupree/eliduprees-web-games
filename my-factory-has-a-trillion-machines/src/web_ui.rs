@@ -3,11 +3,9 @@ use super::*;
 use nalgebra::Vector2;
 use num::Integer;
 use serde::Deserialize;
-use siphasher::sip::SipHasher;
 use std::cell::RefCell;
 use std::cmp::max;
 use std::collections::VecDeque;
-use std::hash::{Hash, Hasher};
 use std::mem;
 use wasm_bindgen::prelude::*;
 
@@ -197,19 +195,6 @@ fn machine_presets() -> Vec<MachineType> {
   ]
 }
 
-fn machine_color(machine: &PlatonicMachine) -> [f32; 3] {
-  let mut hasher = SipHasher::new();
-  machine.hash(&mut hasher);
-  let hash = hasher.finish();
-  let mask = (1u64 << 20) - 1;
-  let factor = 0.8 / (mask as f32);
-  [
-    0.1 + ((hash) & mask) as f32 * factor,
-    0.1 + ((hash >> 20) & mask) as f32 * factor,
-    0.1 + ((hash >> 40) & mask) as f32 * factor,
-  ]
-}
-
 fn canvas_position(samples: &DomSamples, position: Vector) -> Vector2<f32> {
   canvas_position_from_f64(samples, position.to_f64())
 }
@@ -242,13 +227,7 @@ fn tile_position(samples: &DomSamples, css_position: Vector2<f64>) -> MouseGridP
   }
 }
 
-fn draw_rectangle(
-  center: Vector2<f32>,
-  size: Vector2<f32>,
-  _color: [f32; 3],
-  sprite: &str,
-  rotation: Rotation,
-) {
+fn draw_rectangle(center: Vector2<f32>, size: Vector2<f32>, sprite: &str, rotation: Rotation) {
   js::draw_sprite(
     sprite,
     center[0],
@@ -660,14 +639,12 @@ fn draw_region(
     draw_rectangle(
       canvas_position(samples, machine.isomorphism().translation),
       size,
-      machine_color(&machine.platonic()),
       "rounded-rectangle-transparent",
       Rotation::default(),
     );
     draw_rectangle(
       canvas_position(samples, machine.isomorphism().translation),
       size,
-      machine_color(&machine.platonic()),
       machine.machine_type().icon(),
       machine.isomorphism().rotation,
     );
@@ -686,7 +663,6 @@ fn draw_region(
         draw_rectangle(
           pos,
           tile_canvas_size(samples),
-          machine_color(&machine.platonic()),
           "input",
           input_location.facing - Facing::default(),
         );
@@ -694,7 +670,6 @@ fn draw_region(
           draw_rectangle(
             pos,
             tile_canvas_size(samples) * 0.8,
-            machine_color(&machine.platonic()),
             material.icon(),
             Rotation::default(),
           );
@@ -711,7 +686,6 @@ fn draw_region(
             output_location.position - output_location.facing.unit_vector(),
           ),
           tile_canvas_size(samples),
-          machine_color(&machine.platonic()),
           "input",
           output_location.facing.rotate_90(2) - Facing::default(),
         );
@@ -725,7 +699,6 @@ fn draw_region(
         draw_rectangle(
           canvas_position_from_f64(samples, position),
           tile_canvas_size(samples) * 0.6,
-          [0.0, 0.0, 0.0],
           material.icon(),
           Rotation::default(),
         );
