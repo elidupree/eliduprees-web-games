@@ -5,39 +5,6 @@
 #[macro_use]
 extern crate proptest;
 
-#[allow(unused_macros)]
-#[cfg(any(target_arch = "wasm32", target_arch = "asmjs"))]
-macro_rules! debug {
-  ($($stuff: tt)*) => {{
-    /*thread_local!{static DEBUG_LINES: std::cell::RefCell<usize> = std::cell::RefCell::new(0);}
-    DEBUG_LINES.with(|lines| {
-      let mut lines = lines.borrow_mut();
-      *lines += 1;
-      if (1f64 + (*lines) as f64/100f64).ln() as i32 > (1f64 + (*lines-1) as f64/100f64).ln() as i32 {
-        println!("UHh");
-        println!($($stuff)*);
-      }
-    });*/
-    let string = format!($($stuff)*);
-    js! {
-      window.debug_length = window.debug_length || 0;
-      if (window.debug_length < 10000) {
-        window.debug_length += @{string.len() as u32};
-        document.getElementById("debug").textContent += @{&string};
-        console.log(@{&string});
-      }
-    }
-  }}
-}
-
-#[allow(unused_macros)]
-#[cfg(not(any(target_arch = "wasm32", target_arch = "asmjs")))]
-macro_rules! debug {
-  ($($stuff: tt)*) => {
-    eprintln!($($stuff)*)
-  }
-}
-
 #[macro_use]
 pub mod machine_data;
 #[macro_use]

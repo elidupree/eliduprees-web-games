@@ -1,6 +1,7 @@
 #![recursion_limit = "256"]
 #![feature(specialization)]
 
+use log::warn;
 use nalgebra::Vector2;
 use rand::Rng;
 use std::any::Any;
@@ -142,24 +143,25 @@ where
       t
     } else {
       let new_invalid = state.latest_invalid.as_ref() != Some(&from_js);
-      state.latest_invalid = Some(from_js);
-      if let Some(t) = &state.latest_valid {
+      let result = if let Some(t) = &state.latest_valid {
         if new_invalid {
-          // debug!(
-          //   "js gave invalid value {:?} for auto-constant `{}`; using the previous value of {:?}",
-          //   from_js, t
-          // );
+          warn!(
+            "js gave invalid value {:?} for auto-constant `{}`; using the previous value of {:?}",
+            from_js, name, t
+          );
         }
         t.clone()
       } else {
         if new_invalid {
-          // debug!(
-          //   "js gave invalid value {:?} for auto-constant `{}`; using the default value of {:?}",
-          //   from_js, default
-          // );
+          warn!(
+            "js gave invalid value {:?} for auto-constant `{}`; using the default value of {:?}",
+            from_js, name, default
+          );
         }
         default
-      }
+      };
+      state.latest_invalid = Some(from_js);
+      result
     }
   })
 }
