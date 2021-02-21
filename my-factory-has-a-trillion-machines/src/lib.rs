@@ -18,9 +18,6 @@ pub mod modules;
 pub mod primitive_machines;
 pub mod undo_history;
 
-#[cfg(any(target_arch = "wasm32", target_arch = "asmjs"))]
-mod web_ui;
-
 /*#[cfg(not(any(target_arch = "wasm32", target_arch = "asmjs")))]
 fn main() {
   //println!( "Non-emscripten builds don't do anything right now");

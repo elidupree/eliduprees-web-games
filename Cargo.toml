@@ -6,6 +6,7 @@ members = [
     "webfxr",
     "super-of-2",
     "my-factory-has-a-trillion-machines",
+    "my-factory-has-a-trillion-machines-web-frontend",
 ]
 
 [profile.dev]

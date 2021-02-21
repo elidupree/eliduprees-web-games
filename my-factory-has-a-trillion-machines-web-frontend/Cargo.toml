@@ -1,0 +1,19 @@
+[package]
+name = "my-factory-has-a-trillion-machines-web-frontend"
+version = "0.1.0"
+authors = ["Eli Dupree <vcs@elidupree.com>"]
+edition = "2018"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+eliduprees-web-games-lib = { path = "../eliduprees-web-games-lib" }
+my-factory-has-a-trillion-machines = { path = "../my-factory-has-a-trillion-machines" }
+wasm-bindgen = {version = "0.2.70", features = ["serde-serialize"]}
+console_error_panic_hook = "0.1.6"
+serde = {version = "1", features = ["derive","rc"]}
+serde_json = "1"
+num = "0.2"
+nalgebra = {version = "0.16", features = ["serde-serialize"]}
+live-prop-test = {git = "https://github.com/elidupree/live-prop-test", version = "0.1", features = ["wasm-bindgen"]}

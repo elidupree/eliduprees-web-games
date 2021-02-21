@@ -1,7 +1,7 @@
 "use strict";
 
 import init, { MouseCssPositionOnMap, ClickType, rust_init, do_frame, rust_mousedown, rust_mousemove, rust_mouseup, }
-  from '/my-factory-has-a-trillion-machines/pkg/my_factory_has_a_trillion_machines.js';
+  from '/my-factory-has-a-trillion-machines-web-frontend/pkg/my_factory_has_a_trillion_machines_web_frontend.js';
 
 async function run() {
   await init();
