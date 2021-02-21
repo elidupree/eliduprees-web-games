@@ -102,45 +102,66 @@ pub fn auto_constant<T>(name: &str, default: T) -> T
 where
   T: JsValueAs + Into<JsValue> + Clone + EqIncludingFloats + Any + Debug,
 {
-  thread_local! {
-    static LATEST_AUTO_CONSTANTS: RefCell<HashMap<String, Box<dyn Any>>> = RefCell:: new (HashMap::new());
-    static DEFAULT_AUTO_CONSTANTS: RefCell<HashMap<String, Box<dyn Any>>> = RefCell:: new (HashMap::new());
+  struct AutoConstantState<T> {
+    known_default: Option<T>,
+    latest_valid: Option<T>,
+    latest_invalid: Option<JsValue>,
   }
-  DEFAULT_AUTO_CONSTANTS.with(|defaults| {
-    let insert_result = defaults.borrow_mut().insert(name.to_owned(), Box::new(default.clone()));
-    if let Some(previous) = insert_result {
-      let previous = previous.downcast_ref::< T >().unwrap();
-      if !previous.eq(&default) {
-        panic!("tried to use auto-constant {} with default {:?}, but it had already been used with default {:?}!", name, default, previous)
+  impl<T> Default for AutoConstantState<T> {
+    fn default() -> Self {
+      AutoConstantState {
+        known_default: None,
+        latest_valid: None,
+        latest_invalid: None,
       }
     }
-  });
-  let from_js = js::auto_constant(name, default.clone().into());
-  if let Some(t) = T::js_value_as(&from_js) {
-    LATEST_AUTO_CONSTANTS.with(|latest| {
-      latest
-        .borrow_mut()
-        .insert(name.to_owned(), Box::new(t.clone()));
-    });
-    t
-  } else {
-    LATEST_AUTO_CONSTANTS.with(|latest| {
-      if let Some(t) = latest.borrow().get(name) {
-        let t = t.downcast_ref::<T>().unwrap().clone();
-        // debug!(
-        //   "js gave invalid value {:?} for auto-constant `{}`; using the previous value of {:?}",
-        //   from_js, t
-        // );
-        t
+  }
+  thread_local! {
+    static AUTO_CONSTANTS: RefCell<HashMap<String, Box<dyn Any>>> = RefCell::new(HashMap::new());
+  }
+  AUTO_CONSTANTS.with(|auto_constants| {
+    let mut auto_constants = auto_constants.borrow_mut();
+    let state = auto_constants.entry(name.to_owned()).or_insert_with(|| Box::new(AutoConstantState::<T>::default()));
+    let mut state = match state.downcast_mut::<AutoConstantState<T>>() {
+      Some(state) => state,
+      None => panic!("tried to use auto-constant {} with type {}, but it had already been used with a different type!", name, std::any::type_name::<T>()),
+    };
+    if let Some(known_default) = &state.known_default {
+      if !known_default.eq(&default) {
+        panic!("tried to use auto-constant {} with default {:?}, but it had already been used with default {:?}!", name, default, known_default)
+      }
+    }
+    else {
+      state.known_default = Some(default.clone());
+    }
+
+    let from_js = js::auto_constant(name, default.clone().into());
+
+    if let Some(t) = T::js_value_as(&from_js) {
+      state.latest_valid = Some(t.clone());
+      t
+    } else {
+      let new_invalid = state.latest_invalid.as_ref() != Some(&from_js);
+      state.latest_invalid = Some(from_js);
+      if let Some(t) = &state.latest_valid {
+        if new_invalid {
+          // debug!(
+          //   "js gave invalid value {:?} for auto-constant `{}`; using the previous value of {:?}",
+          //   from_js, t
+          // );
+        }
+        t.clone()
       } else {
-        // debug!(
-        //   "js gave invalid value {:?} for auto-constant `{}`; using the default value of {:?}",
-        //   from_js, default
-        // );
+        if new_invalid {
+          // debug!(
+          //   "js gave invalid value {:?} for auto-constant `{}`; using the default value of {:?}",
+          //   from_js, default
+          // );
+        }
         default
       }
-    })
-  }
+    }
+  })
 }
 
 pub trait StaticDowncast<T> {
