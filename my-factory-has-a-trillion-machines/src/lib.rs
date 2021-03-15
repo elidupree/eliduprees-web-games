@@ -9,7 +9,6 @@ extern crate proptest;
 pub mod machine_data;
 #[macro_use]
 pub mod graph_algorithms;
-pub use eliduprees_web_games_lib::*;
 // hack-ish: modules marked pub to suppress dead code warnings from builds with different conditional compilation
 pub mod flow_pattern;
 pub mod geometry;
