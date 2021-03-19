@@ -15,6 +15,7 @@ pub mod geometry;
 pub mod misc;
 pub mod modules;
 pub mod primitive_machines;
+pub mod ui;
 pub mod undo_history;
 
 /*#[cfg(not(any(target_arch = "wasm32", target_arch = "asmjs")))]

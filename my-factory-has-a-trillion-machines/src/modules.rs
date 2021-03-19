@@ -488,4 +488,12 @@ impl Game {
     canonicalized.canonicalize();
     *self == canonicalized
   }
+
+  pub fn check_invariants(&self) -> Result<(), String> {
+    // TODO: various other validity checks
+    if !self.is_canonical() {
+      return Err("was not canonical".to_string());
+    }
+    Ok(())
+  }
 }
