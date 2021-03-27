@@ -11,7 +11,10 @@ This layer's interface with the backend: This layer produces AddRemoveMachines i
 */
 use crate::geometry::{Number, Vector};
 use crate::graph_algorithms::GameFuture;
-use crate::machine_data::{Game, Material, PlatonicMachine, WorldMachinesMap};
+use crate::machine_data::{
+  Game, MachineMomentaryVisuals, Material, PlatonicMachine, WorldMachinesMap,
+};
+use live_prop_test::{live_prop_test, lpt_assert_eq};
 use nalgebra::Vector2;
 use std::collections::HashMap;
 
@@ -21,24 +24,14 @@ struct MouseGridPosition {
   nearest_lines: Vector,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 enum Selection {
-  RealMachines(WorldMachinesMap<()>),
-  GhostMachinesMovedFrom(WorldMachinesMap<()>),
+  NormalMachines(WorldMachinesMap<()>),
+  GhostMachinesMovedFrom {
+    selected: WorldMachinesMap<()>,
+    offset: Vector,
+  },
   NovelGhostMachines(Vec<PlatonicMachine>),
-}
-
-#[derive(Debug)]
-pub struct UiState {
-  game: Game,
-  selected: Option<Selection>,
-  future: GameFuture,
-  current_game_time: Number,
-
-  // note that the ghost machine definitions may refer to machine types from `game`,
-  // so the UI bits want to be a dependent type rather than separate
-  ghost_machines: Option<GhostMachines>,
-  drag: Option<DragState>,
 }
 
 #[derive(Clone, Debug)]
@@ -53,16 +46,61 @@ struct DragState {
   drag_type: DragType,
 }
 
-struct View {
+#[derive(Clone, Debug)]
+enum Mode {
+  Panning,
+  Selection,
+  PrimitiveMachine(usize),
+}
+
+#[derive(Clone, Debug)]
+enum ImplicitMode {
+  Normal(Mode),
+  GhostMachines,
+}
+
+#[derive(Debug)]
+pub struct UiState {
+  game: Game,
+
+  /// a cache; should always equal game.future()
+  future: GameFuture,
+  current_game_time: Number,
+
+  // note that the ghost machine definitions may refer to machine types from `game`,
+  // so the UI bits want to be a dependent type rather than separate
+  mode: Mode,
+  selected: Option<Selection>,
+  drag: Option<DragState>,
+}
+
+struct DisplayedMachine {
+  machine: PlatonicMachine,
+  momentary_visuals: MachineMomentaryVisuals,
+}
+
+pub struct View {
   selection: Option<[Vector2<f64>; 2]>,
-  machines: Vec,
-  materials: Vec,
+  machines: Vec<DisplayedMachine>,
   inventory: HashMap<Material, Number>,
 }
 
 impl UiState {
+  fn implicit_mode(&self) -> ImplicitMode {
+    match self.selected {
+      Some(Selection::GhostMachinesMovedFrom { .. }) | Some(Selection::NovelGhostMachines(..)) => {
+        ImplicitMode::GhostMachines
+      }
+      _ => ImplicitMode::Normal(self.mode.clone()),
+    }
+  }
+}
+
+#[live_prop_test]
+impl UiState {
   pub fn check_invariants(&self) -> Result<(), String> {
     self.game.check_invariants()?;
+    lpt_assert_eq!(self.future, self.game.future());
     Ok(())
   }
 
@@ -70,7 +108,13 @@ impl UiState {
     precondition = "self.check_invariants()",
     postcondition = "self.check_invariants()"
   )]
-  pub fn click_map(&mut self, position: Vector2<f64>) {}
+  pub fn click_map(&mut self, position: Vector2<f64>) {
+    match self.implicit_mode() {
+      ImplicitMode::Normal(Mode::PrimitiveMachine(machine_type_id)) => todo!("build machine"),
+      ImplicitMode::GhostMachines => self.discard_ghost_machines().unwrap(),
+      _ => {}
+    }
+  }
 
   #[live_prop_test(
     precondition = "self.check_invariants()",
@@ -130,7 +174,30 @@ impl UiState {
     precondition = "self.check_invariants()",
     postcondition = "self.check_invariants()"
   )]
+  pub fn discard_ghost_machines(&mut self) -> Result<(), ()> {
+    match self.selected.clone() {
+      Some(Selection::GhostMachinesMovedFrom {
+        selected,
+        offset: _,
+      }) => {
+        self.selected = Some(Selection::NormalMachines(selected));
+      }
+      Some(Selection::NovelGhostMachines(machines)) => {
+        //refund materials
+        self.selected = None;
+      }
+      _ => return Err(()),
+    }
+    Ok(())
+  }
+
+  #[live_prop_test(
+    precondition = "self.check_invariants()",
+    postcondition = "self.check_invariants()"
+  )]
   pub fn undo(&mut self) {}
 
-  pub fn view(&self) -> View {}
+  pub fn view(&self) -> View {
+    todo!()
+  }
 }
