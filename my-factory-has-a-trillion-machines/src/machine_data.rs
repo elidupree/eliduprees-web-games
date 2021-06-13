@@ -16,6 +16,7 @@ use crate::geometry::{
 use crate::modules::PlatonicModule;
 use crate::primitive_machines::{Assembler, Distributor};
 use crate::undo_history::AddRemoveMachines;
+use std::ops::{Deref, DerefMut};
 
 pub const MAX_COMPONENTS: usize = 256;
 pub const MAX_MACHINE_INPUTS: usize = 8;
@@ -43,9 +44,28 @@ pub struct PlatonicMachine {
   pub state: MachineState,
 }
 
-pub type MachineIdWithinPlatonicRegion =
-  impl Copy + Clone + Ord + Hash + Debug + Default + Serialize + DeserializeOwned;
-pub type MachineGlobalId = Vector;
+/// A simple wrapper around PlatonicMachine, indicating that this machine is positioned relative to the global map rather than its parent module. We add a wrapper to catch mistakes where you compare the two with each other.
+#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
+#[serde(transparent)]
+pub struct GlobalMachine(pub PlatonicMachine);
+impl Deref for GlobalMachine {
+  type Target = PlatonicMachine;
+
+  fn deref(&self) -> &Self::Target {
+    &self.0
+  }
+}
+impl DerefMut for GlobalMachine {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.0
+  }
+}
+
+// the existential impl stopped compiling at some Rust update
+// pub type MachineIdWithinPlatonicRegion =
+//   impl Copy + Clone + Ord + Hash + Debug + Default + Serialize + DeserializeOwned;
+pub type MachineIdWithinPlatonicRegion = (Number, Number);
+
 impl PlatonicMachine {
   /// An ID that is guaranteed to be unique within its region.
   ///
@@ -56,25 +76,6 @@ impl PlatonicMachine {
   pub fn id_within_region(&self) -> MachineIdWithinPlatonicRegion {
     let position = self.state.position.translation;
     (position[0], position[1])
-  }
-
-  /// An ID that is guaranteed to be unique among all machines in all regions.
-  ///
-  /// note: this must NOT include a module index,
-  /// because this is used for sorting BEFORE modules are canonicalized.
-  /// currently, position is enough to enforce unique ids within legal game states.
-  /// if we make bridge-like machines later, this will need to get more sophisticated.
-  ///
-  /// This global id can't even be the center of the machine, because there may be
-  /// another machine at the center of a module. Thus, we use a location that can't
-  /// be shared - the (-x, -y) corner, which is always solid.
-  pub fn global_id(
-    &self,
-    ancestors_isomorphism: GridIsomorphism,
-    machines_types: &MachineTypes,
-  ) -> MachineGlobalId {
-    let radius = machines_types.get(self.type_id).radius();
-    (self.state.position * ancestors_isomorphism).translation - Vector::new(radius - 1, radius - 1)
   }
 }
 

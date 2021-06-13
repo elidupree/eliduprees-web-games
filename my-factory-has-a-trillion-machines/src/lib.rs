@@ -1,4 +1,4 @@
-#![feature(type_alias_impl_trait, iter_partition_in_place)]
+#![feature(min_type_alias_impl_trait, iter_partition_in_place)]
 #![recursion_limit = "256"]
 
 #[cfg(test)]
