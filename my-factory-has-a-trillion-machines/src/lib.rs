@@ -1,4 +1,4 @@
-#![feature(type_alias_impl_trait, iter_partition_in_place)]
+#![feature(min_type_alias_impl_trait, iter_partition_in_place)]
 #![recursion_limit = "256"]
 
 #[cfg(test)]
@@ -15,6 +15,7 @@ pub mod geometry;
 pub mod misc;
 pub mod modules;
 pub mod primitive_machines;
+pub mod ui;
 pub mod undo_history;
 
 /*#[cfg(not(any(target_arch = "wasm32", target_arch = "asmjs")))]

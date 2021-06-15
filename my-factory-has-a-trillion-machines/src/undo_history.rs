@@ -1,12 +1,10 @@
-use crate::geometry::GridIsomorphism;
 use crate::geometry::Number;
 use crate::graph_algorithms::{
   BaseAspect, BaseMutAspect, FutureAspect, GameFuture, GameView, SelectedAspect, SelectedMutAspect,
   WorldMachineView, WorldRegionView,
 };
-use crate::machine_data::Game;
 use crate::machine_data::{
-  MachineGlobalId, MachineTypeId, PlatonicMachine, WorldMachinesMap, TIME_TO_MOVE_MATERIAL,
+  Game, GlobalMachine, MachineTypeId, WorldMachinesMap, TIME_TO_MOVE_MATERIAL,
 };
 use live_prop_test::{live_prop_test, lpt_assert, lpt_assert_eq};
 use serde::{Deserialize, Serialize};
@@ -262,8 +260,8 @@ impl CheckUndoneMap {
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub struct AddRemoveMachines {
-  pub added: Vec<PlatonicMachine>,
-  pub removed: Vec<MachineGlobalId>,
+  pub added: Vec<GlobalMachine>,
+  pub removed: Vec<GlobalMachine>,
 }
 
 //impl_world_views_for_aspect_tuple!(&mut (BaseMutAspect, SelectedMutAspect,));
@@ -280,48 +278,33 @@ impl ModifyGameUndoable for AddRemoveMachines {
     future: &GameFuture,
     time: Number,
   ) -> AddRemoveMachines {
-    let undo_removed: Vec<_> = self
-      .added
-      .iter()
-      .map(|machine| machine.global_id(GridIsomorphism::default(), &game.machine_types))
-      .collect();
-    let mut undo_added = Vec::new();
-
     fn handle_region(
       mut region: WorldRegionView<AddRemoveMachinesAspects>,
-      added: &mut [PlatonicMachine],
-      removed: &mut [MachineGlobalId],
-      undo_added: &mut Vec<PlatonicMachine>,
+      added: &mut [GlobalMachine],
+      removed: &mut [GlobalMachine],
     ) {
       let mut num_added_below = 0;
       let mut num_removed_below = 0;
       let region_isomorphism = region.isomorphism();
       region.retain_machines(|mut machine| {
-        if removed[num_removed_below..].contains(&machine.global_id()) {
+        if removed[num_removed_below..].contains(&machine.global()) {
           machine.deselect();
-          undo_added.push(machine.global_platonic());
           false
         } else {
           if let Some(mut module) = machine.as_module_mut() {
-            let num_added_here =
-              added[num_added_below..]
-                .iter_mut()
-                .partition_in_place(|added_machine| {
-                  module.contains_global_id(
-                    added_machine.global_id(GridIsomorphism::default(), module.machine_types()),
-                  )
-                });
+            let num_added_here = added[num_added_below..]
+              .iter_mut()
+              .partition_in_place(|added_machine| module.contains_global_machine(added_machine));
 
             let num_removed_here = removed[num_removed_below..]
               .iter_mut()
-              .partition_in_place(|&id| module.contains_global_id(id));
+              .partition_in_place(|machine| module.contains_global_machine(machine));
 
             if num_added_here > 0 || num_removed_here > 0 {
               handle_region(
                 module.inner_region_mut(),
                 &mut added[num_added_below..num_added_below + num_added_here],
                 &mut removed[num_removed_below..num_removed_below + num_removed_here],
-                undo_added,
               );
             }
             num_added_below += num_added_here;
@@ -335,7 +318,7 @@ impl ModifyGameUndoable for AddRemoveMachines {
       if !added_here.is_empty() {
         region.insert_machines(added_here.iter().cloned().map(|mut machine| {
           machine.state.position = machine.state.position / region_isomorphism;
-          machine
+          machine.0
         }));
       }
     }
@@ -346,12 +329,11 @@ impl ModifyGameUndoable for AddRemoveMachines {
       game_view.global_region_mut(),
       &mut self.added,
       &mut self.removed,
-      &mut undo_added,
     );
 
     AddRemoveMachines {
-      added: undo_added,
-      removed: undo_removed,
+      added: self.removed,
+      removed: self.added,
     }
   }
 }
