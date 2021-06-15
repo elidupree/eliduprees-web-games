@@ -65,6 +65,28 @@ impl Game {
     }
   }
   fn update(&mut self, intent: Intent) {
+    match intent {
+      Intent::Move(movement_intent) => {
+        if matches!(
+          self.player.action_state,
+          PlayerActionState::Interacting { .. }
+        ) {
+          self.player.action_state = PlayerActionState::Moving {
+            velocity: FloatingVector::zeros(),
+          };
+        }
+      }
+      Intent::Interact(what) => {
+        if matches!(self.player.action_state, PlayerActionState::Moving { velocity } if velocity == FloatingVector::zeros())
+        {
+          self.player.action_state = PlayerActionState::Interacting {
+            what,
+            progress: 0.0,
+          };
+        }
+      }
+    }
+
     match &mut self.player.action_state {
       PlayerActionState::Moving { velocity } => {
         let acceleration = auto_constant("player_acceleration", 4.0);
@@ -85,16 +107,6 @@ impl Game {
       }
     }
 
-    // "If you're trying to interact and you're not moving, start interacting"
-    if matches! (self.player.action_state, PlayerActionState::Moving { velocity } if velocity == FloatingVector::zeros())
-    {
-      if let Intent::Interact(what) = intent {
-        self.player.action_state = PlayerActionState::Interacting {
-          what,
-          progress: 0.0,
-        };
-      }
-    }
     self.time += UPDATE_DURATION;
   }
   pub fn update_until(&mut self, new_time: Time, intent: Intent) {
