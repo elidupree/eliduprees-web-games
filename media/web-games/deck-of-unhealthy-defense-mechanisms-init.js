@@ -36,11 +36,59 @@ async function run() {
   await init();
   rust_init();
 
-  function frame() {
+  let horizontal_intent = 0;
+  let vertical_intent = 0;
+  let action_intent = null;
+  let action_keys = ["z","x","c","v","b","n","m"];
+  document.body.addEventListener("keydown", (event) => {
+    const key = event.key;
+    if (key === "w" || key === "ArrowUp") {
+      vertical_intent = -1;
+    }
+    if (key === "a" || key === "ArrowLeft") {
+      horizontal_intent = -1;
+    }
+    if (key === "s" || key === "ArrowDown") {
+      vertical_intent = 1;
+    }
+    if (key === "d" || key === "ArrowRight") {
+      horizontal_intent = 1;
+    }
+    if (action_keys.includes(key)) {
+      action_intent = key;
+    }
+  });
+  document.body.addEventListener("keyup", (event) => {
+    const key = event.key;
+    if ((key === "w" || key === "ArrowUp") && vertical_intent === -1) {
+      vertical_intent = 0;
+    }
+    if ((key === "a" || key === "ArrowLeft") && horizontal_intent === -1) {
+      horizontal_intent = 0;
+    }
+    if ((key === "s" || key === "ArrowDown") && vertical_intent === 1) {
+      vertical_intent = 0;
+    }
+    if ((key === "d" || key === "ArrowRight") && horizontal_intent === 1) {
+      horizontal_intent = 0;
+    }
+    if (action_intent === key) {
+      action_intent = null;
+    }
+  });
+
+  function frame(time) {
     window.requestAnimationFrame(frame);
-    rust_do_frame();
+    let intent;
+    if (action_intent === null) {
+      intent = {"Move": [horizontal_intent, vertical_intent]};
+    } else {
+      intent = {"Interact": "InteractLeft"};
+    }
+    document.getElementById("debug").innerText = action_intent;
+    rust_do_frame(time, {intent});
   }
-  frame();
+  window.requestAnimationFrame(frame);
 }
 
 run();

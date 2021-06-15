@@ -46,25 +46,14 @@ pub fn rust_init() {
   with_state(|state| {});
 }
 
-#[wasm_bindgen]
-#[derive(Copy, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct StateFromJs {
-  pub x: f64,
-  pub y: f64,
-  pub width: f64,
-  pub height: f64,
+  pub intent: Intent,
 }
 
 #[wasm_bindgen]
-impl StateFromJs {
-  #[wasm_bindgen(constructor)]
-  pub fn from_js_value(v: JsValue) -> Self {
-    v.into_serde().unwrap()
-  }
-}
-
-#[wasm_bindgen]
-pub fn rust_do_frame(frame_time: f64) {
+pub fn rust_do_frame(frame_time: f64, state_from_js: JsValue) {
+  let state_from_js: StateFromJs = state_from_js.into_serde().unwrap();
   with_state(|state| {
     if let Some(last_frame_time) = state.last_frame_time {
       let difference = (frame_time - last_frame_time).min(1.0 / 29.9);
@@ -72,10 +61,9 @@ pub fn rust_do_frame(frame_time: f64) {
     }
     state.last_frame_time = Some(frame_time);
 
-    state.game.update_until(
-      state.accumulated_game_time,
-      Intent::Move(FloatingVector::new(1.0, 1.0)),
-    );
+    state
+      .game
+      .update_until(state.accumulated_game_time, state_from_js.intent);
 
     js::clear_canvas();
     js::draw_rect(
