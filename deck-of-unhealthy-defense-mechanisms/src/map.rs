@@ -49,12 +49,13 @@ impl FloatingVector {
       None
     }
   }
-  fn apply_friction(&mut self, magnitude_reduction: f64) {
-    let magnitude = self.magnitude();
-    if magnitude_reduction >= magnitude {
-      *self = FloatingVector::zeros();
+  fn move_towards(&mut self, target: FloatingVector, change_size: f64) {
+    let difference = target - *self;
+    let difference_magnitude = difference.magnitude();
+    if change_size >= difference_magnitude {
+      *self = target;
     } else {
-      *self *= (magnitude - magnitude_reduction) / magnitude;
+      *self += difference * (change_size / difference_magnitude);
     }
   }
   fn limit_magnitude(&mut self, magnitude_limit: f64) {

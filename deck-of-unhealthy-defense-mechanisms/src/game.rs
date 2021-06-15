@@ -90,15 +90,16 @@ impl Game {
     match &mut self.player.action_state {
       PlayerActionState::Moving { velocity } => {
         let acceleration = auto_constant("player_acceleration", 4.0);
-        match intent {
-          Intent::Move(movement_intent) => {
-            *velocity += acceleration * movement_intent;
-          }
-          Intent::Interact(_) => {
-            velocity.apply_friction(acceleration * UPDATE_DURATION);
-          }
+        let max_speed = auto_constant("player_max_speed", 1.4) * TILE_WIDTH;
+        let target;
+        if let Intent::Move(mut movement_intent) = intent {
+          movement_intent.limit_magnitude(1.0);
+          target = movement_intent * max_speed;
+        } else {
+          target = FloatingVector::zeros();
         }
-        velocity.limit_magnitude(auto_constant("player_max_speed", 1.4) * TILE_WIDTH);
+        velocity.move_towards(target, acceleration * UPDATE_DURATION);
+        velocity.limit_magnitude(max_speed);
         self.player.position += *velocity * UPDATE_DURATION;
       }
       PlayerActionState::Interacting { what, progress } => {
