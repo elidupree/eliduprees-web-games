@@ -1,7 +1,7 @@
 "use strict";
 
-import init, { rust_init, do_frame, rust_mousedown, rust_mousemove, rust_mouseup, }
-  from '/my-factory-has-a-trillion-machines-web-frontend/pkg/deck_of_unhealthy_defense_mechanisms.js';
+import init, { rust_init, rust_do_frame, }
+  from '/deck-of-unhealthy-defense-mechanisms/pkg/deck_of_unhealthy_defense_mechanisms.js';
 
 const canvas = document.getElementById("canvas");
 const context = canvas.getContext('2d');
@@ -25,14 +25,10 @@ window.draw_rect = function (
   cx, cy, sx, sy,
 ) {
   context.save();
-  //context.scale(context.canvas.width, context.canvas.height);
   context.translate (cx, cy);
   context.rotate (-(Math.PI*0.5));
-
-  var sprite = loaded_sprites[sprite];
-
+  context.fillStyle = "white";
   context.fillRect(-sx/2.0,-sy/2.0, sx,sy);
-
   context.restore();
 };
 

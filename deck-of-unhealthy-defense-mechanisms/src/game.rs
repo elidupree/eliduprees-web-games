@@ -2,7 +2,6 @@ use crate::cards::Cards;
 use crate::map::{FloatVectorExtension, FloatingVector, Map, TILE_WIDTH};
 use eliduprees_web_games_lib::auto_constant;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 
 pub type Time = f64;
 /// duration of each update in seconds:
@@ -21,7 +20,7 @@ pub struct Player {
   pub action_state: PlayerActionState,
   pub health: i32,
 }
-#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
+#[derive(Copy, Clone, PartialEq, Serialize, Deserialize, Debug)]
 pub enum PlayerActionState {
   Moving {
     velocity: FloatingVector,
@@ -38,10 +37,10 @@ pub enum WhatInteraction {
   InteractRight,
 }
 
-#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
-pub struct InputState {
-  movement_intent: FloatingVector,
-  interact_intents: HashSet<WhatInteraction>,
+#[derive(Copy, Clone, PartialEq, Serialize, Deserialize, Debug)]
+pub enum Intent {
+  Move(FloatingVector),
+  Interact(WhatInteraction),
 }
 
 impl Game {
@@ -65,14 +64,17 @@ impl Game {
       time: 0.0,
     }
   }
-  fn update(&mut self, inputs: &InputState) {
+  fn update(&mut self, intent: Intent) {
     match &mut self.player.action_state {
       PlayerActionState::Moving { velocity } => {
         let acceleration = auto_constant("player_acceleration", 4.0);
-        if inputs.interact_intents.is_empty() {
-          *velocity += acceleration * inputs.movement_intent;
-        } else {
-          velocity.apply_friction(acceleration * UPDATE_DURATION);
+        match intent {
+          Intent::Move(movement_intent) => {
+            *velocity += acceleration * movement_intent;
+          }
+          Intent::Interact(_) => {
+            velocity.apply_friction(acceleration * UPDATE_DURATION);
+          }
         }
         velocity.limit_magnitude(auto_constant("player_max_speed", 1.4) * TILE_WIDTH);
         self.player.position += *velocity * UPDATE_DURATION;
@@ -86,17 +88,18 @@ impl Game {
     // "If you're trying to interact and you're not moving, start interacting"
     if matches! (self.player.action_state, PlayerActionState::Moving { velocity } if velocity == FloatingVector::zeros())
     {
-      if let Some(&what) = inputs.interact_intents.iter().next() {
+      if let Intent::Interact(what) = intent {
         self.player.action_state = PlayerActionState::Interacting {
           what,
           progress: 0.0,
         };
       }
     }
+    self.time += UPDATE_DURATION;
   }
-  pub fn update_until(&mut self, new_time: Time, inputs: &InputState) {
+  pub fn update_until(&mut self, new_time: Time, intent: Intent) {
     while self.time < new_time {
-      self.update(inputs);
+      self.update(intent);
     }
   }
 }

@@ -1,4 +1,6 @@
-use crate::game::Game;
+use crate::game::{Game, Intent};
+use crate::map::FloatingVector;
+use serde::Deserialize;
 use std::cell::RefCell;
 use wasm_bindgen::prelude::*;
 
@@ -24,7 +26,7 @@ thread_local! {
     RefCell::new(State {
       game : Game::new(),
       last_frame_time: None,
-    accumulated_game_time:zero.zero,
+    accumulated_game_time:0.0,
     })
   }
 }
@@ -64,12 +66,23 @@ impl StateFromJs {
 #[wasm_bindgen]
 pub fn rust_do_frame(frame_time: f64) {
   with_state(|state| {
-    js::clear_canvas();
     if let Some(last_frame_time) = state.last_frame_time {
       let difference = (frame_time - last_frame_time).min(1.0 / 29.9);
       state.accumulated_game_time += difference;
-      state.game.update_until(state.accumulated_game_time);
     }
     state.last_frame_time = Some(frame_time);
+
+    state.game.update_until(
+      state.accumulated_game_time,
+      Intent::Move(FloatingVector::new(1.0, 1.0)),
+    );
+
+    js::clear_canvas();
+    js::draw_rect(
+      state.game.player.position[0] as f32,
+      state.game.player.position[1] as f32,
+      10.0,
+      10.0,
+    );
   })
 }
