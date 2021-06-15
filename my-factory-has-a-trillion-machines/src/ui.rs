@@ -10,13 +10,13 @@ This layer's interface with the backend: This layer produces AddRemoveMachines i
 
 */
 use crate::geometry::{Number, Vector};
-use crate::graph_algorithms::GameFuture;
-use crate::machine_data::{
-  Game, MachineMomentaryVisuals, Material, PlatonicMachine, WorldMachinesMap,
+use crate::graph_algorithms::{
+  BaseAspect, FutureAspect, GameFuture, GameView, WorldMachineView, WorldRegionView,
 };
+use crate::machine_data::{Game, GlobalMachine, MachineMomentaryVisuals, Material};
 use live_prop_test::{live_prop_test, lpt_assert_eq};
 use nalgebra::Vector2;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Copy, Clone)]
 struct MouseGridPosition {
@@ -26,12 +26,12 @@ struct MouseGridPosition {
 
 #[derive(Clone, Debug)]
 enum Selection {
-  NormalMachines(WorldMachinesMap<()>),
-  GhostMachinesMovedFrom {
-    selected: WorldMachinesMap<()>,
+  NormalMachines(HashSet<GlobalMachine>),
+  HoveringMachinesMovedFrom {
+    source_machines: HashSet<GlobalMachine>,
     offset: Vector,
   },
-  NovelGhostMachines(Vec<PlatonicMachine>),
+  NovelHoveringMachines(Vec<GlobalMachine>),
 }
 
 #[derive(Clone, Debug)]
@@ -56,7 +56,7 @@ enum Mode {
 #[derive(Clone, Debug)]
 enum ImplicitMode {
   Normal(Mode),
-  GhostMachines,
+  HoveringMachines,
 }
 
 #[derive(Debug)]
@@ -67,20 +67,29 @@ pub struct UiState {
   future: GameFuture,
   current_game_time: Number,
 
-  // note that the ghost machine definitions may refer to machine types from `game`,
+  // note that the hovering machine definitions may refer to machine types from `game`,
   // so the UI bits want to be a dependent type rather than separate
   mode: Mode,
-  selected: Option<Selection>,
+  selected: Selection,
   drag: Option<DragState>,
 }
 
-struct DisplayedMachine {
-  machine: PlatonicMachine,
-  momentary_visuals: MachineMomentaryVisuals,
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+enum MachineRealness {
+  Normal,
+  Hovering,
+  Hypothetical,
 }
 
-pub struct View {
-  selection: Option<[Vector2<f64>; 2]>,
+struct DisplayedMachine {
+  machine: GlobalMachine,
+  momentary_visuals: Option<MachineMomentaryVisuals>,
+  realness: MachineRealness,
+  selected: bool,
+}
+
+pub struct DisplayedStuff {
+  selection_rectangle: Option<[Vector2<f64>; 2]>,
   machines: Vec<DisplayedMachine>,
   inventory: HashMap<Material, Number>,
 }
@@ -88,13 +97,15 @@ pub struct View {
 impl UiState {
   fn implicit_mode(&self) -> ImplicitMode {
     match self.selected {
-      Some(Selection::GhostMachinesMovedFrom { .. }) | Some(Selection::NovelGhostMachines(..)) => {
-        ImplicitMode::GhostMachines
+      Selection::HoveringMachinesMovedFrom { .. } | Selection::NovelHoveringMachines(..) => {
+        ImplicitMode::HoveringMachines
       }
       _ => ImplicitMode::Normal(self.mode.clone()),
     }
   }
 }
+
+type StateViewAspects = (BaseAspect, FutureAspect);
 
 #[live_prop_test]
 impl UiState {
@@ -111,7 +122,7 @@ impl UiState {
   pub fn click_map(&mut self, position: Vector2<f64>) {
     match self.implicit_mode() {
       ImplicitMode::Normal(Mode::PrimitiveMachine(machine_type_id)) => todo!("build machine"),
-      ImplicitMode::GhostMachines => self.discard_ghost_machines().unwrap(),
+      ImplicitMode::HoveringMachines => self.discard_hovering_machines().unwrap(),
       _ => {}
     }
   }
@@ -174,17 +185,16 @@ impl UiState {
     precondition = "self.check_invariants()",
     postcondition = "self.check_invariants()"
   )]
-  pub fn discard_ghost_machines(&mut self) -> Result<(), ()> {
+  pub fn discard_hovering_machines(&mut self) -> Result<(), ()> {
     match self.selected.clone() {
-      Some(Selection::GhostMachinesMovedFrom {
-        selected,
-        offset: _,
-      }) => {
-        self.selected = Some(Selection::NormalMachines(selected));
+      Selection::HoveringMachinesMovedFrom {
+        source_machines, ..
+      } => {
+        self.selected = Selection::NormalMachines(source_machines);
       }
-      Some(Selection::NovelGhostMachines(machines)) => {
-        //refund materials
-        self.selected = None;
+      Selection::NovelHoveringMachines(machines) => {
+        // TODO: refund materials
+        self.selected = Selection::NormalMachines(HashSet::new());
       }
       _ => return Err(()),
     }
@@ -197,7 +207,111 @@ impl UiState {
   )]
   pub fn undo(&mut self) {}
 
-  pub fn view(&self) -> View {
-    todo!()
+  pub fn set_current_game_time(&mut self, time: Number) {
+    self.current_game_time = time;
+  }
+
+  pub fn displayed_stuff(&self, display_filter: impl Fn(&GlobalMachine) -> bool) -> DisplayedStuff {
+    let collector = DisplayedStuffCollector::new(self, display_filter);
+    collector.collect_all()
+  }
+}
+
+struct DisplayedStuffCollector<'a, F> {
+  state: &'a UiState,
+  display_filter: F,
+  result: DisplayedStuff,
+}
+
+impl<'a, F: Fn(&GlobalMachine) -> bool> DisplayedStuffCollector<'a, F> {
+  fn new(state: &'a UiState, display_filter: F) -> Self {
+    DisplayedStuffCollector {
+      state,
+      display_filter,
+      result: DisplayedStuff {
+        selection_rectangle: None,
+        machines: Vec::new(),
+        inventory: Default::default(),
+      },
+    }
+  }
+
+  fn collect_machine(
+    &mut self,
+    machine: WorldMachineView<StateViewAspects>,
+    parent_realness: MachineRealness,
+  ) {
+    let global = machine.global();
+    if !(self.display_filter)(&global) {
+      return;
+    }
+
+    let mut realness = parent_realness;
+    let mut selected = realness == MachineRealness::Hovering;
+    match self.state.selected {
+      Selection::HoveringMachinesMovedFrom {
+        source_machines, ..
+      } => {
+        if realness == MachineRealness::Normal && source_machines.contains(&global) {
+          // If we got here, we're looking at the version of the hovering machine at its *original* location
+          realness = MachineRealness::Hypothetical;
+        }
+      }
+      Selection::NormalMachines(machines) => {
+        if machines.contains(&global) {
+          selected = true;
+        }
+      }
+      _ => {}
+    }
+
+    self.result.machines.push(DisplayedMachine {
+      machine: global,
+      momentary_visuals: machine.momentary_visuals(self.state.current_game_time),
+      realness,
+      selected,
+    });
+
+    if let Some(module) = machine.as_module() {
+      self.collect_region(module.inner_region(), realness);
+    }
+  }
+
+  fn collect_region(
+    &mut self,
+    region: WorldRegionView<StateViewAspects>,
+    parent_realness: MachineRealness,
+  ) {
+    for machine in region.machines() {
+      self.collect_machine(machine, parent_realness);
+    }
+  }
+
+  fn collect_all(self) -> DisplayedStuff {
+    let view = GameView::<StateViewAspects>::new(&self.state.game, &self.state.future);
+
+    self.collect_region(view.global_region(), MachineRealness::Normal);
+
+    match self.state.selected.clone() {
+      Selection::HoveringMachinesMovedFrom {
+        source_machines,
+        offset,
+      } => {
+        for machine in source_machines {
+          machine.state.position.translation += offset;
+          self.collect_machine(machine, MachineRealness::Hovering)
+        }
+      }
+      Selection::NovelHoveringMachines(machines) => {
+        for machine in machines {
+          self.collect_machine(machine, MachineRealness::Hovering)
+        }
+      }
+      _ => {}
+    }
+
+    // TODO: hypothetical conveyor belts arising from drag state
+
+    self.result
   }
 }
