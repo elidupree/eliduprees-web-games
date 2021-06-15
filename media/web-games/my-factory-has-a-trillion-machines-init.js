@@ -145,8 +145,8 @@ function mousedown_callback(event) {
 var dpr = window.devicePixelRatio || 1.0;
 var width = 800;
 var height = 800;
-var physical_width = height*dpr;
-var physical_height = width*dpr;
+var physical_width = width*dpr;
+var physical_height = height*dpr;
 canvas.style.width = width+"px";
 canvas.style.height = height+"px";
 canvas.width = physical_width;

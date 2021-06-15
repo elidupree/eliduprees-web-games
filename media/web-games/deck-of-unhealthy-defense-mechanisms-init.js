@@ -26,24 +26,30 @@ const direction_keys = {
   ArrowRight: ["horizontal", 1],
 };
 
-var dpr = window.devicePixelRatio || 1.0;
-var width = 800;
-var height = 800;
-var physical_width = height*dpr;
-var physical_height = width*dpr;
-canvas.style.width = width+"px";
-canvas.style.height = height+"px";
-canvas.width = physical_width;
-canvas.height = physical_height;
+let dpr = null;
+let resized = true;
+window.addEventListener("resize", () => {resized = true;});
+const update_canvas_size = () => {
+  if (resized || dpr !== (window.devicePixelRatio || 1.0)) {
+    resized = false;
+    dpr = window.devicePixelRatio || 1.0;
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    const physical_width = width*dpr;
+    const physical_height = height*dpr;
+    canvas.style.width = width+"px";
+    canvas.style.height = height+"px";
+    canvas.width = physical_width;
+    canvas.height = physical_height;
+  }
+}
 
-window.clear_canvas = function () {
+window.clear_canvas = () => {
   context.fillStyle = "black";
   context.fillRect(0, 0, context.canvas.width, context.canvas.height);
 };
 
-window.draw_rect = function (
-  cx, cy, sx, sy,
-) {
+window.draw_rect = (cx, cy, sx, sy,) => {
   context.save();
   context.translate (cx, cy);
   context.rotate (-(Math.PI*0.5));
@@ -52,41 +58,41 @@ window.draw_rect = function (
   context.restore();
 };
 
+const movement_intents = {
+  horizontal: [0],
+  vertical: [0],
+};
+let action_intents = [];
+document.body.addEventListener("keydown", (event) => {
+  const key = event.key;
+  if (direction_keys[key] !== undefined) {
+    const [dimension, direction] = direction_keys[key];
+    if (!movement_intents[dimension].includes(direction)) {
+      // in movement, the latest is given priority (pressing right overrides left)
+      movement_intents[dimension].unshift(direction);
+    }
+  }
+  if (action_keys[key] !== undefined) {
+    if (!action_intents.includes(key)) {
+      // for actions, the first is given priority (you can't interrupt yourself)
+      action_intents.push(key);
+    }
+  }
+});
+document.body.addEventListener("keyup", (event) => {
+  const key = event.key;
+  if (direction_keys[key] !== undefined) {
+    const [dimension, direction] = direction_keys[key];
+    movement_intents[dimension] = movement_intents[dimension].filter(i => i !== direction);
+  }
+  if (action_keys[key] !== undefined) {
+    action_intents = action_intents.filter(i => i !== key);
+  }
+});
+
 async function run() {
   await init();
   rust_init();
-
-  const movement_intents = {
-    horizontal: [0],
-    vertical: [0],
-  };
-  let action_intents = [];
-  document.body.addEventListener("keydown", (event) => {
-    const key = event.key;
-    if (direction_keys[key] !== undefined) {
-      const [dimension, direction] = direction_keys[key];
-      if (!movement_intents[dimension].includes(direction)) {
-        // in movement, the latest is given priority (pressing right overrides left)
-        movement_intents[dimension].unshift(direction);
-      }
-    }
-    if (action_keys[key] !== undefined) {
-      if (!action_intents.includes(key)) {
-        // for actions, the first is given priority (you can't interrupt yourself)
-        action_intents.push(key);
-      }
-    }
-  });
-  document.body.addEventListener("keyup", (event) => {
-    const key = event.key;
-    if (direction_keys[key] !== undefined) {
-      const [dimension, direction] = direction_keys[key];
-      movement_intents[dimension] = movement_intents[dimension].filter(i => i !== direction);
-    }
-    if (action_keys[key] !== undefined) {
-      action_intents = action_intents.filter(i => i !== key);
-    }
-  });
 
   function frame(time) {
     window.requestAnimationFrame(frame);
@@ -96,8 +102,10 @@ async function run() {
     } else {
       intent = {"Interact": action_keys[action_intents[0]]};
     }
-    document.getElementById("debug").innerText = JSON.stringify(action_intents);
-    rust_do_frame(time, {intent});
+    //document.getElementById("debug").innerText = JSON.stringify(action_intents);
+
+    update_canvas_size();
+    rust_do_frame(time, {intent, canvas_size: [canvas.width, canvas.height]});
   }
   window.requestAnimationFrame(frame);
 }

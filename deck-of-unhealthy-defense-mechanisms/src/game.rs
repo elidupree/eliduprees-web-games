@@ -89,7 +89,7 @@ impl Game {
 
     match &mut self.player.action_state {
       PlayerActionState::Moving { velocity } => {
-        let acceleration = auto_constant("player_acceleration", 4.0);
+        let acceleration = auto_constant("player_acceleration", 8.0);
         let max_speed = auto_constant("player_max_speed", 1.4) * TILE_WIDTH;
         let target;
         if let Intent::Move(mut movement_intent) = intent {
