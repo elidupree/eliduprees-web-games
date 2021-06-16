@@ -1,3 +1,4 @@
+use crate::game::UPDATE_DURATION;
 use eliduprees_web_games_lib::auto_constant;
 use extend::ext;
 use nalgebra::Vector2;
@@ -123,20 +124,21 @@ impl Map {
           let target_tile_position = tile_position + mechanism.facing.unit_vector() * TILE_WIDTH;
           let target = tile_position.to_floating()
             + mechanism.facing.unit_vector().to_floating() * (TILE_RADIUS as f64 * 1.01);
-          if let Some(old_target_tile) = former.tiles.get(&target_tile_position) {
-            if old_target_tile
-              .materials
-              .iter()
-              .all(|m| (m.position - target).magnitude() > TILE_RADIUS as f64)
-            {
-              if let Some(material) = tile
+          if let Some(material) = tile
+            .materials
+            .iter_mut()
+            .min_by_key(|m| OrderedFloat((m.position - target).magnitude()))
+          {
+            if let Some(old_target_tile) = former.tiles.get(&target_tile_position) {
+              if old_target_tile
                 .materials
-                .iter_mut()
-                .min_by_key(|m| OrderedFloat((m.position - target).magnitude()))
+                .iter()
+                .all(|m| (m.position - material.position).magnitude() > TILE_WIDTH as f64)
               {
-                material
-                  .position
-                  .move_towards(target, auto_constant("conveyor_speed", 2.3))
+                material.position.move_towards(
+                  target,
+                  auto_constant("conveyor_speed", 2.3) * UPDATE_DURATION,
+                )
               }
             }
           }
@@ -150,7 +152,7 @@ impl Map {
               if old_target_tile
                 .materials
                 .iter()
-                .all(|m| (m.position - target).magnitude() > TILE_RADIUS as f64)
+                .all(|m| (m.position - target).magnitude() > TILE_WIDTH as f64)
               {
                 tile.materials.push(Material { position: target });
               }

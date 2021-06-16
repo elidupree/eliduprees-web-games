@@ -8,7 +8,7 @@ use wasm_bindgen::__rt::std::collections::HashMap;
 
 pub type Time = f64;
 /// duration of each update in seconds:
-const UPDATE_DURATION: f64 = 1.0 / 180.0;
+pub const UPDATE_DURATION: Time = 1.0 / 180.0;
 
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
 pub struct Game {
@@ -134,6 +134,8 @@ impl Game {
         }
       }
     }
+
+    self.map.update();
 
     self.time += UPDATE_DURATION;
   }
