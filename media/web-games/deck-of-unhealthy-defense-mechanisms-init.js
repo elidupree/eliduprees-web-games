@@ -7,22 +7,22 @@ const canvas = document.getElementById("canvas");
 const context = canvas.getContext('2d');
 
 const action_keys = {
-  z: "InteractLeft",
-  x: "InteractRight",
-  c: {"PlayCard": 0},
-  v: {"PlayCard": 1},
-  b: {"PlayCard": 2},
-  n: {"PlayCard": 3},
-  m: {"PlayCard": 4},
+  KeyZ: "InteractLeft",
+  KeyX: "InteractRight",
+  KeyC: {"PlayCard": 0},
+  KeyV: {"PlayCard": 1},
+  KeyB: {"PlayCard": 2},
+  KeyN: {"PlayCard": 3},
+  KeyM: {"PlayCard": 4},
 };
 const direction_keys = {
-  w: ["vertical", -1],
+  KeyW: ["vertical", -1],
   ArrowUp: ["vertical", -1],
-  a: ["horizontal", -1],
+  KeyA: ["horizontal", -1],
   ArrowLeft: ["horizontal", -1],
-  s: ["vertical", 1],
+  KeyS: ["vertical", 1],
   ArrowDown: ["vertical", 1],
-  d: ["horizontal", 1],
+  KeyD: ["horizontal", 1],
   ArrowRight: ["horizontal", 1],
 };
 
@@ -61,8 +61,9 @@ const movement_intents = {
 };
 let action_intents = [];
 document.body.addEventListener("keydown", (event) => {
-  const key = event.key;
+  const key = event.code;
   if (direction_keys[key] !== undefined) {
+    event.preventDefault();
     const [dimension, direction] = direction_keys[key];
     if (!movement_intents[dimension].includes(direction)) {
       // in movement, the latest is given priority (pressing right overrides left)
@@ -70,6 +71,7 @@ document.body.addEventListener("keydown", (event) => {
     }
   }
   if (action_keys[key] !== undefined) {
+    event.preventDefault();
     if (!action_intents.includes(key)) {
       // for actions, the first is given priority (you can't interrupt yourself)
       action_intents.push(key);
@@ -77,12 +79,14 @@ document.body.addEventListener("keydown", (event) => {
   }
 });
 document.body.addEventListener("keyup", (event) => {
-  const key = event.key;
+  const key = event.code;
   if (direction_keys[key] !== undefined) {
+    event.preventDefault();
     const [dimension, direction] = direction_keys[key];
     movement_intents[dimension] = movement_intents[dimension].filter(i => i !== direction);
   }
   if (action_keys[key] !== undefined) {
+    event.preventDefault();
     action_intents = action_intents.filter(i => i !== key);
   }
 });
