@@ -1,11 +1,15 @@
+use eliduprees_web_games_lib::auto_constant;
 use extend::ext;
 use nalgebra::Vector2;
+use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 pub type GridVector = Vector2<i32>;
 pub type FloatingVector = Vector2<f64>;
-pub const TILE_WIDTH: f64 = 2.0;
+pub const TILE_RADIUS: i32 = 1;
+pub const TILE_WIDTH: i32 = TILE_RADIUS * 2;
+pub const TILE_SIZE: GridVector = GridVector::new(TILE_WIDTH, TILE_WIDTH);
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Default)]
 pub struct Facing(u8);
@@ -87,14 +91,19 @@ impl Facing {
 pub struct Map {
   pub tiles: HashMap<GridVector, Tile>,
 }
-#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
+#[derive(Clone, PartialEq, Serialize, Deserialize, Debug, Default)]
 pub struct Tile {
   pub mechanism: Option<Mechanism>,
   pub materials: Vec<Material>,
   pub monsters: Vec<Monster>,
 }
-#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
-pub struct Mechanism {}
+#[derive(Clone, PartialEq, Serialize, Deserialize, Debug, Default)]
+pub struct Mechanism {
+  pub is_tower: bool,
+  pub(crate) is_conveyor: bool,
+  pub is_deck: bool,
+  pub facing: Facing,
+}
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
 pub struct Material {
   pub position: FloatingVector,
@@ -106,7 +115,32 @@ pub struct Monster {
 }
 impl Map {
   pub fn update(&mut self) {
+    let former = self.clone();
     for (tile_position, tile) in &mut self.tiles {
+      if let Some(mechanism) = &tile.mechanism {
+        if mechanism.is_conveyor {
+          let target_tile_position = tile_position + mechanism.facing.unit_vector() * TILE_WIDTH;
+          let target = tile_position.to_floating()
+            + mechanism.facing.unit_vector().to_floating() * (TILE_RADIUS as f64 * 1.01);
+          if let Some(old_target_tile) = former.tiles.get(&target_tile_position) {
+            if old_target_tile
+              .materials
+              .iter()
+              .all(|m| (m.position - target).magnitude() > TILE_RADIUS as f64)
+            {
+              if let Some(material) = tile
+                .materials
+                .iter_mut()
+                .min_by_key(|m| OrderedFloat((m.position - target).magnitude()))
+              {
+                material
+                  .position
+                  .move_towards(target, auto_constant("conveyor_speed", 2.3))
+              }
+            }
+          }
+        }
+      }
       for monster in &mut tile.monsters {}
     }
   }

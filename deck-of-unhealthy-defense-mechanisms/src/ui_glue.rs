@@ -1,5 +1,5 @@
 use crate::game::{Game, Intent};
-use crate::map::{FloatingVector, TILE_WIDTH};
+use crate::map::{FloatingVector, GridVectorExtension, TILE_SIZE};
 use serde::Deserialize;
 use std::cell::RefCell;
 use wasm_bindgen::prelude::*;
@@ -11,7 +11,7 @@ mod js {
   extern "C" {
     // this wants to return (), but that gets me "clear_canvas is not defined" for some reason
     pub fn clear_canvas() -> JsValue;
-    pub fn draw_rect(cx: f32, cy: f32, sx: f32, sy: f32);
+    pub fn draw_rect(cx: f32, cy: f32, sx: f32, sy: f32, color: &str);
   }
 }
 
@@ -77,19 +77,26 @@ pub fn rust_do_frame(frame_time: f64, state_from_js: JsValue) {
 
     let canvas_position =
       |v| (canvas_physical_size * 0.5) + (v - state.game.player.position) * canvas_scale;
-    let draw_rect = |pos: FloatingVector, size: FloatingVector| {
+    let draw_rect = |pos: FloatingVector, size: FloatingVector, color| {
       let pos = canvas_position(pos);
       let size = size * canvas_scale;
-      js::draw_rect(pos[0] as f32, pos[1] as f32, size[0] as f32, size[1] as f32);
+      js::draw_rect(
+        pos[0] as f32,
+        pos[1] as f32,
+        size[0] as f32,
+        size[1] as f32,
+        color,
+      );
     };
     js::clear_canvas();
-    draw_rect(
-      state.game.player.position,
-      FloatingVector::new(TILE_WIDTH, TILE_WIDTH),
-    );
-    draw_rect(
-      FloatingVector::zeros(),
-      FloatingVector::new(TILE_WIDTH, TILE_WIDTH),
-    );
+
+    for (&tile_position, tile) in &state.game.map.tiles {
+      if let Some(mechanism) = &tile.mechanism {
+        draw_rect(tile_position.to_floating(), TILE_SIZE.to_floating(), "#888");
+      }
+    }
+
+    draw_rect(state.game.player.position, TILE_SIZE.to_floating(), "#fff");
+    draw_rect(FloatingVector::zeros(), TILE_SIZE.to_floating(), "#f66");
   })
 }

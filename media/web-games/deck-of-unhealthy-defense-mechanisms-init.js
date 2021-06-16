@@ -46,11 +46,11 @@ window.clear_canvas = () => {
   context.fillRect(0, 0, context.canvas.width, context.canvas.height);
 };
 
-window.draw_rect = (cx, cy, sx, sy,) => {
+window.draw_rect = (cx, cy, sx, sy, color) => {
   context.save();
   context.translate (cx, cy);
   context.rotate (-(Math.PI*0.5));
-  context.fillStyle = "white";
+  context.fillStyle = color;
   context.fillRect(-sx/2.0,-sy/2.0, sx,sy);
   context.restore();
 };

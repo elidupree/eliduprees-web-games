@@ -1,5 +1,5 @@
 use crate::cards::Cards;
-use crate::map::{FloatVectorExtension, FloatingVector, Map, TILE_WIDTH};
+use crate::map::{FloatVectorExtension, FloatingVector, Map, Mechanism, TILE_WIDTH};
 use eliduprees_web_games_lib::auto_constant;
 use serde::{Deserialize, Serialize};
 
@@ -90,7 +90,7 @@ impl Game {
     match &mut self.player.action_state {
       PlayerActionState::Moving { velocity } => {
         let acceleration = auto_constant("player_acceleration", 8.0);
-        let max_speed = auto_constant("player_max_speed", 1.4) * TILE_WIDTH;
+        let max_speed = auto_constant("player_max_speed", 1.4) * TILE_WIDTH as f64;
         let target;
         if let Intent::Move(mut movement_intent) = intent {
           movement_intent.limit_magnitude(1.0);
@@ -112,7 +112,17 @@ impl Game {
       }
       PlayerActionState::Interacting { what, progress } => {
         *progress += UPDATE_DURATION;
-        if *progress > 1.7 {}
+        if *progress > 1.7 {
+          let tile = self
+            .map
+            .tiles
+            .entry(self.player.position.containing_tile())
+            .or_insert_with(Default::default);
+          tile.mechanism = Some(Mechanism {
+            is_conveyor: true,
+            ..Default::default()
+          });
+        }
       }
     }
 
