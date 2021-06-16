@@ -1,5 +1,5 @@
 use crate::game::{Game, Intent};
-use crate::map::FloatingVector;
+use crate::map::{FloatingVector, TILE_WIDTH};
 use serde::Deserialize;
 use std::cell::RefCell;
 use wasm_bindgen::prelude::*;
@@ -61,6 +61,9 @@ pub fn rust_do_frame(frame_time: f64, state_from_js: JsValue) {
     canvas_physical_size,
     canvas_css_size,
   } = &state_from_js;
+
+  let canvas_scale = f64::min(canvas_physical_size[0], canvas_physical_size[1]) / 40.0;
+
   with_state(|state| {
     if let Some(last_frame_time) = state.last_frame_time {
       let difference = (frame_time - last_frame_time).min(1.0 / 29.9);
@@ -72,12 +75,21 @@ pub fn rust_do_frame(frame_time: f64, state_from_js: JsValue) {
       .game
       .update_until(state.accumulated_game_time, *intent);
 
+    let canvas_position =
+      |v| (canvas_physical_size * 0.5) + (v - state.game.player.position) * canvas_scale;
+    let draw_rect = |pos: FloatingVector, size: FloatingVector| {
+      let pos = canvas_position(pos);
+      let size = size * canvas_scale;
+      js::draw_rect(pos[0] as f32, pos[1] as f32, size[0] as f32, size[1] as f32);
+    };
     js::clear_canvas();
-    js::draw_rect(
-      (state.game.player.position[0] * canvas_physical_size[1] / 40.0) as f32,
-      (state.game.player.position[1] * canvas_physical_size[1] / 40.0) as f32,
-      canvas_physical_size[1] as f32 / 40.0,
-      canvas_physical_size[1] as f32 / 40.0,
+    draw_rect(
+      state.game.player.position,
+      FloatingVector::new(TILE_WIDTH, TILE_WIDTH),
+    );
+    draw_rect(
+      FloatingVector::zeros(),
+      FloatingVector::new(TILE_WIDTH, TILE_WIDTH),
     );
   })
 }
