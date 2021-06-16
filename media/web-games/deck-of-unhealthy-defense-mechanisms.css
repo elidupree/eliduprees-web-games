@@ -1,3 +1,9 @@
 body {
   color: #ccc;
 }
+
+#debug {
+  position: fixed;
+  top: 0.8em;
+  left: 0.8em;
+}

@@ -27,18 +27,17 @@ const direction_keys = {
 };
 
 let dpr = null;
+let canvas_css_size = null;
+let canvas_physical_size = null;
 let resized = true;
 window.addEventListener("resize", () => {resized = true;});
-let canvas_css_size = [0,0];
-let canvas_physical_size = [0,0];
 const update_canvas_size = () => {
   if (resized || dpr !== (window.devicePixelRatio || 1.0)) {
     resized = false;
     dpr = window.devicePixelRatio || 1.0;
     canvas_css_size = [window.innerWidth, window.innerHeight];
     [canvas.width, canvas.height] = canvas_physical_size = canvas_css_size.map(d => d*dpr);
-    canvas.style.width = canvas_css_size[0]+"px";
-    canvas.style.height = canvas_css_size[1]+"px";
+    [canvas.style.width, canvas.style.height] = canvas_css_size.map(d => d+"px");
   }
 }
 
@@ -100,7 +99,7 @@ async function run() {
     } else {
       intent = {"Interact": action_keys[action_intents[0]]};
     }
-    //document.getElementById("debug").innerText = JSON.stringify(action_intents);
+    document.getElementById("debug").innerText = JSON.stringify(action_intents);
 
     update_canvas_size();
     rust_do_frame(time, {

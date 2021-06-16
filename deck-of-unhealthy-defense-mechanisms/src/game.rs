@@ -98,7 +98,15 @@ impl Game {
         } else {
           target = FloatingVector::zeros();
         }
-        velocity.move_towards(target, acceleration * UPDATE_DURATION);
+        let mut bonus = 1.0;
+        let epsilon = 0.00001;
+        if let Some(acceleration_direction) = (target - *velocity).try_normalize(epsilon) {
+          if let Some(velocity_direction) = velocity.try_normalize(epsilon) {
+            bonus += (-acceleration_direction.dot(&velocity_direction)).max(0.0)
+              * auto_constant("player_decelerate_bonus", 0.5);
+          }
+        }
+        velocity.move_towards(target, acceleration * bonus * UPDATE_DURATION);
         velocity.limit_magnitude(max_speed);
         self.player.position += *velocity * UPDATE_DURATION;
       }
