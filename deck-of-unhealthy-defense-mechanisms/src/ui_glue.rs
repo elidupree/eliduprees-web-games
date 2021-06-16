@@ -49,7 +49,8 @@ pub fn rust_init() {
 #[derive(Clone, Deserialize)]
 pub struct StateFromJs {
   pub intent: Intent,
-  pub canvas_size: FloatingVector,
+  pub canvas_physical_size: FloatingVector,
+  pub canvas_css_size: FloatingVector,
 }
 
 #[wasm_bindgen]
@@ -57,7 +58,8 @@ pub fn rust_do_frame(frame_time: f64, state_from_js: JsValue) {
   let state_from_js = state_from_js.into_serde().unwrap();
   let StateFromJs {
     intent,
-    canvas_size,
+    canvas_physical_size,
+    canvas_css_size,
   } = &state_from_js;
   with_state(|state| {
     if let Some(last_frame_time) = state.last_frame_time {
@@ -72,10 +74,10 @@ pub fn rust_do_frame(frame_time: f64, state_from_js: JsValue) {
 
     js::clear_canvas();
     js::draw_rect(
-      (state.game.player.position[0] * canvas_size[0] / 40.0) as f32,
-      (state.game.player.position[1] * canvas_size[1] / 40.0) as f32,
-      10.0,
-      10.0,
+      (state.game.player.position[0] * canvas_physical_size[1] / 40.0) as f32,
+      (state.game.player.position[1] * canvas_physical_size[1] / 40.0) as f32,
+      canvas_physical_size[1] as f32 / 40.0,
+      canvas_physical_size[1] as f32 / 40.0,
     );
   })
 }
