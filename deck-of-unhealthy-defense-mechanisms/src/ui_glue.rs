@@ -92,11 +92,20 @@ pub fn rust_do_frame(frame_time: f64, state_from_js: JsValue) {
 
     for (&tile_position, tile) in &state.game.map.tiles {
       if let Some(mechanism) = &tile.mechanism {
-        draw_rect(tile_position.to_floating(), TILE_SIZE.to_floating(), "#888");
+        draw_rect(
+          tile_position.to_floating(),
+          TILE_SIZE.to_floating(),
+          if mechanism.is_deck { "#f66" } else { "#888" },
+        );
+      }
+    }
+
+    for (&tile_position, tile) in &state.game.map.tiles {
+      for material in &tile.materials {
+        draw_rect(material.position, TILE_SIZE.to_floating() * 0.25, "#fff");
       }
     }
 
     draw_rect(state.game.player.position, TILE_SIZE.to_floating(), "#fff");
-    draw_rect(FloatingVector::zeros(), TILE_SIZE.to_floating(), "#f66");
   })
 }

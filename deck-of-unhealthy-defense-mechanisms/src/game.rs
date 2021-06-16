@@ -1,7 +1,10 @@
 use crate::cards::Cards;
-use crate::map::{FloatVectorExtension, FloatingVector, Map, Mechanism, TILE_WIDTH};
+use crate::map::{
+  FloatVectorExtension, FloatingVector, GridVector, Map, Mechanism, Tile, TILE_WIDTH,
+};
 use eliduprees_web_games_lib::auto_constant;
 use serde::{Deserialize, Serialize};
+use wasm_bindgen::__rt::std::collections::HashMap;
 
 pub type Time = f64;
 /// duration of each update in seconds:
@@ -45,10 +48,16 @@ pub enum Intent {
 
 impl Game {
   pub fn new() -> Self {
+    let mut tiles: HashMap<GridVector, Tile> = HashMap::new();
+    tiles
+      .entry(GridVector::zeros())
+      .or_insert_with(Default::default)
+      .mechanism = Some(Mechanism {
+      is_deck: true,
+      ..Default::default()
+    });
     Game {
-      map: Map {
-        tiles: Default::default(),
-      },
+      map: Map { tiles },
       player: Player {
         position: FloatingVector::zeros(),
         action_state: PlayerActionState::Moving {

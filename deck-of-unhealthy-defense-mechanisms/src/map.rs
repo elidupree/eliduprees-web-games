@@ -85,6 +85,7 @@ impl Facing {
       _ => unreachable!(),
     }
   }
+  pub const ALL_FACINGS: [Facing; 4] = [Facing(0), Facing(1), Facing(2), Facing(3)];
 }
 
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
@@ -140,8 +141,38 @@ impl Map {
             }
           }
         }
+        if mechanism.is_deck {
+          for facing in Facing::ALL_FACINGS {
+            let target_tile_position = tile_position + facing.unit_vector() * TILE_WIDTH;
+            let target = tile_position.to_floating()
+              + facing.unit_vector().to_floating() * (TILE_RADIUS as f64 * 1.01);
+            if let Some(old_target_tile) = former.tiles.get(&target_tile_position) {
+              if old_target_tile
+                .materials
+                .iter()
+                .all(|m| (m.position - target).magnitude() > TILE_RADIUS as f64)
+              {
+                tile.materials.push(Material { position: target });
+              }
+            }
+          }
+        }
       }
       for monster in &mut tile.monsters {}
+    }
+
+    let materials: Vec<_> = self
+      .tiles
+      .iter_mut()
+      .flat_map(|(_, t)| t.materials.drain(..))
+      .collect();
+    for material in materials {
+      self
+        .tiles
+        .entry(material.position.containing_tile())
+        .or_insert_with(Default::default)
+        .materials
+        .push(material);
     }
   }
 }
