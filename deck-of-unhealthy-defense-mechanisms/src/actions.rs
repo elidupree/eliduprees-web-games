@@ -1,4 +1,4 @@
-use crate::cards::CardInstance;
+use crate::cards::{CardInstance, HandCard};
 use crate::game::{
   Game, InteractionIntent, PlayerActionState, PlayerActiveInteraction, Time, UPDATE_DURATION,
 };
@@ -25,13 +25,13 @@ impl<'a> ActionUpdateContext<'a> {
       _ => unreachable!(),
     }
   }
-  pub fn this_card(&self) -> &CardInstance {
+  pub fn this_card(&self) -> &HandCard {
     match self.interaction_state().activating_intent {
       InteractionIntent::PlayCard(index) => self.game.cards.hand.get(index).unwrap(),
       _ => unreachable!(),
     }
   }
-  pub fn this_card_mut(&mut self) -> &mut CardInstance {
+  pub fn this_card_mut(&mut self) -> &mut HandCard {
     match self.interaction_state().activating_intent {
       InteractionIntent::PlayCard(index) => self.game.cards.hand.get_mut(index).unwrap(),
       _ => unreachable!(),

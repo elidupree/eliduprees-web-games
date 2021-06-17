@@ -1,7 +1,7 @@
 use crate::actions::{
   Action, ActionStatus, ActionTrait, ActionUpdateContext, BuildMechanism, RotateMechanism,
 };
-use crate::cards::Cards;
+use crate::cards::{CardInstance, Cards, HandCard};
 use crate::map::{
   FloatingVector, FloatingVectorExtension, GridVector, GridVectorExtension, Map, Rotation, Tile,
   TILE_RADIUS, TILE_SIZE, TILE_WIDTH,
@@ -86,7 +86,9 @@ impl Game {
       cards: Cards {
         draw_pile: vec![],
         discard_pile: vec![],
-        hand: vec![],
+        hand: vec![HandCard {
+          card: CardInstance::build_conveyor(),
+        }],
       },
       time: 0.0,
     }
@@ -118,12 +120,11 @@ impl Game {
           let action = match what {
             InteractionIntent::InteractLeft => left,
             InteractionIntent::InteractRight => right,
-            InteractionIntent::PlayCard(_) => {
-              Some(Action::BuildMechanism(BuildMechanism::new(Mechanism {
-                mechanism_type: MechanismType::Conveyor(Conveyor {}),
-                ..Default::default()
-              })))
-            }
+            InteractionIntent::PlayCard(index) => self
+              .cards
+              .hand
+              .get(index)
+              .map(|card| card.card.action.clone()),
           };
 
           if let Some(action) = action {
