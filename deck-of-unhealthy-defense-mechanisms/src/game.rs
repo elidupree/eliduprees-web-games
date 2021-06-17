@@ -1,9 +1,10 @@
 use crate::actions::{Action, ActionStatus, ActionTrait, BuildMechanism, RotateMechanism};
 use crate::cards::Cards;
 use crate::map::{
-  FloatingVector, FloatingVectorExtension, GridVector, GridVectorExtension, Map, Mechanism,
-  Rotation, Tile, TILE_SIZE, TILE_WIDTH,
+  FloatingVector, FloatingVectorExtension, GridVector, GridVectorExtension, Map, Rotation, Tile,
+  TILE_SIZE, TILE_WIDTH,
 };
+use crate::mechanisms::{Conveyor, Deck, Mechanism, MechanismType};
 use crate::ui_glue::Draw;
 use eliduprees_web_games_lib::auto_constant;
 use serde::{Deserialize, Serialize};
@@ -51,7 +52,7 @@ impl Game {
       .entry(GridVector::zeros())
       .or_insert_with(Default::default)
       .mechanism = Some(Mechanism {
-      is_deck: true,
+      mechanism_type: MechanismType::Deck(Deck {}),
       ..Default::default()
     });
     Game {
@@ -95,7 +96,7 @@ impl Game {
             }
             WhatInteraction::PlayCard(_) => {
               Action::BuildMechanism(BuildMechanism::new(Mechanism {
-                is_conveyor: true,
+                mechanism_type: MechanismType::Conveyor(Conveyor {}),
                 ..Default::default()
               }))
             }

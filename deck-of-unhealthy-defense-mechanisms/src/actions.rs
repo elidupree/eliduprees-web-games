@@ -1,7 +1,6 @@
 use crate::game::{Game, Time, UPDATE_DURATION};
-use crate::map::{
-  FloatingVector, FloatingVectorExtension, Mechanism, Rotation, TILE_RADIUS, TILE_WIDTH,
-};
+use crate::map::{FloatingVector, FloatingVectorExtension, Rotation, TILE_RADIUS, TILE_WIDTH};
+use crate::mechanisms::Mechanism;
 use crate::ui_glue::Draw;
 use serde::{Deserialize, Serialize};
 

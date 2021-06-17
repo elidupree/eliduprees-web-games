@@ -1,4 +1,7 @@
 use crate::game::UPDATE_DURATION;
+use crate::mechanisms::{
+  Mechanism, MechanismImmutableContext, MechanismTrait, MechanismUpdateContext,
+};
 use crate::ui_glue::Draw;
 use eliduprees_web_games_lib::auto_constant;
 use extend::ext;
@@ -122,13 +125,6 @@ pub struct Tile {
   pub materials: Vec<Material>,
   pub monsters: Vec<Monster>,
 }
-#[derive(Clone, PartialEq, Serialize, Deserialize, Debug, Default)]
-pub struct Mechanism {
-  pub is_tower: bool,
-  pub(crate) is_conveyor: bool,
-  pub is_deck: bool,
-  pub facing: Facing,
-}
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
 pub struct Material {
   pub position: FloatingVector,
@@ -141,49 +137,24 @@ pub struct Monster {
 impl Map {
   pub fn update(&mut self) {
     let former = self.clone();
-    for (tile_position, tile) in &mut self.tiles {
-      if let Some(mechanism) = &tile.mechanism {
-        if mechanism.is_conveyor {
-          let target_tile_position = tile_position + mechanism.facing.unit_vector() * TILE_WIDTH;
-          let target = tile_position.to_floating()
-            + mechanism.facing.unit_vector().to_floating() * (TILE_RADIUS as f64 * 1.01);
-          if let Some(material) = tile
-            .materials
-            .iter_mut()
-            .min_by_key(|m| OrderedFloat((m.position - target).magnitude()))
-          {
-            if let Some(old_target_tile) = former.tiles.get(&target_tile_position) {
-              if old_target_tile
-                .materials
-                .iter()
-                .all(|m| (m.position - material.position).magnitude() > TILE_WIDTH as f64)
-              {
-                material.position.move_towards(
-                  target,
-                  auto_constant("conveyor_speed", 2.3) * UPDATE_DURATION,
-                )
-              }
-            }
-          }
-        }
-        if mechanism.is_deck {
-          for facing in Facing::ALL_FACINGS {
-            let target_tile_position = tile_position + facing.unit_vector() * TILE_WIDTH;
-            let target = tile_position.to_floating()
-              + facing.unit_vector().to_floating() * (TILE_RADIUS as f64 * 1.01);
-            if let Some(old_target_tile) = former.tiles.get(&target_tile_position) {
-              if old_target_tile
-                .materials
-                .iter()
-                .all(|m| (m.position - target).magnitude() > TILE_WIDTH as f64)
-              {
-                tile.materials.push(Material { position: target });
-              }
-            }
-          }
-        }
-      }
-      for monster in &mut tile.monsters {}
+
+    let mechanism_updates: Vec<_> = self
+      .tiles
+      .iter()
+      .filter_map(|(&tile_position, tile)| {
+        tile
+          .mechanism
+          .as_ref()
+          .map(|m| (tile_position, m.mechanism_type.clone()))
+      })
+      .collect();
+
+    for (position, mechanism_type) in mechanism_updates {
+      mechanism_type.update(MechanismUpdateContext {
+        position,
+        map: self,
+        former: &former,
+      });
     }
 
     let materials: Vec<_> = self
@@ -203,11 +174,12 @@ impl Map {
   pub fn draw(&mut self, draw: &mut impl Draw) {
     for (&tile_position, tile) in &self.tiles {
       if let Some(mechanism) = &tile.mechanism {
-        draw.rectangle_on_map(
-          10,
-          tile_position.to_floating(),
-          TILE_SIZE.to_floating(),
-          if mechanism.is_deck { "#f66" } else { "#888" },
+        mechanism.mechanism_type.draw(
+          MechanismImmutableContext {
+            position: tile_position,
+            map: self,
+          },
+          draw,
         );
       }
     }
