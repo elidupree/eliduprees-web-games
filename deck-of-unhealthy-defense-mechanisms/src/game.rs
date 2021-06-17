@@ -25,6 +25,7 @@ pub struct Game {
 pub struct Player {
   pub position: FloatingVector,
   pub action_state: PlayerActionState,
+  pub already_begun_interaction_intent: Option<WhatInteraction>,
   pub maximum_health: i32,
   pub health: i32,
 }
@@ -73,6 +74,7 @@ impl Game {
         action_state: PlayerActionState::Moving {
           velocity: FloatingVector::zeros(),
         },
+        already_begun_interaction_intent: None,
         maximum_health: 100,
         health: 100,
       },
@@ -89,7 +91,8 @@ impl Game {
     match intent {
       Intent::Move(movement_intent) => {}
       Intent::Interact(what) => {
-        if matches!(self.player.action_state, PlayerActionState::Moving { velocity } if velocity == FloatingVector::zeros())
+        if self.player.already_begun_interaction_intent != Some(what)
+          && matches!(self.player.action_state, PlayerActionState::Moving { velocity } if velocity == FloatingVector::zeros())
         {
           let action = match what {
             WhatInteraction::InteractLeft => {
@@ -110,8 +113,15 @@ impl Game {
             action,
             commitment: PlayerInteractionCommitment::Performing { what },
           };
+
+          self.player.already_begun_interaction_intent = Some(what);
         }
       }
+    }
+
+    if !matches!(self.player.already_begun_interaction_intent, Some(what) if intent == Intent::Interact(what))
+    {
+      self.player.already_begun_interaction_intent = None;
     }
 
     match &mut self.player.action_state {
