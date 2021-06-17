@@ -1,5 +1,7 @@
 use crate::game::{Game, Time, UPDATE_DURATION};
-use crate::map::{FloatingVectorExtension, Mechanism, Rotation};
+use crate::map::{
+  FloatingVector, FloatingVectorExtension, Mechanism, Rotation, TILE_RADIUS, TILE_WIDTH,
+};
 use crate::ui_glue::Draw;
 use serde::{Deserialize, Serialize};
 
@@ -115,7 +117,24 @@ impl SimpleAction {
     }
   }
 
-  fn draw(&self, game: &Game, draw: &mut impl Draw) {}
+  fn draw(&self, game: &Game, draw: &mut impl Draw) {
+    let a = game.player.position + FloatingVector::new(-TILE_RADIUS as f64 * 0.5, 0.0);
+    draw.rectangle_on_map(
+      70,
+      a,
+      FloatingVector::new(TILE_RADIUS as f64 * 0.25, TILE_WIDTH as f64),
+      "#000",
+    );
+    draw.rectangle_on_map(
+      71,
+      a,
+      FloatingVector::new(
+        TILE_RADIUS as f64 * 0.25,
+        TILE_WIDTH as f64 * self.progress / self.time_cost,
+      ),
+      "#ff0",
+    );
+  }
 }
 
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]

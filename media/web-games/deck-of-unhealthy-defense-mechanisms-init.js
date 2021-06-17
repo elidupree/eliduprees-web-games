@@ -49,11 +49,14 @@ window.clear_canvas = () => {
 window.draw_rect = (cx, cy, sx, sy, color) => {
   context.save();
   context.translate (cx, cy);
-  context.rotate (-(Math.PI*0.5));
   context.fillStyle = color;
   context.fillRect(-sx/2.0,-sy/2.0, sx,sy);
   context.restore();
 };
+
+window.debug = message => {
+  document.getElementById("debug").textContent += message;
+}
 
 const movement_intents = {
   horizontal: [0],
@@ -103,7 +106,7 @@ async function run() {
     } else {
       intent = {"Interact": action_keys[action_intents[0]]};
     }
-    document.getElementById("debug").innerText = JSON.stringify(action_intents);
+    document.getElementById("debug").textContent = JSON.stringify(action_intents);
 
     update_canvas_size();
     rust_do_frame(time, {

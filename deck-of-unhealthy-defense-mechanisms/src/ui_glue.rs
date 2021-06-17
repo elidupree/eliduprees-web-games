@@ -11,6 +11,7 @@ mod js {
   extern "C" {
     // this wants to return (), but that gets me "clear_canvas is not defined" for some reason
     pub fn clear_canvas() -> JsValue;
+    pub fn debug(message: &str);
     pub fn draw_rect(cx: f32, cy: f32, sx: f32, sy: f32, color: &str);
   }
 }
