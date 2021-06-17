@@ -1,10 +1,12 @@
 use crate::game::UPDATE_DURATION;
+use crate::ui_glue::Draw;
 use eliduprees_web_games_lib::auto_constant;
 use extend::ext;
 use nalgebra::Vector2;
 use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::ops::{Add, AddAssign, Sub};
 
 pub type GridVector = Vector2<i32>;
 pub type FloatingVector = Vector2<f64>;
@@ -33,7 +35,7 @@ impl GridVector {
   }
 }
 
-#[ext(pub, name = FloatVectorExtension)]
+#[ext(pub, name = FloatingVectorExtension)]
 impl FloatingVector {
   fn containing_tile(&self) -> GridVector {
     Vector2::new(
@@ -72,6 +74,8 @@ impl FloatingVector {
 }
 
 impl Rotation {
+  pub const CLOCKWISE: Rotation = Rotation(3);
+  pub const COUNTERCLOCKWISE: Rotation = Rotation(1);
   pub fn quarter_turns_from_posx_towards_posy(self) -> u8 {
     self.0
   }
@@ -87,6 +91,25 @@ impl Facing {
     }
   }
   pub const ALL_FACINGS: [Facing; 4] = [Facing(0), Facing(1), Facing(2), Facing(3)];
+}
+
+impl Add<Rotation> for Facing {
+  type Output = Facing;
+  fn add(self, other: Rotation) -> Facing {
+    Facing((self.0 + other.0) % 4)
+  }
+}
+impl AddAssign<Rotation> for Facing {
+  fn add_assign(&mut self, other: Rotation) {
+    *self = *self + other;
+  }
+}
+
+impl Sub<Facing> for Facing {
+  type Output = Rotation;
+  fn sub(self, other: Facing) -> Rotation {
+    Rotation((4 + self.0 - other.0) % 4)
+  }
 }
 
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
@@ -175,6 +198,29 @@ impl Map {
         .or_insert_with(Default::default)
         .materials
         .push(material);
+    }
+  }
+  pub fn draw(&mut self, draw: &mut impl Draw) {
+    for (&tile_position, tile) in &self.tiles {
+      if let Some(mechanism) = &tile.mechanism {
+        draw.rectangle_on_map(
+          10,
+          tile_position.to_floating(),
+          TILE_SIZE.to_floating(),
+          if mechanism.is_deck { "#f66" } else { "#888" },
+        );
+      }
+    }
+
+    for (&tile_position, tile) in &self.tiles {
+      for material in &tile.materials {
+        draw.rectangle_on_map(
+          20,
+          material.position,
+          TILE_SIZE.to_floating() * 0.25,
+          "#fff",
+        );
+      }
     }
   }
 }

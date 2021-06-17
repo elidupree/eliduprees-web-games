@@ -1,7 +1,10 @@
+use crate::actions::{Action, ActionStatus, ActionTrait, BuildMechanism, RotateMechanism};
 use crate::cards::Cards;
 use crate::map::{
-  FloatVectorExtension, FloatingVector, GridVector, Map, Mechanism, Tile, TILE_WIDTH,
+  FloatingVector, FloatingVectorExtension, GridVector, GridVectorExtension, Map, Mechanism,
+  Rotation, Tile, TILE_SIZE, TILE_WIDTH,
 };
+use crate::ui_glue::Draw;
 use eliduprees_web_games_lib::auto_constant;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::__rt::std::collections::HashMap;
@@ -23,15 +26,10 @@ pub struct Player {
   pub action_state: PlayerActionState,
   pub health: i32,
 }
-#[derive(Copy, Clone, PartialEq, Serialize, Deserialize, Debug)]
+#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
 pub enum PlayerActionState {
-  Moving {
-    velocity: FloatingVector,
-  },
-  Interacting {
-    what: WhatInteraction,
-    progress: Time,
-  },
+  Moving { velocity: FloatingVector },
+  Interacting { action: Action },
 }
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]
 pub enum WhatInteraction {
@@ -88,10 +86,22 @@ impl Game {
       Intent::Interact(what) => {
         if matches!(self.player.action_state, PlayerActionState::Moving { velocity } if velocity == FloatingVector::zeros())
         {
-          self.player.action_state = PlayerActionState::Interacting {
-            what,
-            progress: 0.0,
+          let action = match what {
+            WhatInteraction::InteractLeft => {
+              Action::RotateMechanism(RotateMechanism::new(Rotation::COUNTERCLOCKWISE))
+            }
+            WhatInteraction::InteractRight => {
+              Action::RotateMechanism(RotateMechanism::new(Rotation::COUNTERCLOCKWISE))
+            }
+            WhatInteraction::PlayCard(_) => {
+              Action::BuildMechanism(BuildMechanism::new(Mechanism {
+                is_conveyor: true,
+                ..Default::default()
+              }))
+            }
           };
+
+          self.player.action_state = PlayerActionState::Interacting { action };
         }
       }
     }
@@ -119,18 +129,17 @@ impl Game {
         velocity.limit_magnitude(max_speed);
         self.player.position += *velocity * UPDATE_DURATION;
       }
-      PlayerActionState::Interacting { what, progress } => {
-        *progress += UPDATE_DURATION;
-        if *progress > 1.7 {
-          let tile = self
-            .map
-            .tiles
-            .entry(self.player.position.containing_tile())
-            .or_insert_with(Default::default);
-          tile.mechanism = Some(Mechanism {
-            is_conveyor: true,
-            ..Default::default()
-          });
+      PlayerActionState::Interacting { action } => {
+        let mut action = action.clone();
+        match action.update(self, false) {
+          ActionStatus::StillGoing => {
+            self.player.action_state = PlayerActionState::Interacting { action }
+          }
+          ActionStatus::Completed => {
+            self.player.action_state = PlayerActionState::Moving {
+              velocity: FloatingVector::zeros(),
+            }
+          }
         }
       }
     }
@@ -143,5 +152,23 @@ impl Game {
     while self.time < new_time {
       self.update(intent);
     }
+  }
+
+  pub fn draw(&mut self, draw: &mut impl Draw) {
+    self.map.draw(draw);
+
+    match &self.player.action_state {
+      PlayerActionState::Moving { velocity } => {}
+      PlayerActionState::Interacting { action } => {
+        action.draw(self, draw);
+      }
+    }
+
+    draw.rectangle_on_map(
+      50,
+      self.player.position,
+      TILE_SIZE.to_floating() * 0.4,
+      "#fff",
+    );
   }
 }

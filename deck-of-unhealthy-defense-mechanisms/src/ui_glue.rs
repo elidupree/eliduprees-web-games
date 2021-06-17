@@ -1,5 +1,5 @@
 use crate::game::{Game, Intent};
-use crate::map::{FloatingVector, GridVectorExtension, TILE_SIZE};
+use crate::map::FloatingVector;
 use serde::Deserialize;
 use std::cell::RefCell;
 use wasm_bindgen::prelude::*;
@@ -53,6 +53,33 @@ pub struct StateFromJs {
   pub canvas_css_size: FloatingVector,
 }
 
+pub trait Draw {
+  fn rectangle_on_map(
+    &mut self,
+    layer: i32,
+    center: FloatingVector,
+    size: FloatingVector,
+    color: &str,
+  );
+}
+#[derive(Default)]
+struct ProvisionalDraw {
+  rectangles: Vec<(i32, FloatingVector, FloatingVector, String)>,
+}
+impl Draw for ProvisionalDraw {
+  fn rectangle_on_map(
+    &mut self,
+    layer: i32,
+    center: FloatingVector,
+    size: FloatingVector,
+    color: &str,
+  ) {
+    self
+      .rectangles
+      .push((layer, center, size, color.to_string()));
+  }
+}
+
 #[wasm_bindgen]
 pub fn rust_do_frame(frame_time: f64, state_from_js: JsValue) {
   let state_from_js = state_from_js.into_serde().unwrap();
@@ -75,37 +102,24 @@ pub fn rust_do_frame(frame_time: f64, state_from_js: JsValue) {
       .game
       .update_until(state.accumulated_game_time, *intent);
 
+    let mut draw = ProvisionalDraw::default();
+    state.game.draw(&mut draw);
+
     let canvas_position =
       |v| (canvas_physical_size * 0.5) + (v - state.game.player.position) * canvas_scale;
-    let draw_rect = |pos: FloatingVector, size: FloatingVector, color| {
-      let pos = canvas_position(pos);
+    draw.rectangles.sort_by_key(|&(layer, _, _, _)| layer);
+
+    js::clear_canvas();
+    for (_layer, center, size, color) in draw.rectangles {
+      let center = canvas_position(center);
       let size = size * canvas_scale;
       js::draw_rect(
-        pos[0] as f32,
-        pos[1] as f32,
+        center[0] as f32,
+        center[1] as f32,
         size[0] as f32,
         size[1] as f32,
-        color,
+        &color,
       );
-    };
-    js::clear_canvas();
-
-    for (&tile_position, tile) in &state.game.map.tiles {
-      if let Some(mechanism) = &tile.mechanism {
-        draw_rect(
-          tile_position.to_floating(),
-          TILE_SIZE.to_floating(),
-          if mechanism.is_deck { "#f66" } else { "#888" },
-        );
-      }
     }
-
-    for (&tile_position, tile) in &state.game.map.tiles {
-      for material in &tile.materials {
-        draw_rect(material.position, TILE_SIZE.to_floating() * 0.25, "#fff");
-      }
-    }
-
-    draw_rect(state.game.player.position, TILE_SIZE.to_floating(), "#fff");
   })
 }
