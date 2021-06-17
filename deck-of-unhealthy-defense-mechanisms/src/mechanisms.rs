@@ -216,11 +216,25 @@ impl MechanismTrait for Conveyor {
   }
 
   fn draw(&self, context: MechanismImmutableContext, draw: &mut impl Draw) {
+    let center = context.position.to_floating();
+    let facing = context.this_mechanism().facing;
+    let forwards = facing.unit_vector().to_floating();
+    draw.rectangle_on_map(10, center, TILE_SIZE.to_floating(), "#888");
     draw.rectangle_on_map(
       10,
-      context.position.to_floating(),
-      TILE_SIZE.to_floating(),
-      "#888",
+      center + forwards * (TILE_RADIUS as f64 * 0.6),
+      TILE_SIZE.to_floating() * 0.15,
+      "#bbb",
     );
+    for rotation in [Rotation::CLOCKWISE, Rotation::COUNTERCLOCKWISE] {
+      draw.rectangle_on_map(
+        10,
+        center
+          + forwards * (TILE_RADIUS as f64 * 0.3)
+          + (facing + rotation).unit_vector().to_floating() * (TILE_RADIUS as f64 * 0.3),
+        TILE_SIZE.to_floating() * 0.15,
+        "#bbb",
+      );
+    }
   }
 }

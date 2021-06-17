@@ -77,8 +77,10 @@ impl FloatingVector {
 }
 
 impl Rotation {
-  pub const CLOCKWISE: Rotation = Rotation(3);
-  pub const COUNTERCLOCKWISE: Rotation = Rotation(1);
+  pub const CLOCKWISE: Rotation = Rotation(1);
+  pub const COUNTERCLOCKWISE: Rotation = Rotation(3);
+  pub const IDENTITY: Rotation = Rotation(0);
+  pub const U_TURN: Rotation = Rotation(0);
   pub fn quarter_turns_from_posx_towards_posy(self) -> u8 {
     self.0
   }

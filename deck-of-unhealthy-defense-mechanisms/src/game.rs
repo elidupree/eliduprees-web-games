@@ -92,7 +92,7 @@ impl Game {
               Action::RotateMechanism(RotateMechanism::new(Rotation::COUNTERCLOCKWISE))
             }
             WhatInteraction::InteractRight => {
-              Action::RotateMechanism(RotateMechanism::new(Rotation::COUNTERCLOCKWISE))
+              Action::RotateMechanism(RotateMechanism::new(Rotation::CLOCKWISE))
             }
             WhatInteraction::PlayCard(_) => {
               Action::BuildMechanism(BuildMechanism::new(Mechanism {
