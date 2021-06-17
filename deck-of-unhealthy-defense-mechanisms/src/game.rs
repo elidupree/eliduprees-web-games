@@ -1,4 +1,6 @@
-use crate::actions::{Action, ActionStatus, ActionTrait, BuildMechanism, RotateMechanism};
+use crate::actions::{
+  Action, ActionStatus, ActionTrait, ActionUpdateContext, BuildMechanism, RotateMechanism,
+};
 use crate::cards::Cards;
 use crate::map::{
   FloatingVector, FloatingVectorExtension, GridVector, GridVectorExtension, Map, Rotation, Tile,
@@ -27,27 +29,28 @@ pub struct Game {
 pub struct Player {
   pub position: FloatingVector,
   pub action_state: PlayerActionState,
-  pub already_begun_interaction_intent: Option<WhatInteraction>,
+  pub already_begun_interaction_intent: Option<InteractionIntent>,
   pub maximum_health: i32,
   pub health: i32,
 }
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
 pub enum PlayerInteractionCommitment {
-  Performing { what: WhatInteraction },
+  Performing { what: InteractionIntent },
   Canceled,
 }
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
+pub struct PlayerActiveInteraction {
+  pub activating_intent: InteractionIntent,
+  pub action: Action,
+  pub canceled: bool,
+}
+#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
 pub enum PlayerActionState {
-  Moving {
-    velocity: FloatingVector,
-  },
-  Interacting {
-    action: Action,
-    commitment: PlayerInteractionCommitment,
-  },
+  Moving { velocity: FloatingVector },
+  Interacting(PlayerActiveInteraction),
 }
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]
-pub enum WhatInteraction {
+pub enum InteractionIntent {
   PlayCard(usize),
   InteractLeft,
   InteractRight,
@@ -56,7 +59,7 @@ pub enum WhatInteraction {
 #[derive(Copy, Clone, PartialEq, Serialize, Deserialize, Debug)]
 pub enum Intent {
   Move(FloatingVector),
-  Interact(WhatInteraction),
+  Interact(InteractionIntent),
 }
 
 impl Game {
@@ -113,9 +116,9 @@ impl Game {
         {
           let [left, right] = self.interactions();
           let action = match what {
-            WhatInteraction::InteractLeft => left,
-            WhatInteraction::InteractRight => right,
-            WhatInteraction::PlayCard(_) => {
+            InteractionIntent::InteractLeft => left,
+            InteractionIntent::InteractRight => right,
+            InteractionIntent::PlayCard(_) => {
               Some(Action::BuildMechanism(BuildMechanism::new(Mechanism {
                 mechanism_type: MechanismType::Conveyor(Conveyor {}),
                 ..Default::default()
@@ -124,10 +127,11 @@ impl Game {
           };
 
           if let Some(action) = action {
-            self.player.action_state = PlayerActionState::Interacting {
+            self.player.action_state = PlayerActionState::Interacting(PlayerActiveInteraction {
+              activating_intent: what,
               action,
-              commitment: PlayerInteractionCommitment::Performing { what },
-            };
+              canceled: false,
+            });
 
             self.player.already_begun_interaction_intent = Some(what);
           }
@@ -163,16 +167,17 @@ impl Game {
         velocity.limit_magnitude(max_speed);
         self.player.position += *velocity * UPDATE_DURATION;
       }
-      PlayerActionState::Interacting { action, commitment } => {
-        let mut action = action.clone();
-        let mut commitment = commitment.clone();
-        if matches! (commitment, PlayerInteractionCommitment:: Performing {what} if intent!= Intent::Interact(what))
-        {
-          commitment = PlayerInteractionCommitment::Canceled;
+      PlayerActionState::Interacting(interaction_state) => {
+        if intent != Intent::Interact(interaction_state.activating_intent) {
+          interaction_state.canceled = true;
         }
-        match action.update(self, commitment == PlayerInteractionCommitment::Canceled) {
+        let mut interaction_state = interaction_state.clone();
+        match interaction_state
+          .action
+          .update(ActionUpdateContext { game: self })
+        {
           ActionStatus::StillGoing => {
-            self.player.action_state = PlayerActionState::Interacting { action, commitment }
+            self.player.action_state = PlayerActionState::Interacting(interaction_state);
           }
           ActionStatus::Completed => {
             self.player.action_state = PlayerActionState::Moving {
@@ -198,8 +203,8 @@ impl Game {
 
     match &self.player.action_state {
       PlayerActionState::Moving { velocity } => {}
-      PlayerActionState::Interacting { action, .. } => {
-        action.draw(self, draw);
+      PlayerActionState::Interacting(interaction_state) => {
+        interaction_state.action.draw(self, draw);
       }
     }
 
