@@ -1,12 +1,9 @@
-use crate::game::UPDATE_DURATION;
 use crate::mechanisms::{
   Mechanism, MechanismImmutableContext, MechanismTrait, MechanismUpdateContext,
 };
 use crate::ui_glue::Draw;
-use eliduprees_web_games_lib::auto_constant;
 use extend::ext;
 use nalgebra::Vector2;
-use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ops::{Add, AddAssign, Sub};

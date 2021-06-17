@@ -2,7 +2,7 @@ use crate::actions::{Action, ActionStatus, ActionTrait, BuildMechanism, RotateMe
 use crate::cards::Cards;
 use crate::map::{
   FloatingVector, FloatingVectorExtension, GridVector, GridVectorExtension, Map, Rotation, Tile,
-  TILE_SIZE, TILE_WIDTH,
+  TILE_RADIUS, TILE_SIZE, TILE_WIDTH,
 };
 use crate::mechanisms::{Conveyor, Deck, Mechanism, MechanismType};
 use crate::ui_glue::Draw;
@@ -25,12 +25,23 @@ pub struct Game {
 pub struct Player {
   pub position: FloatingVector,
   pub action_state: PlayerActionState,
+  pub maximum_health: i32,
   pub health: i32,
 }
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
+pub enum PlayerInteractionCommitment {
+  Performing { what: WhatInteraction },
+  Canceled,
+}
+#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
 pub enum PlayerActionState {
-  Moving { velocity: FloatingVector },
-  Interacting { action: Action },
+  Moving {
+    velocity: FloatingVector,
+  },
+  Interacting {
+    action: Action,
+    commitment: PlayerInteractionCommitment,
+  },
 }
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]
 pub enum WhatInteraction {
@@ -62,6 +73,7 @@ impl Game {
         action_state: PlayerActionState::Moving {
           velocity: FloatingVector::zeros(),
         },
+        maximum_health: 100,
         health: 100,
       },
       cards: Cards {
@@ -72,18 +84,10 @@ impl Game {
       time: 0.0,
     }
   }
+
   fn update(&mut self, intent: Intent) {
     match intent {
-      Intent::Move(movement_intent) => {
-        if matches!(
-          self.player.action_state,
-          PlayerActionState::Interacting { .. }
-        ) {
-          self.player.action_state = PlayerActionState::Moving {
-            velocity: FloatingVector::zeros(),
-          };
-        }
-      }
+      Intent::Move(movement_intent) => {}
       Intent::Interact(what) => {
         if matches!(self.player.action_state, PlayerActionState::Moving { velocity } if velocity == FloatingVector::zeros())
         {
@@ -102,7 +106,10 @@ impl Game {
             }
           };
 
-          self.player.action_state = PlayerActionState::Interacting { action };
+          self.player.action_state = PlayerActionState::Interacting {
+            action,
+            commitment: PlayerInteractionCommitment::Performing { what },
+          };
         }
       }
     }
@@ -130,11 +137,16 @@ impl Game {
         velocity.limit_magnitude(max_speed);
         self.player.position += *velocity * UPDATE_DURATION;
       }
-      PlayerActionState::Interacting { action } => {
+      PlayerActionState::Interacting { action, commitment } => {
         let mut action = action.clone();
-        match action.update(self, false) {
+        let mut commitment = commitment.clone();
+        if matches! (commitment, PlayerInteractionCommitment:: Performing {what} if intent!= Intent::Interact(what))
+        {
+          commitment = PlayerInteractionCommitment::Canceled;
+        }
+        match action.update(self, commitment == PlayerInteractionCommitment::Canceled) {
           ActionStatus::StillGoing => {
-            self.player.action_state = PlayerActionState::Interacting { action }
+            self.player.action_state = PlayerActionState::Interacting { action, commitment }
           }
           ActionStatus::Completed => {
             self.player.action_state = PlayerActionState::Moving {
@@ -160,7 +172,7 @@ impl Game {
 
     match &self.player.action_state {
       PlayerActionState::Moving { velocity } => {}
-      PlayerActionState::Interacting { action } => {
+      PlayerActionState::Interacting { action, .. } => {
         action.draw(self, draw);
       }
     }
@@ -170,6 +182,22 @@ impl Game {
       self.player.position,
       TILE_SIZE.to_floating() * 0.4,
       "#fff",
+    );
+    let a = self.player.position + FloatingVector::new(TILE_RADIUS as f64 * 0.5, 0.0);
+    draw.rectangle_on_map(
+      70,
+      a,
+      FloatingVector::new(TILE_RADIUS as f64 * 0.25, TILE_WIDTH as f64),
+      "#000",
+    );
+    draw.rectangle_on_map(
+      71,
+      a,
+      FloatingVector::new(
+        TILE_RADIUS as f64 * 0.25,
+        TILE_WIDTH as f64 * self.player.health as f64 / self.player.maximum_health as f64,
+      ),
+      "#f00",
     );
   }
 }

@@ -1,8 +1,8 @@
-use crate::actions::Action;
-use crate::game::{Game, Time, UPDATE_DURATION};
+use crate::actions::{Action, RotateMechanism};
+use crate::game::UPDATE_DURATION;
 use crate::map::{
-  Facing, FloatingVector, FloatingVectorExtension, GridVector, GridVectorExtension, Map, Material,
-  Rotation, Tile, TILE_RADIUS, TILE_SIZE, TILE_WIDTH,
+  Facing, FloatingVectorExtension, GridVector, GridVectorExtension, Map, Material, Rotation, Tile,
+  TILE_RADIUS, TILE_SIZE, TILE_WIDTH,
 };
 use crate::ui_glue::Draw;
 use eliduprees_web_games_lib::auto_constant;
@@ -212,7 +212,14 @@ impl MechanismTrait for Conveyor {
   }
 
   fn actions(&self, context: MechanismImmutableContext) -> [Option<Action>; 2] {
-    [None, None]
+    [
+      Some(Action::RotateMechanism(RotateMechanism::new(
+        Rotation::COUNTERCLOCKWISE,
+      ))),
+      Some(Action::RotateMechanism(RotateMechanism::new(
+        Rotation::CLOCKWISE,
+      ))),
+    ]
   }
 
   fn draw(&self, context: MechanismImmutableContext, draw: &mut impl Draw) {
