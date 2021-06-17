@@ -4,11 +4,13 @@ use crate::map::{
   FloatingVector, FloatingVectorExtension, GridVector, GridVectorExtension, Map, Rotation, Tile,
   TILE_RADIUS, TILE_SIZE, TILE_WIDTH,
 };
-use crate::mechanisms::{Conveyor, Deck, Mechanism, MechanismType};
+use crate::mechanisms::{
+  Conveyor, Deck, Mechanism, MechanismImmutableContext, MechanismTrait, MechanismType,
+};
 use crate::ui_glue::Draw;
 use eliduprees_web_games_lib::auto_constant;
 use serde::{Deserialize, Serialize};
-use wasm_bindgen::__rt::std::collections::HashMap;
+use std::collections::HashMap;
 
 pub type Time = f64;
 /// duration of each update in seconds:
@@ -87,6 +89,21 @@ impl Game {
     }
   }
 
+  fn interactions(&self) -> [Option<Action>; 2] {
+    let position = self.player.position.containing_tile();
+    if let Some(tile) = self.map.tiles.get(&position) {
+      if let Some(mechanism) = &tile.mechanism {
+        return mechanism
+          .mechanism_type
+          .interactions(MechanismImmutableContext {
+            position,
+            map: &self.map,
+          });
+      }
+    }
+    [None, None]
+  }
+
   fn update(&mut self, intent: Intent) {
     match intent {
       Intent::Move(movement_intent) => {}
@@ -94,27 +111,26 @@ impl Game {
         if self.player.already_begun_interaction_intent != Some(what)
           && matches!(self.player.action_state, PlayerActionState::Moving { velocity } if velocity == FloatingVector::zeros())
         {
+          let [left, right] = self.interactions();
           let action = match what {
-            WhatInteraction::InteractLeft => {
-              Action::RotateMechanism(RotateMechanism::new(Rotation::COUNTERCLOCKWISE))
-            }
-            WhatInteraction::InteractRight => {
-              Action::RotateMechanism(RotateMechanism::new(Rotation::CLOCKWISE))
-            }
+            WhatInteraction::InteractLeft => left,
+            WhatInteraction::InteractRight => right,
             WhatInteraction::PlayCard(_) => {
-              Action::BuildMechanism(BuildMechanism::new(Mechanism {
+              Some(Action::BuildMechanism(BuildMechanism::new(Mechanism {
                 mechanism_type: MechanismType::Conveyor(Conveyor {}),
                 ..Default::default()
-              }))
+              })))
             }
           };
 
-          self.player.action_state = PlayerActionState::Interacting {
-            action,
-            commitment: PlayerInteractionCommitment::Performing { what },
-          };
+          if let Some(action) = action {
+            self.player.action_state = PlayerActionState::Interacting {
+              action,
+              commitment: PlayerInteractionCommitment::Performing { what },
+            };
 
-          self.player.already_begun_interaction_intent = Some(what);
+            self.player.already_begun_interaction_intent = Some(what);
+          }
         }
       }
     }

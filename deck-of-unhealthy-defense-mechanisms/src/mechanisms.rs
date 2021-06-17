@@ -62,7 +62,7 @@ pub trait MechanismTrait {
   */
   fn update(&self, context: MechanismUpdateContext);
 
-  fn actions(&self, context: MechanismImmutableContext) -> [Option<Action>; 2] {
+  fn interactions(&self, context: MechanismImmutableContext) -> [Option<Action>; 2] {
     [None, None]
   }
 
@@ -89,9 +89,9 @@ macro_rules! mechanism_enum {
         }
       }
 
-      fn actions(&self, context: MechanismImmutableContext) -> [Option<Action>; 2] {
+      fn interactions(&self, context: MechanismImmutableContext) -> [Option<Action>; 2] {
         match self {
-          $(MechanismType::$Variant(s) => s.actions(context),)*
+          $(MechanismType::$Variant(s) => s.interactions(context),)*
         }
       }
 
@@ -166,7 +166,7 @@ impl MechanismTrait for Deck {
     }
   }
 
-  fn actions(&self, context: MechanismImmutableContext) -> [Option<Action>; 2] {
+  fn interactions(&self, context: MechanismImmutableContext) -> [Option<Action>; 2] {
     [None, None]
   }
 
@@ -211,7 +211,7 @@ impl MechanismTrait for Conveyor {
     }
   }
 
-  fn actions(&self, context: MechanismImmutableContext) -> [Option<Action>; 2] {
+  fn interactions(&self, context: MechanismImmutableContext) -> [Option<Action>; 2] {
     [
       Some(Action::RotateMechanism(RotateMechanism::new(
         Rotation::COUNTERCLOCKWISE,
