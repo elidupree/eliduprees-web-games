@@ -1,5 +1,5 @@
 use crate::actions::{Action, RotateMechanism};
-use crate::game::UPDATE_DURATION;
+use crate::game::{Game, UPDATE_DURATION};
 use crate::map::{
   Facing, FloatingVectorExtension, GridVector, GridVectorExtension, Map, Material, Rotation, Tile,
   TILE_RADIUS, TILE_SIZE, TILE_WIDTH,
@@ -16,12 +16,12 @@ use trait_enum::trait_enum;
 pub struct MechanismUpdateContext<'a> {
   pub position: GridVector,
   pub map: &'a mut Map,
-  pub former: &'a Map,
+  pub former_game: &'a Game,
 }
 
 pub struct MechanismImmutableContext<'a> {
   pub position: GridVector,
-  pub map: &'a Map,
+  pub game: &'a Game,
 }
 
 impl<'a> MechanismUpdateContext<'a> {
@@ -50,7 +50,7 @@ impl<'a> MechanismUpdateContext<'a> {
 
 impl<'a> MechanismImmutableContext<'a> {
   pub fn this_tile(&self) -> &Tile {
-    self.map.tiles.get(&self.position).unwrap()
+    self.game.map.tiles.get(&self.position).unwrap()
   }
   pub fn this_mechanism(&self) -> &Mechanism {
     self.this_tile().mechanism.as_ref().unwrap()
@@ -137,7 +137,7 @@ impl MechanismTrait for Deck {
       let target_tile_position = context.position + facing.unit_vector() * TILE_WIDTH;
       let target = context.position.to_floating()
         + facing.unit_vector().to_floating() * (TILE_RADIUS as f64 * 1.01);
-      if let Some(old_target_tile) = context.former.tiles.get(&target_tile_position) {
+      if let Some(old_target_tile) = context.former_game.map.tiles.get(&target_tile_position) {
         if old_target_tile
           .materials
           .iter()
@@ -175,7 +175,7 @@ impl MechanismTrait for Conveyor {
     let target_tile_position = context.position + mechanism.facing.unit_vector() * TILE_WIDTH;
     let target = context.position.to_floating()
       + mechanism.facing.unit_vector().to_floating() * (TILE_RADIUS as f64 * 1.01);
-    let former = context.former;
+    let former = &context.former_game.map;
     let tile = context.this_tile_mut();
     if let Some(material) = tile
       .materials
@@ -251,7 +251,8 @@ impl MechanismTrait for Tower {
     let this = context.this_mechanism_type_mut::<Self>();
     if this.volition >= this.maximum_volition {
       if let Some(target) = context
-        .former
+        .former_game
+        .map
         .movers_near(context.position.to_floating(), self.range)
         .filter(|mover| mover.mover_type == MoverType::Monster)
         .min_by_key(|mover| OrderedFloat((mover.position - position).magnitude_squared()))

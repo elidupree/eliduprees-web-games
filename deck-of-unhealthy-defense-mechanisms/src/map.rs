@@ -139,9 +139,7 @@ pub struct Material {
   pub position: FloatingVector,
 }
 impl Map {
-  pub fn update(&mut self) {
-    let former = self.clone();
-
+  pub fn update(&mut self, former_game: &Game) {
     let mechanism_updates: Vec<_> = self
       .tiles
       .iter()
@@ -157,7 +155,7 @@ impl Map {
       mechanism_type.update(MechanismUpdateContext {
         position,
         map: self,
-        former: &former,
+        former_game,
       });
     }
 
@@ -196,7 +194,7 @@ impl Map {
         mechanism.mechanism_type.draw(
           MechanismImmutableContext {
             position: tile_position,
-            map: self,
+            game,
           },
           draw,
         );

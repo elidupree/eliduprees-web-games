@@ -110,7 +110,7 @@ impl Game {
           .mechanism_type
           .interactions(MechanismImmutableContext {
             position,
-            map: &self.map,
+            game: self,
           });
       }
     }
@@ -118,6 +118,7 @@ impl Game {
   }
 
   fn update(&mut self, intent: Intent) {
+    let former = self.clone();
     match intent {
       Intent::Move(_movement_intent) => {}
       Intent::Interact(what) => {
@@ -197,7 +198,7 @@ impl Game {
       }
     }
 
-    self.map.update();
+    self.map.update(&former);
 
     self.time += UPDATE_DURATION;
   }
