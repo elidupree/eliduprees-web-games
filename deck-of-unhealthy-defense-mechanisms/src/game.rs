@@ -5,6 +5,7 @@ use crate::map::{
   TILE_SIZE, TILE_WIDTH,
 };
 use crate::mechanisms::{Deck, Mechanism, MechanismImmutableContext, MechanismType};
+use crate::movers::{Monster, Mover, MoverBehavior, MoverType};
 use crate::ui_glue::Draw;
 use eliduprees_web_games_lib::auto_constant;
 use serde::{Deserialize, Serialize};
@@ -61,11 +62,17 @@ pub enum Intent {
 impl Game {
   pub fn new() -> Self {
     let mut tiles: HashMap<GridVector, Tile> = HashMap::new();
-    tiles
+    let tile = tiles
       .entry(GridVector::zeros())
-      .or_insert_with(Default::default)
-      .mechanism = Some(Mechanism {
+      .or_insert_with(Default::default);
+    tile.mechanism = Some(Mechanism {
       mechanism_type: MechanismType::Deck(Deck {}),
+      ..Default::default()
+    });
+    tile.movers.push(Mover {
+      position: FloatingVector::new(4.0, 6.0),
+      mover_type: MoverType::Monster,
+      behavior: MoverBehavior::Monster(Monster),
       ..Default::default()
     });
     Game {
@@ -200,8 +207,8 @@ impl Game {
     }
   }
 
-  pub fn draw(&mut self, draw: &mut impl Draw) {
-    self.map.draw(draw);
+  pub fn draw(&self, draw: &mut impl Draw) {
+    self.map.draw(self, draw);
 
     match &self.player.action_state {
       PlayerActionState::Moving { velocity: _ } => {}

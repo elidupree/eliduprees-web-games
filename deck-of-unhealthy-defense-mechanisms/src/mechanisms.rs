@@ -1,9 +1,10 @@
 use crate::actions::{Action, RotateMechanism};
 use crate::game::UPDATE_DURATION;
 use crate::map::{
-  Facing, FloatingVectorExtension, GridVector, GridVectorExtension, Map, Material, Mover,
-  MoverType, Rotation, Tile, TILE_RADIUS, TILE_SIZE, TILE_WIDTH,
+  Facing, FloatingVectorExtension, GridVector, GridVectorExtension, Map, Material, Rotation, Tile,
+  TILE_RADIUS, TILE_SIZE, TILE_WIDTH,
 };
+use crate::movers::{Mover, MoverBehavior, MoverType, Projectile};
 use crate::ui_glue::Draw;
 use eliduprees_web_games_lib::auto_constant;
 use ordered_float::OrderedFloat;
@@ -260,6 +261,7 @@ impl MechanismTrait for Tower {
           position,
           velocity: difference * (auto_constant("shot_speed", 4.0) / difference.magnitude()),
           mover_type: MoverType::Projectile,
+          behavior: MoverBehavior::Projectile(Projectile),
           ..Default::default()
         });
         context.this_mechanism_type_mut::<Self>().volition -= 5.0;

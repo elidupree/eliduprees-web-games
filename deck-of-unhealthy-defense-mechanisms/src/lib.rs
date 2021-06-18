@@ -3,6 +3,7 @@ pub mod cards;
 pub mod game;
 pub mod map;
 pub mod mechanisms;
+pub mod movers;
 pub mod ui_glue;
 
 //use misc;

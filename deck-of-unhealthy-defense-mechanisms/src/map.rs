@@ -1,6 +1,7 @@
+use crate::game::{Game, UPDATE_DURATION};
 use crate::mechanisms::{Mechanism, MechanismImmutableContext, MechanismUpdateContext};
+use crate::movers::{Mover, MoverImmutableContext};
 use crate::ui_glue::Draw;
-use derivative::Derivative;
 use extend::ext;
 use nalgebra::Vector2;
 use serde::{Deserialize, Serialize};
@@ -137,20 +138,6 @@ pub struct Tile {
 pub struct Material {
   pub position: FloatingVector,
 }
-#[derive(Clone, PartialEq, Serialize, Deserialize, Debug, Derivative)]
-#[derivative(Default)]
-pub enum MoverType {
-  #[derivative(Default)]
-  Monster,
-  Projectile,
-}
-#[derive(Clone, PartialEq, Serialize, Deserialize, Debug, Default)]
-pub struct Mover {
-  pub position: FloatingVector,
-  pub velocity: FloatingVector,
-  pub mover_type: MoverType,
-  pub hitpoints: i32,
-}
 impl Map {
   pub fn update(&mut self) {
     let former = self.clone();
@@ -193,7 +180,8 @@ impl Map {
       .iter_mut()
       .flat_map(|(_, t)| t.movers.drain(..))
       .collect();
-    for mover in movers {
+    for mut mover in movers {
+      mover.position += mover.velocity * UPDATE_DURATION;
       self
         .tiles
         .entry(mover.position.containing_tile())
@@ -202,7 +190,7 @@ impl Map {
         .push(mover);
     }
   }
-  pub fn draw(&mut self, draw: &mut impl Draw) {
+  pub fn draw(&self, game: &Game, draw: &mut impl Draw) {
     for (&tile_position, tile) in &self.tiles {
       if let Some(mechanism) = &tile.mechanism {
         mechanism.mechanism_type.draw(
@@ -213,9 +201,6 @@ impl Map {
           draw,
         );
       }
-    }
-
-    for (_, tile) in &self.tiles {
       for material in &tile.materials {
         draw.rectangle_on_map(
           20,
@@ -223,6 +208,11 @@ impl Map {
           TILE_SIZE.to_floating() * 0.25,
           "#fff",
         );
+      }
+      for mover in &tile.movers {
+        mover
+          .behavior
+          .draw(MoverImmutableContext { this: mover, game }, draw);
       }
     }
   }

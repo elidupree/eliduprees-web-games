@@ -1,4 +1,5 @@
 use crate::actions::{Action, BuildMechanism, SimpleAction};
+use crate::map::TILE_WIDTH;
 use crate::mechanisms::{Conveyor, Mechanism, MechanismType, Tower};
 use serde::{Deserialize, Serialize};
 
@@ -33,7 +34,7 @@ impl CardInstance {
     CardInstance {
       action: Action::BuildMechanism(BuildMechanism {
         mechanism: Mechanism {
-          mechanism_type: MechanismType::Tower(Tower {maximum_volition:5.0,range:5.0,..Default::default()}),
+          mechanism_type: MechanismType::Tower(Tower {maximum_volition:5.0,range:5.0 * TILE_WIDTH as f64,..Default::default()}),
           ..Default::default()
         },
         simple: SimpleAction::new(5, Some(40), "Defensive Tower", "", "You think *I* have a problem?! *You're* the monsters who are trying to kill me! Why won't you just shut up already?!"),
