@@ -39,12 +39,29 @@ impl<'a> ActionUpdateContext<'a> {
   }
 }
 
+#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
+pub enum Cost {
+  Fixed(i32),
+  None,
+}
+
+#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
+pub struct ActionDisplayInfo {
+  pub name: String,
+  pub health_cost: Cost,
+  pub time_cost: Cost,
+  pub rules_text: String,
+  pub flavor_text: String,
+}
+
 pub trait ActionTrait {
   /** Perform a single time-step update on this action, possibly modifying the game state.
 
   Note that the action is removed from `game` before doing this, so that both mutable references can be held at the same time, so the action still stored in `game` is temporarily invalid.
   */
   fn update(&mut self, context: ActionUpdateContext) -> ActionStatus;
+
+  fn display_info(&self) -> ActionDisplayInfo;
 
   fn draw(&self, game: &Game, draw: &mut impl Draw);
 }
@@ -60,6 +77,12 @@ macro_rules! action_enum {
       fn update(&mut self, context: ActionUpdateContext) -> ActionStatus {
         match self {
           $(Action::$Variant(s) => s.update(context),)*
+        }
+      }
+
+      fn display_info(&self) -> ActionDisplayInfo {
+        match self {
+          $(Action::$Variant(s) => s.display_info(),)*
         }
       }
 
@@ -104,27 +127,22 @@ action_enum! {
   BuildMechanism,
 }
 
-#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
+#[derive(Clone, PartialEq, Serialize, Deserialize, Debug, Default)]
 struct SimpleAction {
-  time_cost: Time,
-  startup_time: Time,
-  cooldown_time: Time,
-  health_cost: i32,
+  display_info: ActionDisplayInfo,
 
   progress: Time,
   cancel_progress: Time,
 }
 
-impl Default for SimpleAction {
+impl Default for ActionDisplayInfo {
   fn default() -> Self {
-    SimpleAction {
-      time_cost: 1.7,
-      startup_time: 0.5,
-      cooldown_time: 0.5,
-      health_cost: 0,
-
-      progress: 0.0,
-      cancel_progress: 0.0,
+    ActionDisplayInfo {
+      name: "".to_string(),
+      health_cost: Cost::None,
+      time_cost: Cost::Fixed(2),
+      rules_text: "".to_string(),
+      flavor_text: "".to_string(),
     }
   }
 }
@@ -135,15 +153,34 @@ fn smootherstep(a: f64, b: f64, x: f64) -> f64 {
 }
 
 impl SimpleAction {
+  fn time_cost(&self) -> f64 {
+    match self.display_info.time_cost {
+      Cost::Fixed(cost) => cost as f64,
+      _ => panic!(),
+    }
+  }
+  fn health_cost(&self) -> f64 {
+    match self.display_info.health_cost {
+      Cost::Fixed(cost) => cost as f64,
+      Cost::None => 0.0,
+      _ => panic!(),
+    }
+  }
+  fn cooldown_time(&self) -> f64 {
+    self.time_cost() * 0.25
+  }
+  fn startup_time(&self) -> f64 {
+    self.time_cost() * 0.25
+  }
   fn finish_time(&self) -> f64 {
-    self.time_cost - self.cooldown_time
+    self.time_cost() - self.cooldown_time()
   }
   fn finished(&self) -> bool {
     self.progress > self.finish_time()
   }
   fn health_to_pay_by(&self, progress: f64) -> i32 {
-    (smootherstep(self.startup_time, self.finish_time(), progress) * self.health_cost as f64)
-      .round() as i32
+    (smootherstep(self.startup_time(), self.finish_time(), progress) * self.health_cost()).round()
+      as i32
   }
   fn update(
     &mut self,
@@ -164,11 +201,15 @@ impl SimpleAction {
       }
     }
 
-    if self.progress > self.time_cost || self.cancel_progress > self.cooldown_time {
+    if self.progress > self.time_cost() || self.cancel_progress > self.cooldown_time() {
       ActionStatus::Completed
     } else {
       ActionStatus::StillGoing
     }
+  }
+
+  fn display_info(&self) -> ActionDisplayInfo {
+    self.display_info.clone()
   }
 
   fn draw(&self, game: &Game, draw: &mut impl Draw) {
@@ -184,7 +225,7 @@ impl SimpleAction {
       a,
       FloatingVector::new(
         TILE_RADIUS as f64 * 0.25,
-        TILE_WIDTH as f64 * self.progress / self.time_cost,
+        TILE_WIDTH as f64 * self.progress / self.time_cost(),
       ),
       "#ff0",
     );
@@ -202,7 +243,13 @@ impl RotateMechanism {
     RotateMechanism {
       amount,
       simple: SimpleAction {
-        time_cost: 1.1,
+        display_info: ActionDisplayInfo {
+          name: "Rotate".to_string(),
+          time_cost: Cost::Fixed(1),
+          flavor_text: "You pivot, and pivot, and pivot, and yet you never feel like you've never found your direction in life."
+            .to_string(),
+          ..Default::default()
+        },
         ..Default::default()
       },
     }
@@ -226,6 +273,10 @@ impl ActionTrait for RotateMechanism {
     })
   }
 
+  fn display_info(&self) -> ActionDisplayInfo {
+    self.simple.display_info()
+  }
+
   fn draw(&self, game: &Game, draw: &mut impl Draw) {
     self.simple.draw(game, draw)
   }
@@ -242,8 +293,15 @@ impl BuildMechanism {
     BuildMechanism {
       mechanism,
       simple: SimpleAction {
-        time_cost: 1.7,
-        health_cost: 10,
+        display_info: ActionDisplayInfo {
+          name: "Conveyor".to_string(),
+          time_cost: Cost::Fixed(2),
+          health_cost: Cost::Fixed(10),
+          // TODO: mention fear of what happens if you give up? haven't figured out the wording
+          flavor_text: "No matter how low you get, something keeps you moving forward. Is it hope for something better? Or is it just an endless grind, false hope leading you down the same corridor again and again and again?"
+            .to_string(),
+          ..Default::default()
+        },
         ..Default::default()
       },
     }
@@ -262,6 +320,10 @@ impl ActionTrait for BuildMechanism {
         .or_insert_with(Default::default);
       tile.mechanism = Some(mechanism);
     })
+  }
+
+  fn display_info(&self) -> ActionDisplayInfo {
+    self.simple.display_info()
   }
 
   fn draw(&self, game: &Game, draw: &mut impl Draw) {

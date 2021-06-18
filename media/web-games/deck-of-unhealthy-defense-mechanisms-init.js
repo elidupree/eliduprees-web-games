@@ -54,6 +54,12 @@ window.draw_rect = (cx, cy, sx, sy, color) => {
   context.restore();
 };
 
+window.draw_text = (x, y, text) => {
+  context.fillStyle = "#cc0";
+  context.font = (24 * dpr)+"px sans-serif";
+  context.fillText(text, x, y);
+};
+
 window.debug = message => {
   document.getElementById("debug").textContent += message;
 }
