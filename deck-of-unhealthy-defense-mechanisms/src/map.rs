@@ -35,13 +35,23 @@ impl GridVector {
   }
 }
 
+pub fn nearest_grid_center(coordinate: f64) -> i32 {
+  (coordinate * 0.5).round() as i32 * 2
+}
+pub fn moved_towards(coordinate: f64, target: f64, distance: f64) -> f64 {
+  if coordinate > target + distance {
+    coordinate - distance
+  } else if coordinate < target - distance {
+    coordinate + distance
+  } else {
+    target
+  }
+}
+
 #[ext(pub, name = FloatingVectorExtension)]
 impl FloatingVector {
   fn containing_tile(&self) -> GridVector {
-    Vector2::new(
-      (self[0] * 0.5).round() as i32 * 2,
-      (self[1] * 0.5).round() as i32 * 2,
-    )
+    GridVector::new(nearest_grid_center(self[0]), nearest_grid_center(self[1]))
   }
   fn closest_facing(&self) -> Option<Facing> {
     if self[0] > self[1].abs() {
@@ -122,15 +132,17 @@ pub struct Map {
 pub struct Tile {
   pub mechanism: Option<Mechanism>,
   pub materials: Vec<Material>,
-  pub monsters: Vec<Monster>,
+  pub movers: Vec<Mover>,
 }
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
 pub struct Material {
   pub position: FloatingVector,
 }
-#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
-pub struct Monster {
+#[derive(Clone, PartialEq, Serialize, Deserialize, Debug, Default)]
+pub struct Mover {
   pub position: FloatingVector,
+  pub velocity: FloatingVector,
+  pub is_monster: bool,
   pub hitpoints: i32,
 }
 impl Map {
@@ -193,5 +205,34 @@ impl Map {
         );
       }
     }
+  }
+
+  pub fn movers_near(&self, position: FloatingVector, range: f64) -> impl Iterator<Item = &Mover> {
+    let range_squared = range * range;
+    let x_range =
+      nearest_grid_center(position[0] - range)..=nearest_grid_center(position[0] + range);
+    let y_range =
+      nearest_grid_center(position[1] - range)..=nearest_grid_center(position[1] + range);
+    x_range.flat_map(move |x| {
+      y_range
+        .clone()
+        .filter_map(move |y| {
+          let closest = FloatingVector::new(
+            moved_towards(x as f64, position[0], TILE_RADIUS as f64),
+            moved_towards(y as f64, position[1], TILE_RADIUS as f64),
+          );
+          if (closest - position).magnitude_squared() > range_squared {
+            return None;
+          }
+          let tile_position = GridVector::new(x, y);
+          self.tiles.get(&tile_position)
+        })
+        .flat_map(move |tile| {
+          tile
+            .movers
+            .iter()
+            .filter(move |mover| (mover.position - position).magnitude_squared() <= range_squared)
+        })
+    })
   }
 }

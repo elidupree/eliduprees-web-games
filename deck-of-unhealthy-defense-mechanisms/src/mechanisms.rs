@@ -1,8 +1,8 @@
 use crate::actions::{Action, RotateMechanism};
 use crate::game::UPDATE_DURATION;
 use crate::map::{
-  Facing, FloatingVectorExtension, GridVector, GridVectorExtension, Map, Material, Rotation, Tile,
-  TILE_RADIUS, TILE_SIZE, TILE_WIDTH,
+  moved_towards, nearest_grid_center, Facing, FloatingVector, FloatingVectorExtension, GridVector,
+  GridVectorExtension, Map, Material, Mover, Rotation, Tile, TILE_RADIUS, TILE_SIZE, TILE_WIDTH,
 };
 use crate::ui_glue::Draw;
 use eliduprees_web_games_lib::auto_constant;
@@ -35,9 +35,10 @@ impl<'a> MechanismUpdateContext<'a> {
   pub fn this_mechanism_mut(&mut self) -> &mut Mechanism {
     self.this_tile_mut().mechanism.as_mut().unwrap()
   }
-  pub fn this_mechanism_type_mut<'b, T: TryFrom<&'b mut MechanismType>>(&'b mut self) -> T
+  pub fn this_mechanism_type_mut<'b, T>(&'b mut self) -> &'b mut T
   where
-    T::Error: Debug,
+    &'b mut T: TryFrom<&'b mut MechanismType>,
+    <&'b mut T as TryFrom<&'b mut MechanismType>>::Error: Debug,
   {
     (&mut self.this_mechanism_mut().mechanism_type)
       .try_into()
@@ -134,6 +135,7 @@ macro_rules! mechanism_enum {
 mechanism_enum! {
   Deck,
   Conveyor,
+  Tower,
 }
 
 impl Default for MechanismType {
@@ -243,5 +245,54 @@ impl MechanismTrait for Conveyor {
         "#bbb",
       );
     }
+  }
+}
+
+#[derive(Clone, PartialEq, Serialize, Deserialize, Debug, Default)]
+pub struct Tower {
+  pub volition: f64,
+  pub maximum_volition: f64,
+  pub range: f64,
+}
+
+impl MechanismTrait for Tower {
+  fn update(&self, mut context: MechanismUpdateContext) {
+    let position = context.position.to_floating();
+    let this = context.this_mechanism_type_mut::<Self>();
+    this.volition += auto_constant("tower_regeneration", 1.0) * UPDATE_DURATION;
+    for _material in std::mem::take(&mut context.this_tile_mut().materials) {
+      context.this_mechanism_type_mut::<Self>().volition += 1.0;
+    }
+
+    let this = context.this_mechanism_type_mut::<Self>();
+    if this.volition >= this.maximum_volition {
+      if let Some(target) = context
+        .former
+        .movers_near(context.position.to_floating(), self.range)
+        .filter(|mover| mover.is_monster)
+        .min_by_key(|mover| OrderedFloat((mover.position - position).magnitude_squared()))
+      {
+        let difference = target.position - position;
+        context.this_tile_mut().movers.push(Mover {
+          position,
+          velocity: difference * (auto_constant("shot_speed", 4.0) / difference.magnitude()),
+          ..Default::default()
+        })
+      }
+    }
+
+    let this = context.this_mechanism_type_mut::<Self>();
+    this.volition = this.volition.min(this.maximum_volition);
+  }
+
+  fn draw(&self, context: MechanismImmutableContext, draw: &mut impl Draw) {
+    let center = context.position.to_floating();
+    let brightness = ((0.5 + 0.5 * (self.volition / self.maximum_volition)) * 255.0).round();
+    draw.rectangle_on_map(
+      10,
+      center,
+      TILE_SIZE.to_floating(),
+      &format!("rgb({}, {}, {})", brightness, brightness, brightness),
+    );
   }
 }

@@ -86,9 +86,14 @@ impl Game {
       cards: Cards {
         draw_pile: vec![],
         discard_pile: vec![],
-        hand: vec![HandCard {
-          card: CardInstance::build_conveyor(),
-        }],
+        hand: vec![
+          HandCard {
+            card: CardInstance::basic_conveyor(),
+          },
+          HandCard {
+            card: CardInstance::basic_tower(),
+          },
+        ],
       },
       time: 0.0,
     }
