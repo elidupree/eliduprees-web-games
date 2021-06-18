@@ -184,9 +184,8 @@ impl SimpleAction {
   fn finished(&self) -> bool {
     self.progress > self.finish_time()
   }
-  fn health_to_pay_by(&self, progress: f64) -> i32 {
-    (smootherstep(self.startup_time(), self.finish_time(), progress) * self.health_cost()).round()
-      as i32
+  fn health_to_pay_by(&self, progress: f64) -> f64 {
+    smootherstep(self.startup_time(), self.finish_time(), progress) * self.health_cost()
   }
   fn update(
     &mut self,

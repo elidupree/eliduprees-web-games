@@ -17,7 +17,7 @@ pub struct Mover {
   pub position: FloatingVector,
   pub velocity: FloatingVector,
   pub mover_type: MoverType,
-  pub hitpoints: i32,
+  pub hitpoints: f64,
   pub behavior: MoverBehavior,
 }
 

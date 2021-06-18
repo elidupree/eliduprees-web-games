@@ -28,7 +28,7 @@ pub struct Player {
   pub action_state: PlayerActionState,
   pub already_begun_interaction_intent: Option<InteractionIntent>,
   pub maximum_health: i32,
-  pub health: i32,
+  pub health: f64,
 }
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
 pub enum PlayerInteractionCommitment {
@@ -84,7 +84,7 @@ impl Game {
         },
         already_begun_interaction_intent: None,
         maximum_health: 100,
-        health: 100,
+        health: 100.0,
       },
       cards: Cards {
         draw_pile: vec![],
@@ -235,7 +235,7 @@ impl Game {
       a,
       FloatingVector::new(
         TILE_RADIUS as f64 * 0.25,
-        TILE_WIDTH as f64 * self.player.health as f64 / self.player.maximum_health as f64,
+        TILE_WIDTH as f64 * self.player.health / self.player.maximum_health as f64,
       ),
       "#f00",
     );
