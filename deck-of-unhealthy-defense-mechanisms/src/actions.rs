@@ -1,4 +1,4 @@
-use crate::cards::{CardInstance, HandCard};
+use crate::cards::HandCard;
 use crate::game::{
   Game, InteractionIntent, PlayerActionState, PlayerActiveInteraction, Time, UPDATE_DURATION,
 };
@@ -6,7 +6,7 @@ use crate::map::{FloatingVector, FloatingVectorExtension, Rotation, TILE_RADIUS,
 use crate::mechanisms::Mechanism;
 use crate::ui_glue::Draw;
 use serde::{Deserialize, Serialize};
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryFrom;
 use std::fmt::Debug;
 use trait_enum::trait_enum;
 
@@ -43,6 +43,7 @@ impl<'a> ActionUpdateContext<'a> {
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
 pub enum Cost {
   Fixed(i32),
+  Variable,
   None,
 }
 

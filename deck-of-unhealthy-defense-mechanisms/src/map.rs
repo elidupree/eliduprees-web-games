@@ -1,6 +1,4 @@
-use crate::mechanisms::{
-  Mechanism, MechanismImmutableContext, MechanismTrait, MechanismUpdateContext,
-};
+use crate::mechanisms::{Mechanism, MechanismImmutableContext, MechanismUpdateContext};
 use crate::ui_glue::Draw;
 use derivative::Derivative;
 use extend::ext;
@@ -217,7 +215,7 @@ impl Map {
       }
     }
 
-    for (&tile_position, tile) in &self.tiles {
+    for (_, tile) in &self.tiles {
       for material in &tile.materials {
         draw.rectangle_on_map(
           20,

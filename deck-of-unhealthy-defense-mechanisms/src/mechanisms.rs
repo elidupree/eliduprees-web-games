@@ -1,9 +1,8 @@
 use crate::actions::{Action, RotateMechanism};
 use crate::game::UPDATE_DURATION;
 use crate::map::{
-  moved_towards, nearest_grid_center, Facing, FloatingVector, FloatingVectorExtension, GridVector,
-  GridVectorExtension, Map, Material, Mover, MoverType, Rotation, Tile, TILE_RADIUS, TILE_SIZE,
-  TILE_WIDTH,
+  Facing, FloatingVectorExtension, GridVector, GridVectorExtension, Map, Material, Mover,
+  MoverType, Rotation, Tile, TILE_RADIUS, TILE_SIZE, TILE_WIDTH,
 };
 use crate::ui_glue::Draw;
 use eliduprees_web_games_lib::auto_constant;
@@ -143,7 +142,7 @@ impl MechanismTrait for Deck {
           .iter()
           .all(|m| (m.position - target).magnitude() > TILE_WIDTH as f64)
         {
-          let tile = context
+          context
             .this_tile_mut()
             .materials
             .push(Material { position: target });
@@ -152,7 +151,7 @@ impl MechanismTrait for Deck {
     }
   }
 
-  fn interactions(&self, context: MechanismImmutableContext) -> [Option<Action>; 2] {
+  fn interactions(&self, _context: MechanismImmutableContext) -> [Option<Action>; 2] {
     [None, None]
   }
 
@@ -197,7 +196,7 @@ impl MechanismTrait for Conveyor {
     }
   }
 
-  fn interactions(&self, context: MechanismImmutableContext) -> [Option<Action>; 2] {
+  fn interactions(&self, _context: MechanismImmutableContext) -> [Option<Action>; 2] {
     [
       Some(Action::RotateMechanism(RotateMechanism::new(
         Rotation::COUNTERCLOCKWISE,

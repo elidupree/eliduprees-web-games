@@ -45,7 +45,7 @@ pub fn rust_init() {
   std::panic::set_hook(Box::new(console_error_panic_hook::hook));
   live_prop_test::initialize();
 
-  with_state(|state| {});
+  //with_state(|state| {});
 }
 
 #[derive(Clone, Deserialize)]
@@ -93,7 +93,7 @@ pub fn rust_do_frame(frame_time: f64, state_from_js: JsValue) {
   let StateFromJs {
     intent,
     canvas_physical_size,
-    canvas_css_size,
+    canvas_css_size: _,
   } = &state_from_js;
 
   let canvas_scale = f64::min(canvas_physical_size[0], canvas_physical_size[1]) / 40.0;

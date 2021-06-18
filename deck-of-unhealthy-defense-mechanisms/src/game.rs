@@ -1,14 +1,10 @@
-use crate::actions::{
-  Action, ActionStatus, ActionTrait, ActionUpdateContext, BuildMechanism, Cost, RotateMechanism,
-};
+use crate::actions::{Action, ActionStatus, ActionUpdateContext, Cost};
 use crate::cards::{CardInstance, Cards, HandCard};
 use crate::map::{
-  FloatingVector, FloatingVectorExtension, GridVector, GridVectorExtension, Map, Rotation, Tile,
-  TILE_RADIUS, TILE_SIZE, TILE_WIDTH,
+  FloatingVector, FloatingVectorExtension, GridVector, GridVectorExtension, Map, Tile, TILE_RADIUS,
+  TILE_SIZE, TILE_WIDTH,
 };
-use crate::mechanisms::{
-  Conveyor, Deck, Mechanism, MechanismImmutableContext, MechanismTrait, MechanismType,
-};
+use crate::mechanisms::{Deck, Mechanism, MechanismImmutableContext, MechanismType};
 use crate::ui_glue::Draw;
 use eliduprees_web_games_lib::auto_constant;
 use serde::{Deserialize, Serialize};
@@ -116,7 +112,7 @@ impl Game {
 
   fn update(&mut self, intent: Intent) {
     match intent {
-      Intent::Move(movement_intent) => {}
+      Intent::Move(_movement_intent) => {}
       Intent::Interact(what) => {
         if self.player.already_begun_interaction_intent != Some(what)
           && matches!(self.player.action_state, PlayerActionState::Moving { velocity } if velocity == FloatingVector::zeros())
@@ -208,7 +204,7 @@ impl Game {
     self.map.draw(draw);
 
     match &self.player.action_state {
-      PlayerActionState::Moving { velocity } => {}
+      PlayerActionState::Moving { velocity: _ } => {}
       PlayerActionState::Interacting(interaction_state) => {
         interaction_state.action.draw(self, draw);
       }
