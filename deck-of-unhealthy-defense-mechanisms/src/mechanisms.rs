@@ -2,7 +2,8 @@ use crate::actions::{Action, RotateMechanism};
 use crate::game::UPDATE_DURATION;
 use crate::map::{
   moved_towards, nearest_grid_center, Facing, FloatingVector, FloatingVectorExtension, GridVector,
-  GridVectorExtension, Map, Material, Mover, Rotation, Tile, TILE_RADIUS, TILE_SIZE, TILE_WIDTH,
+  GridVectorExtension, Map, Material, Mover, MoverType, Rotation, Tile, TILE_RADIUS, TILE_SIZE,
+  TILE_WIDTH,
 };
 use crate::ui_glue::Draw;
 use eliduprees_web_games_lib::auto_constant;
@@ -10,6 +11,7 @@ use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
 use std::convert::{TryFrom, TryInto};
 use std::fmt::Debug;
+use trait_enum::trait_enum;
 
 pub struct MechanismUpdateContext<'a> {
   pub position: GridVector,
@@ -67,7 +69,7 @@ pub trait MechanismTrait {
     [None, None]
   }
 
-  fn draw(&self, context: MechanismImmutableContext, draw: &mut impl Draw);
+  fn draw(&self, context: MechanismImmutableContext, draw: &mut dyn Draw);
 }
 
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug, Default)]
@@ -78,28 +80,10 @@ pub struct Mechanism {
 
 macro_rules! mechanism_enum {
   ($($Variant: ident,)*) => {
-    #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
-    pub enum MechanismType {
-      $($Variant($Variant),)*
-    }
-
-    impl MechanismTrait for MechanismType {
-      fn update(&self, context: MechanismUpdateContext) {
-        match self {
-          $(MechanismType::$Variant(s) => s.update(context),)*
-        }
-      }
-
-      fn interactions(&self, context: MechanismImmutableContext) -> [Option<Action>; 2] {
-        match self {
-          $(MechanismType::$Variant(s) => s.interactions(context),)*
-        }
-      }
-
-      fn draw(&self, context: MechanismImmutableContext, draw: &mut impl Draw) {
-        match self {
-          $(MechanismType::$Variant(s) => s.draw(context, draw),)*
-        }
+    trait_enum!{
+      #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
+      pub enum MechanismType: MechanismTrait {
+        $($Variant,)*
       }
     }
 
@@ -172,7 +156,7 @@ impl MechanismTrait for Deck {
     [None, None]
   }
 
-  fn draw(&self, context: MechanismImmutableContext, draw: &mut impl Draw) {
+  fn draw(&self, context: MechanismImmutableContext, draw: &mut dyn Draw) {
     draw.rectangle_on_map(
       10,
       context.position.to_floating(),
@@ -224,7 +208,7 @@ impl MechanismTrait for Conveyor {
     ]
   }
 
-  fn draw(&self, context: MechanismImmutableContext, draw: &mut impl Draw) {
+  fn draw(&self, context: MechanismImmutableContext, draw: &mut dyn Draw) {
     let center = context.position.to_floating();
     let facing = context.this_mechanism().facing;
     let forwards = facing.unit_vector().to_floating();
@@ -269,15 +253,17 @@ impl MechanismTrait for Tower {
       if let Some(target) = context
         .former
         .movers_near(context.position.to_floating(), self.range)
-        .filter(|mover| mover.is_monster)
+        .filter(|mover| mover.mover_type == MoverType::Monster)
         .min_by_key(|mover| OrderedFloat((mover.position - position).magnitude_squared()))
       {
         let difference = target.position - position;
         context.this_tile_mut().movers.push(Mover {
           position,
           velocity: difference * (auto_constant("shot_speed", 4.0) / difference.magnitude()),
+          mover_type: MoverType::Projectile,
           ..Default::default()
-        })
+        });
+        context.this_mechanism_type_mut::<Self>().volition -= 5.0;
       }
     }
 
@@ -285,7 +271,7 @@ impl MechanismTrait for Tower {
     this.volition = this.volition.min(this.maximum_volition);
   }
 
-  fn draw(&self, context: MechanismImmutableContext, draw: &mut impl Draw) {
+  fn draw(&self, context: MechanismImmutableContext, draw: &mut dyn Draw) {
     let center = context.position.to_floating();
     let brightness = ((0.5 + 0.5 * (self.volition / self.maximum_volition)) * 255.0).round();
     draw.rectangle_on_map(

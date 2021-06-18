@@ -8,6 +8,7 @@ use crate::ui_glue::Draw;
 use serde::{Deserialize, Serialize};
 use std::convert::{TryFrom, TryInto};
 use std::fmt::Debug;
+use trait_enum::trait_enum;
 
 pub enum ActionStatus {
   StillGoing,
@@ -63,33 +64,15 @@ pub trait ActionTrait {
 
   fn display_info(&self) -> ActionDisplayInfo;
 
-  fn draw(&self, game: &Game, draw: &mut impl Draw);
+  fn draw(&self, game: &Game, draw: &mut dyn Draw);
 }
 
 macro_rules! action_enum {
   ($($Variant: ident,)*) => {
-    #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
-    pub enum Action {
-      $($Variant($Variant),)*
-    }
-
-    impl ActionTrait for Action {
-      fn update(&mut self, context: ActionUpdateContext) -> ActionStatus {
-        match self {
-          $(Action::$Variant(s) => s.update(context),)*
-        }
-      }
-
-      fn display_info(&self) -> ActionDisplayInfo {
-        match self {
-          $(Action::$Variant(s) => s.display_info(),)*
-        }
-      }
-
-      fn draw(&self, game: &Game, draw: &mut impl Draw) {
-        match self {
-          $(Action::$Variant(s) => s.draw(game, draw),)*
-        }
+    trait_enum!{
+      #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
+      pub enum Action: ActionTrait {
+        $($Variant,)*
       }
     }
 
@@ -234,7 +217,7 @@ impl SimpleAction {
     self.display_info.clone()
   }
 
-  fn draw(&self, game: &Game, draw: &mut impl Draw) {
+  fn draw(&self, game: &Game, draw: &mut dyn Draw) {
     let a = game.player.position + FloatingVector::new(-TILE_RADIUS as f64 * 0.5, 0.0);
     draw.rectangle_on_map(
       70,
@@ -290,7 +273,7 @@ impl ActionTrait for RotateMechanism {
     self.simple.display_info()
   }
 
-  fn draw(&self, game: &Game, draw: &mut impl Draw) {
+  fn draw(&self, game: &Game, draw: &mut dyn Draw) {
     self.simple.draw(game, draw)
   }
 }
@@ -319,7 +302,7 @@ impl ActionTrait for BuildMechanism {
     self.simple.display_info()
   }
 
-  fn draw(&self, game: &Game, draw: &mut impl Draw) {
+  fn draw(&self, game: &Game, draw: &mut dyn Draw) {
     self.simple.draw(game, draw)
   }
 }

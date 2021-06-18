@@ -2,6 +2,7 @@ use crate::mechanisms::{
   Mechanism, MechanismImmutableContext, MechanismTrait, MechanismUpdateContext,
 };
 use crate::ui_glue::Draw;
+use derivative::Derivative;
 use extend::ext;
 use nalgebra::Vector2;
 use serde::{Deserialize, Serialize};
@@ -138,11 +139,18 @@ pub struct Tile {
 pub struct Material {
   pub position: FloatingVector,
 }
+#[derive(Clone, PartialEq, Serialize, Deserialize, Debug, Derivative)]
+#[derivative(Default)]
+pub enum MoverType {
+  #[derivative(Default)]
+  Monster,
+  Projectile,
+}
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug, Default)]
 pub struct Mover {
   pub position: FloatingVector,
   pub velocity: FloatingVector,
-  pub is_monster: bool,
+  pub mover_type: MoverType,
   pub hitpoints: i32,
 }
 impl Map {
@@ -180,6 +188,20 @@ impl Map {
         .or_insert_with(Default::default)
         .materials
         .push(material);
+    }
+
+    let movers: Vec<_> = self
+      .tiles
+      .iter_mut()
+      .flat_map(|(_, t)| t.movers.drain(..))
+      .collect();
+    for mover in movers {
+      self
+        .tiles
+        .entry(mover.position.containing_tile())
+        .or_insert_with(Default::default)
+        .movers
+        .push(mover);
     }
   }
   pub fn draw(&mut self, draw: &mut impl Draw) {
