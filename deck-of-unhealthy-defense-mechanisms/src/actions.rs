@@ -127,8 +127,8 @@ action_enum! {
   BuildMechanism,
 }
 
-#[derive(Clone, PartialEq, Serialize, Deserialize, Debug, Default)]
-struct SimpleAction {
+#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
+pub struct SimpleAction {
   display_info: ActionDisplayInfo,
 
   progress: Time,
@@ -153,6 +153,28 @@ fn smootherstep(a: f64, b: f64, x: f64) -> f64 {
 }
 
 impl SimpleAction {
+  pub fn new(
+    time_cost: i32,
+    health_cost: Option<i32>,
+    name: &str,
+    rules_text: &str,
+    flavor_text: &str,
+  ) -> SimpleAction {
+    SimpleAction {
+      display_info: ActionDisplayInfo {
+        name: name.to_string(),
+        health_cost: match health_cost {
+          Some(c) => Cost::Fixed(c),
+          None => Cost::None,
+        },
+        time_cost: Cost::Fixed(time_cost),
+        rules_text: rules_text.to_string(),
+        flavor_text: flavor_text.to_string(),
+      },
+      progress: 0.0,
+      cancel_progress: 0.0,
+    }
+  }
   fn time_cost(&self) -> f64 {
     match self.display_info.time_cost {
       Cost::Fixed(cost) => cost as f64,
@@ -242,16 +264,7 @@ impl RotateMechanism {
   pub fn new(amount: Rotation) -> RotateMechanism {
     RotateMechanism {
       amount,
-      simple: SimpleAction {
-        display_info: ActionDisplayInfo {
-          name: "Rotate".to_string(),
-          time_cost: Cost::Fixed(1),
-          flavor_text: "You pivot, and pivot, and pivot, and yet you never feel like you've never found your direction in life."
-            .to_string(),
-          ..Default::default()
-        },
-        ..Default::default()
-      },
+      simple: SimpleAction::new(1, None, "Rotate", "", "You pivot, and pivot, and pivot, and yet you never feel like you've never found your direction in life."),
     }
   }
 }
@@ -284,28 +297,8 @@ impl ActionTrait for RotateMechanism {
 
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
 pub struct BuildMechanism {
-  mechanism: Mechanism,
-  simple: SimpleAction,
-}
-
-impl BuildMechanism {
-  pub fn new(mechanism: Mechanism) -> BuildMechanism {
-    BuildMechanism {
-      mechanism,
-      simple: SimpleAction {
-        display_info: ActionDisplayInfo {
-          name: "Conveyor".to_string(),
-          time_cost: Cost::Fixed(2),
-          health_cost: Cost::Fixed(10),
-          // TODO: mention fear of what happens if you give up? haven't figured out the wording
-          flavor_text: "No matter how low you get, something keeps you moving forward. Is it hope for something better? Or is it just an endless grind, false hope leading you down the same corridor again and again and again?"
-            .to_string(),
-          ..Default::default()
-        },
-        ..Default::default()
-      },
-    }
-  }
+  pub mechanism: Mechanism,
+  pub simple: SimpleAction,
 }
 
 impl ActionTrait for BuildMechanism {

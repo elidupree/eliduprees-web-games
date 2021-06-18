@@ -1,4 +1,4 @@
-use crate::actions::{Action, BuildMechanism};
+use crate::actions::{Action, BuildMechanism, SimpleAction};
 use crate::mechanisms::{Conveyor, Mechanism, MechanismType};
 use serde::{Deserialize, Serialize};
 
@@ -20,10 +20,13 @@ pub struct CardInstance {
 impl CardInstance {
   pub fn build_conveyor() -> Self {
     CardInstance {
-      action: Action::BuildMechanism(BuildMechanism::new(Mechanism {
-        mechanism_type: MechanismType::Conveyor(Conveyor {}),
-        ..Default::default()
-      })),
+      action: Action::BuildMechanism(BuildMechanism {
+        mechanism: Mechanism {
+          mechanism_type: MechanismType::Conveyor(Conveyor {}),
+          ..Default::default()
+        },
+        simple: SimpleAction::new(2, Some(10), "Conveyor", "", "No matter how low you get, something keeps you moving forward. Is it hope for something better? Or is it just an endless grind, false hope leading you down the same corridor again and again and again?")
+      }),
     }
   }
 }
