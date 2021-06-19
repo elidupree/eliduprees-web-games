@@ -1,10 +1,12 @@
 use crate::game::{Game, UPDATE_DURATION};
 use crate::map::{
-  FloatingVector, FloatingVectorExtension, GridVectorExtension, Map, TILE_SIZE, TILE_WIDTH,
+  FloatingVector, FloatingVectorExtension, GridVectorExtension, Map, TILE_RADIUS, TILE_SIZE,
+  TILE_WIDTH,
 };
 use crate::ui_glue::Draw;
 use derivative::Derivative;
 use eliduprees_web_games_lib::auto_constant;
+use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
 use std::ops::Range;
 use trait_enum::trait_enum;
@@ -112,6 +114,28 @@ impl MoverBehaviorTrait for Projectile {
   fn update(&self, context: &mut MoverUpdateContext) {
     context.this.hitpoints -= UPDATE_DURATION;
     if context.this.hitpoints <= 0.0 {
+      context.destroyed = true;
+    }
+    if let Some(target) = context
+      .map
+      .movers_near(context.this.position, 0.8 * TILE_RADIUS as f64)
+      .filter(|mover| mover.mover_type == MoverType::Monster)
+      .min_by_key(|mover| {
+        OrderedFloat((mover.position - context.this.position).magnitude_squared())
+      })
+      .cloned()
+    {
+      let target = context
+        .map
+        .tiles
+        .get_mut(&target.position.containing_tile())
+        .unwrap()
+        .movers
+        .iter_mut()
+        .find(|a| **a == target)
+        .unwrap();
+      let impact = auto_constant("projectile_impact", 2.0) * TILE_WIDTH as f64;
+      target.velocity += target.position * (impact / target.position.magnitude());
       context.destroyed = true;
     }
   }

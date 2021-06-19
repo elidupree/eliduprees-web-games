@@ -258,7 +258,7 @@ impl MechanismTrait for Tower {
         .min_by_key(|mover| OrderedFloat((mover.position - position).magnitude_squared()))
       {
         let difference = target.position - position;
-        let speed = auto_constant("shot_speed", 4.0);
+        let speed = auto_constant("shot_speed", 10.0);
         context.this_tile_mut().movers.push(Mover {
           position,
           velocity: difference * (speed / difference.magnitude()),
