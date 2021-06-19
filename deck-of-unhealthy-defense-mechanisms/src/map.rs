@@ -1,6 +1,6 @@
 use crate::game::{Game, UPDATE_DURATION};
 use crate::mechanisms::{Mechanism, MechanismImmutableContext, MechanismUpdateContext};
-use crate::movers::{Mover, MoverImmutableContext};
+use crate::movers::{Mover, MoverImmutableContext, MoverUpdateContext};
 use crate::ui_glue::Draw;
 use extend::ext;
 use nalgebra::Vector2;
@@ -157,6 +157,47 @@ impl Map {
         map: self,
         former_game,
       });
+    }
+
+    for (tile_position, count) in self
+      .tiles
+      .iter()
+      .map(|(&p, t)| (p, t.movers.len()))
+      .collect::<Vec<_>>()
+    {
+      let destroyed_indices: Vec<bool> = (0..count)
+        .map(|index| {
+          let mut mover = self
+            .tiles
+            .get_mut(&tile_position)
+            .unwrap()
+            .movers
+            .get(index)
+            .unwrap()
+            .clone();
+          let behavior = mover.behavior.clone();
+          let mut context = MoverUpdateContext {
+            this: &mut mover,
+            map: self,
+            former_game,
+            destroyed: false,
+          };
+          behavior.update(&mut context);
+          let result = context.destroyed;
+          self.tiles.get_mut(&tile_position).unwrap().movers[index] = mover;
+          result
+        })
+        .collect();
+      let mut index = 0;
+      self
+        .tiles
+        .get_mut(&tile_position)
+        .unwrap()
+        .movers
+        .retain(|_| {
+          index += 1;
+          !destroyed_indices.get(index - 1).copied().unwrap_or(false)
+        });
     }
 
     let materials: Vec<_> = self

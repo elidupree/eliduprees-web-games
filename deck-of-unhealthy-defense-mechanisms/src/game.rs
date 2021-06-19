@@ -21,6 +21,8 @@ pub struct Game {
   pub player: Player,
   pub cards: Cards,
   pub time: Time,
+  pub day: i32,
+  pub day_progress: f64,
 }
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
 pub struct Player {
@@ -112,6 +114,8 @@ impl Game {
         ],
       },
       time: 0.0,
+      day: 1,
+      day_progress: 0.0,
     }
   }
 

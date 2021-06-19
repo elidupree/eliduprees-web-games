@@ -4,7 +4,7 @@ use serde::Deserialize;
 use std::cell::RefCell;
 use wasm_bindgen::prelude::*;
 
-mod js {
+pub mod js {
   use wasm_bindgen::prelude::*;
 
   #[wasm_bindgen]
