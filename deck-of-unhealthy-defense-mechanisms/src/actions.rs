@@ -5,6 +5,7 @@ use crate::game::{
 use crate::map::{FloatingVector, FloatingVectorExtension, Rotation, TILE_RADIUS, TILE_WIDTH};
 use crate::mechanisms::Mechanism;
 use crate::ui_glue::Draw;
+use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 use std::fmt::Debug;
@@ -107,6 +108,7 @@ macro_rules! action_enum {
 }
 
 action_enum! {
+  Redraw,
   RotateMechanism,
   BuildMechanism,
 }
@@ -295,6 +297,48 @@ impl ActionTrait for BuildMechanism {
         .entry(context.game.player.position.containing_tile())
         .or_insert_with(Default::default);
       tile.mechanism = Some(mechanism);
+    })
+  }
+
+  fn display_info(&self) -> ActionDisplayInfo {
+    self.simple.display_info()
+  }
+
+  fn draw(&self, game: &Game, draw: &mut dyn Draw) {
+    self.simple.draw(game, draw)
+  }
+}
+
+#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
+pub struct Redraw {
+  pub simple: SimpleAction,
+}
+
+impl Redraw {
+  pub fn new() -> Redraw {
+    Redraw {
+      simple: SimpleAction::new(5, Some(50), "Redraw", "", ""),
+    }
+  }
+}
+
+impl ActionTrait for Redraw {
+  fn update(&mut self, context: ActionUpdateContext) -> ActionStatus {
+    self.simple.update(context, |context| {
+      let cards = &mut context.game.cards;
+      cards
+        .discard_pile
+        .extend(cards.hand.drain(..).map(|c| c.card));
+      if cards.draw_pile.is_empty() {
+        cards.discard_pile.shuffle(&mut rand::thread_rng());
+        std::mem::swap(&mut cards.draw_pile, &mut cards.discard_pile);
+      }
+      cards.hand.extend(
+        cards
+          .draw_pile
+          .drain(cards.draw_pile.len().saturating_sub(5)..)
+          .map(|card| HandCard { card }),
+      );
     })
   }
 

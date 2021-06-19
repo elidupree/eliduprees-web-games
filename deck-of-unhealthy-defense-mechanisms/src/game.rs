@@ -87,9 +87,22 @@ impl Game {
         health: 100.0,
       },
       cards: Cards {
-        draw_pile: vec![],
+        draw_pile: vec![
+          CardInstance::basic_conveyor(),
+          CardInstance::basic_conveyor(),
+          CardInstance::basic_conveyor(),
+        ],
         discard_pile: vec![],
         hand: vec![
+          HandCard {
+            card: CardInstance::basic_conveyor(),
+          },
+          HandCard {
+            card: CardInstance::basic_conveyor(),
+          },
+          HandCard {
+            card: CardInstance::basic_conveyor(),
+          },
           HandCard {
             card: CardInstance::basic_conveyor(),
           },
