@@ -102,7 +102,7 @@ impl Game {
             card: CardInstance::basic_conveyor(),
           },
           HandCard {
-            card: CardInstance::basic_conveyor(),
+            card: CardInstance::basic_tower(),
           },
           HandCard {
             card: CardInstance::basic_conveyor(),
