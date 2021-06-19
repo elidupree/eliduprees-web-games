@@ -189,7 +189,7 @@ impl SimpleAction {
   fn health_to_pay_by(&self, progress: f64) -> f64 {
     smootherstep(self.startup_time(), self.finish_time(), progress) * self.health_cost()
   }
-  fn update(
+  fn update_noncard(
     &mut self,
     context: ActionUpdateContext,
     finish: impl FnOnce(ActionUpdateContext),
@@ -213,6 +213,25 @@ impl SimpleAction {
     } else {
       ActionStatus::StillGoing
     }
+  }
+  fn update_card(
+    &mut self,
+    context: ActionUpdateContext,
+    finish: impl FnOnce(ActionUpdateContext),
+  ) -> ActionStatus {
+    self.update_noncard(context, |context| {
+      match context.interaction_state().activating_intent {
+        InteractionIntent::PlayCard(index) => {
+          context
+            .game
+            .cards
+            .discard_pile
+            .push(context.game.cards.hand.remove(index).card);
+        }
+        _ => unreachable!(),
+      }
+      finish(context)
+    })
   }
 
   fn display_info(&self) -> ActionDisplayInfo {
@@ -257,7 +276,7 @@ impl RotateMechanism {
 impl ActionTrait for RotateMechanism {
   fn update(&mut self, context: ActionUpdateContext) -> ActionStatus {
     let amount = self.amount;
-    self.simple.update(context, |context| {
+    self.simple.update_noncard(context, |context| {
       context
         .game
         .map
@@ -289,7 +308,7 @@ pub struct BuildMechanism {
 impl ActionTrait for BuildMechanism {
   fn update(&mut self, context: ActionUpdateContext) -> ActionStatus {
     let mechanism = self.mechanism.clone();
-    self.simple.update(context, |context| {
+    self.simple.update_card(context, |context| {
       let tile = context
         .game
         .map
@@ -324,7 +343,7 @@ impl Redraw {
 
 impl ActionTrait for Redraw {
   fn update(&mut self, context: ActionUpdateContext) -> ActionStatus {
-    self.simple.update(context, |context| {
+    self.simple.update_noncard(context, |context| {
       let cards = &mut context.game.cards;
       cards
         .discard_pile
