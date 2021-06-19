@@ -1,8 +1,12 @@
 use crate::game::{Game, UPDATE_DURATION};
-use crate::map::{FloatingVector, GridVectorExtension, Map, TILE_SIZE};
+use crate::map::{
+  FloatingVector, FloatingVectorExtension, GridVectorExtension, Map, TILE_SIZE, TILE_WIDTH,
+};
 use crate::ui_glue::Draw;
 use derivative::Derivative;
+use eliduprees_web_games_lib::auto_constant;
 use serde::{Deserialize, Serialize};
+use std::ops::Range;
 use trait_enum::trait_enum;
 
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug, Derivative)]
@@ -16,6 +20,8 @@ pub enum MoverType {
 pub struct Mover {
   pub position: FloatingVector,
   pub velocity: FloatingVector,
+  pub home: FloatingVector,
+  pub active_time: Range<f64>,
   pub mover_type: MoverType,
   pub hitpoints: f64,
   pub behavior: MoverBehavior,
@@ -64,7 +70,30 @@ impl Default for MoverBehavior {
 pub struct Monster;
 
 impl MoverBehaviorTrait for Monster {
-  fn update(&self, _context: &mut MoverUpdateContext) {}
+  fn update(&self, context: &mut MoverUpdateContext) {
+    let active = context
+      .this
+      .active_time
+      .contains(&context.former_game.day_progress);
+    let target;
+    if active {
+      target = FloatingVector::zeros();
+    } else {
+      target = context.this.home;
+    }
+
+    let relative_target = target - context.this.position;
+
+    let acceleration = auto_constant("monster_acceleration", 4.0) * TILE_WIDTH as f64;
+    let max_speed = auto_constant("monster_max_speed", 1.6) * TILE_WIDTH as f64;
+    // Account for stopping distance:
+    let target_speed = max_speed.min((2.0 * relative_target.magnitude() * acceleration).sqrt());
+    let target_velocity = relative_target.normalize() * target_speed;
+    context
+      .this
+      .velocity
+      .move_towards(target_velocity, acceleration * UPDATE_DURATION);
+  }
 
   fn draw(&self, context: MoverImmutableContext, draw: &mut dyn Draw) {
     draw.rectangle_on_map(

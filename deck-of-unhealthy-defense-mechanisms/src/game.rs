@@ -75,6 +75,8 @@ impl Game {
       position: FloatingVector::new(4.0, 6.0),
       mover_type: MoverType::Monster,
       behavior: MoverBehavior::Monster(Monster),
+      home: FloatingVector::new(8.0, 12.0),
+      active_time: 0.2..0.9,
       ..Default::default()
     });
     Game {
@@ -173,7 +175,7 @@ impl Game {
 
     match &mut self.player.action_state {
       PlayerActionState::Moving { velocity } => {
-        let acceleration = auto_constant("player_acceleration", 8.0);
+        let acceleration = auto_constant("player_acceleration", 4.0) * TILE_WIDTH as f64;
         let max_speed = auto_constant("player_max_speed", 1.4) * TILE_WIDTH as f64;
         let target;
         if let Intent::Move(mut movement_intent) = intent {
@@ -191,7 +193,7 @@ impl Game {
           }
         }
         velocity.move_towards(target, acceleration * bonus * UPDATE_DURATION);
-        velocity.limit_magnitude(max_speed);
+        //velocity.limit_magnitude(max_speed);
         self.player.position += *velocity * UPDATE_DURATION;
       }
       PlayerActionState::Interacting(interaction_state) => {
@@ -218,6 +220,12 @@ impl Game {
     self.map.update(&former);
 
     self.time += UPDATE_DURATION;
+    let day_length = auto_constant("day_length", 60.0);
+    self.day_progress += UPDATE_DURATION / day_length;
+    if self.day_progress >= 1.0 {
+      self.day += 1;
+      self.day_progress = 0.0;
+    }
   }
   pub fn update_until(&mut self, new_time: Time, intent: Intent) {
     while self.time < new_time {
