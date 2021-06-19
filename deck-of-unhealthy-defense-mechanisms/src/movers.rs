@@ -135,7 +135,10 @@ impl MoverBehaviorTrait for Projectile {
         .find(|a| **a == target)
         .unwrap();
       let impact = auto_constant("projectile_impact", 2.0) * TILE_WIDTH as f64;
-      target.velocity += target.position * (impact / target.position.magnitude());
+
+      // Push the monster directly away from your deck. We COULD have the monster be propelled in the direction of the projectile (context.this.velocity) instead, but that causes the monster to be knocked around in a way that feels slippery, rather than feeling like a struggle of determination against determination. Having projectile directions matter would make this a physics game, and this I actually DON'T want this to be a physics game.
+      let direction = target.position;
+      target.velocity += direction.normalize() * impact;
       context.destroyed = true;
     }
   }
