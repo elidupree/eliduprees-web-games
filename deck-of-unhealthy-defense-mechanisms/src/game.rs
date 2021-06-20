@@ -8,6 +8,7 @@ use crate::mechanisms::{Deck, Mechanism, MechanismImmutableContext, MechanismTyp
 use crate::movers::{Monster, Mover, MoverBehavior, MoverType};
 use crate::ui_glue::Draw;
 use eliduprees_web_games_lib::auto_constant;
+use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -23,6 +24,7 @@ pub struct Game {
   pub time: Time,
   pub day: i32,
   pub day_progress: f64,
+  pub horizon: f64,
 }
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
 pub struct Player {
@@ -118,6 +120,7 @@ impl Game {
       time: 0.0,
       day: 1,
       day_progress: 0.0,
+      horizon: 50.0,
     }
   }
 
@@ -222,6 +225,27 @@ impl Game {
 
     self.map.update(&former);
 
+    let closest_monster_distance = self
+      .map
+      .tiles
+      .iter()
+      .flat_map(|(_, t)| &t.movers)
+      .map(|m| OrderedFloat(m.position.magnitude()))
+      .min()
+      .unwrap_or(OrderedFloat(100000.0))
+      .0;
+    let horizon_leeway_width = auto_constant("horizon_leeway_width", 1.0) * TILE_WIDTH as f64;
+    let decay_size_needed = (self.horizon - closest_monster_distance) - horizon_leeway_width;
+    if decay_size_needed > 0.0 {
+      self.horizon -= decay_size_needed
+        * (1.0 - auto_constant("horizon_contract_decay", 0.5).powf(UPDATE_DURATION));
+    }
+    let expand_size_needed = closest_monster_distance - self.horizon;
+    if expand_size_needed > 0.0 {
+      self.horizon += expand_size_needed
+        * (1.0 - auto_constant("horizon_expand_decay", 0.8).powf(UPDATE_DURATION));
+    }
+
     self.time += UPDATE_DURATION;
     let day_length = auto_constant("day_length", 60.0);
     self.day_progress += UPDATE_DURATION / day_length;
@@ -238,6 +262,13 @@ impl Game {
 
   pub fn draw(&self, draw: &mut impl Draw) {
     self.map.draw(self, draw);
+
+    draw.rectangle_on_map(
+      0,
+      FloatingVector::zeros(),
+      FloatingVector::new(self.horizon * 2.0, self.horizon * 2.0),
+      "#444",
+    );
 
     match &self.player.action_state {
       PlayerActionState::Moving { velocity: _ } => {}

@@ -42,7 +42,7 @@ const update_canvas_size = () => {
 }
 
 window.clear_canvas = () => {
-  context.fillStyle = "#444";
+  context.fillStyle = "#000";
   context.fillRect(0, 0, context.canvas.width, context.canvas.height);
 };
 
