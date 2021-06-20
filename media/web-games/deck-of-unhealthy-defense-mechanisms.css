@@ -5,5 +5,11 @@ body {
 #debug {
   position: fixed;
   top: 0.8em;
+  right: 0.8em;
+}
+
+#auto_constants_editor {
+  position: fixed;
+  top: 0.8em;
   left: 0.8em;
 }

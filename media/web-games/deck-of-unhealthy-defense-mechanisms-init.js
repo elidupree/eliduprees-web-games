@@ -115,6 +115,7 @@ async function run() {
     document.getElementById("debug").textContent = JSON.stringify(action_intents);
 
     update_canvas_size();
+    eliduprees_web_games.update_auto_constants_editor();
     rust_do_frame(time, {
       intent,
       canvas_css_size,

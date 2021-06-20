@@ -4,3 +4,13 @@ html.whole_window>body, .whole_window {
   width: 100%; height: 100%;
   overflow: hidden;
 }
+
+.auto_constants_editor_entry input {
+  vertical-align: middle;
+}
+.auto_constants_editor_entry input[type='number'] {
+  width: 5em;
+}
+.auto_constants_editor_entry label {
+  margin-left: 0.4em;
+}
