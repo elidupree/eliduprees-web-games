@@ -237,6 +237,7 @@ impl Game {
       .tiles
       .iter()
       .flat_map(|(_, t)| &t.movers)
+      .filter(|m| m.mover_type == MoverType::Monster)
       .map(|m| OrderedFloat(m.position.magnitude()))
       .min()
       .unwrap_or(OrderedFloat(100000.0))
