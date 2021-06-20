@@ -198,7 +198,7 @@ impl Game {
               * auto_constant("player_decelerate_bonus", 0.5);
           }
         }
-        let horizon_violation = (self.player.position.magnitude() / self.horizon);
+        let horizon_violation = self.player.position.magnitude() / self.horizon;
         if horizon_violation > 1.0 {
           let squash_direction = -self.player.position.normalize();
           target -=
