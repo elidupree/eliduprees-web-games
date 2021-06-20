@@ -183,7 +183,7 @@ impl Game {
       PlayerActionState::Moving { velocity } => {
         let acceleration = auto_constant("player_acceleration", 4.0) * TILE_WIDTH as f64;
         let max_speed = auto_constant("player_max_speed", 1.4) * TILE_WIDTH as f64;
-        let target;
+        let mut target;
         if let Intent::Move(mut movement_intent) = intent {
           movement_intent.limit_magnitude(1.0);
           target = movement_intent * max_speed;
@@ -197,6 +197,13 @@ impl Game {
             bonus += (-acceleration_direction.dot(&velocity_direction)).max(0.0)
               * auto_constant("player_decelerate_bonus", 0.5);
           }
+        }
+        let horizon_violation = (self.player.position.magnitude() / self.horizon);
+        if horizon_violation > 1.0 {
+          let squash_direction = -self.player.position.normalize();
+          target -=
+            squash_direction * target.dot(&squash_direction) * (1.0 - 1.0 / horizon_violation);
+          target += squash_direction * (horizon_violation - 1.0) * max_speed * 2.0;
         }
         velocity.move_towards(target, acceleration * bonus * UPDATE_DURATION);
         //velocity.limit_magnitude(max_speed);
