@@ -173,6 +173,9 @@ impl Game {
       self.player.already_begun_interaction_intent = None;
     }
 
+    self.player.health += auto_constant("health_regeneration", 3.0) * UPDATE_DURATION;
+    self.player.health = self.player.health.min(self.player.maximum_health as f64);
+
     match &mut self.player.action_state {
       PlayerActionState::Moving { velocity } => {
         let acceleration = auto_constant("player_acceleration", 4.0) * TILE_WIDTH as f64;
