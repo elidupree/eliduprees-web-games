@@ -2,7 +2,10 @@ use crate::cards::HandCard;
 use crate::game::{
   Game, InteractionIntent, PlayerActionState, PlayerActiveInteraction, Time, UPDATE_DURATION,
 };
-use crate::map::{FloatingVector, FloatingVectorExtension, Rotation, TILE_RADIUS, TILE_WIDTH};
+use crate::map::{
+  FloatingVector, FloatingVectorExtension, GridVectorExtension, Rotation, TILE_RADIUS, TILE_SIZE,
+  TILE_WIDTH,
+};
 use crate::mechanisms::Mechanism;
 use crate::ui_glue::Draw;
 use rand::prelude::*;
@@ -57,6 +60,7 @@ pub struct ActionDisplayInfo {
   pub flavor_text: String,
 }
 
+#[allow(unused)]
 pub trait ActionTrait {
   /** Perform a single time-step update on this action, possibly modifying the game state.
 
@@ -65,8 +69,12 @@ pub trait ActionTrait {
   fn update(&mut self, context: ActionUpdateContext) -> ActionStatus;
 
   fn display_info(&self) -> ActionDisplayInfo;
+  fn possible(&self, game: &Game) -> bool {
+    true
+  }
 
-  fn draw(&self, game: &Game, draw: &mut dyn Draw);
+  fn draw_progress(&self, game: &Game, draw: &mut dyn Draw);
+  fn draw_preview(&self, game: &Game, draw: &mut dyn Draw) {}
 }
 
 macro_rules! action_enum {
@@ -294,7 +302,7 @@ impl ActionTrait for RotateMechanism {
     self.simple.display_info()
   }
 
-  fn draw(&self, game: &Game, draw: &mut dyn Draw) {
+  fn draw_progress(&self, game: &Game, draw: &mut dyn Draw) {
     self.simple.draw(game, draw)
   }
 }
@@ -323,8 +331,24 @@ impl ActionTrait for BuildMechanism {
     self.simple.display_info()
   }
 
-  fn draw(&self, game: &Game, draw: &mut dyn Draw) {
+  fn possible(&self, game: &Game) -> bool {
+    game
+      .map
+      .tiles
+      .get(&game.player.position.containing_tile())
+      .map_or(true, |tile| tile.mechanism.is_none())
+  }
+
+  fn draw_progress(&self, game: &Game, draw: &mut dyn Draw) {
     self.simple.draw(game, draw)
+  }
+  fn draw_preview(&self, game: &Game, draw: &mut dyn Draw) {
+    draw.rectangle_on_map(
+      5,
+      game.player.position.containing_tile().to_floating(),
+      TILE_SIZE.to_floating(),
+      "#666",
+    );
   }
 }
 
@@ -365,7 +389,7 @@ impl ActionTrait for Redraw {
     self.simple.display_info()
   }
 
-  fn draw(&self, game: &Game, draw: &mut dyn Draw) {
+  fn draw_progress(&self, game: &Game, draw: &mut dyn Draw) {
     self.simple.draw(game, draw)
   }
 }

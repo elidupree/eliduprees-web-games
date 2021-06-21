@@ -116,6 +116,7 @@ impl Game {
             card: CardInstance::basic_tower(),
           },
         ],
+        selected: Some(0),
       },
       time: 0.0,
       day: 1,
@@ -124,7 +125,7 @@ impl Game {
     }
   }
 
-  fn interactions(&self) -> [Option<Action>; 2] {
+  pub fn interactions(&self) -> [Option<Action>; 2] {
     let position = self.player.position.containing_tile();
     if let Some(tile) = self.map.tiles.get(&position) {
       if let Some(mechanism) = &tile.mechanism {
@@ -281,7 +282,7 @@ impl Game {
     match &self.player.action_state {
       PlayerActionState::Moving { velocity: _ } => {}
       PlayerActionState::Interacting(interaction_state) => {
-        interaction_state.action.draw(self, draw);
+        interaction_state.action.draw_progress(self, draw);
       }
     }
 
@@ -308,29 +309,6 @@ impl Game {
       "#f00",
     );
 
-    let [left, right] = self.interactions();
-    let actions: Vec<_> = std::iter::once(left.as_ref())
-      .chain((0..5).map(|index| self.cards.hand.get(index).map(|card| &card.card.action)))
-      .chain(std::iter::once(right.as_ref()))
-      .collect();
-    for (index, &action) in actions.iter().enumerate() {
-      if let Some(action) = action {
-        let info = action.display_info();
-        let horizontal = (index as f64 + 0.1) / actions.len() as f64;
-        draw.text(FloatingVector::new(horizontal, 0.8), &info.name);
-        if let Cost::Fixed(cost) = info.time_cost {
-          draw.text(
-            FloatingVector::new(horizontal, 0.85),
-            &format!("{} time", cost),
-          );
-        }
-        if let Cost::Fixed(cost) = info.health_cost {
-          draw.text(
-            FloatingVector::new(horizontal, 0.9),
-            &format!("{} health", cost),
-          );
-        }
-      }
-    }
+    self.cards.draw(self, draw);
   }
 }
