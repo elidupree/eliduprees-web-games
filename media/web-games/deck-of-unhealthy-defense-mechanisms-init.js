@@ -54,9 +54,9 @@ window.draw_rect = (cx, cy, sx, sy, color) => {
   context.restore();
 };
 
-window.draw_text = (x, y, text) => {
-  context.fillStyle = "#cc0";
-  context.font = (24 * dpr)+"px sans-serif";
+window.draw_text = (x, y, size, color, text) => {
+  context.fillStyle = color;
+  context.font = (size * dpr)+"px sans-serif";
   context.fillText(text, x, y);
 };
 

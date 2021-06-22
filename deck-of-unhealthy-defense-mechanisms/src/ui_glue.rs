@@ -13,7 +13,7 @@ pub mod js {
     pub fn clear_canvas() -> JsValue;
     pub fn debug(message: &str);
     pub fn draw_rect(cx: f32, cy: f32, sx: f32, sy: f32, color: &str);
-    pub fn draw_text(x: f32, y: f32, text: &str);
+    pub fn draw_text(x: f32, y: f32, size: f32, color: &str, text: &str);
   }
 }
 
@@ -63,12 +63,12 @@ pub trait Draw {
     size: FloatingVector,
     color: &str,
   );
-  fn text(&mut self, position: FloatingVector, text: &str);
+  fn text(&mut self, position: FloatingVector, size: f64, color: &str, text: &str);
 }
 #[derive(Default)]
 struct ProvisionalDraw {
   rectangles: Vec<(i32, FloatingVector, FloatingVector, String)>,
-  text: Vec<(FloatingVector, String)>,
+  text: Vec<(FloatingVector, f64, String, String)>,
 }
 impl Draw for ProvisionalDraw {
   fn rectangle_on_map(
@@ -82,8 +82,10 @@ impl Draw for ProvisionalDraw {
       .rectangles
       .push((layer, center, size, color.to_string()));
   }
-  fn text(&mut self, position: FloatingVector, text: &str) {
-    self.text.push((position, text.to_string()))
+  fn text(&mut self, position: FloatingVector, size: f64, color: &str, text: &str) {
+    self
+      .text
+      .push((position, size, color.to_string(), text.to_string()))
   }
 }
 
@@ -128,10 +130,12 @@ pub fn rust_do_frame(frame_time: f64, state_from_js: JsValue) {
         &color,
       );
     }
-    for (position, text) in draw.text {
+    for (position, size, color, text) in draw.text {
       js::draw_text(
         (canvas_physical_size[0] * position[0]) as f32,
         (canvas_physical_size[1] * position[1]) as f32,
+        size as f32,
+        &color,
         &text,
       );
     }

@@ -49,30 +49,44 @@ impl CardInstance {
 impl Cards {
   pub fn draw(&self, game: &Game, draw: &mut impl Draw) {
     let [left, right] = game.interactions();
-    let actions: Vec<_> = std::iter::once(left.as_ref())
-      .chain((0..5).map(|index| self.hand.get(index).map(|card| &card.card.action)))
-      .chain(std::iter::once(right.as_ref()))
+    let actions: Vec<_> = std::iter::once(left.as_ref().map(|a| (a, false)))
+      .chain((0..5).map(|index| {
+        self
+          .hand
+          .get(index)
+          .map(|card| (&card.card.action, self.selected == Some(index)))
+      }))
+      .chain(std::iter::once(right.as_ref().map(|a| (a, false))))
       .collect();
     for (index, &action) in actions.iter().enumerate() {
-      if let Some(action) = action {
+      if let Some((action, selected)) = action {
         let info = action.display_info();
         let horizontal = (index as f64 + 0.1) / actions.len() as f64;
-        draw.text(FloatingVector::new(horizontal, 0.8), &info.name);
-        if action.possible(game) {
-          if let Cost::Fixed(cost) = info.time_cost {
-            draw.text(
-              FloatingVector::new(horizontal, 0.85),
-              &format!("{} time", cost),
-            );
-          }
-          if let Cost::Fixed(cost) = info.health_cost {
-            draw.text(
-              FloatingVector::new(horizontal, 0.9),
-              &format!("{} health", cost),
-            );
-          }
-        } else {
-          draw.text(FloatingVector::new(horizontal, 0.85), "(not allowed here)");
+        let possible = action.possible(game);
+        let color = if possible { "#cc0" } else { "#aaa" };
+        let size = if selected { 28.0 } else { 24.0 };
+        let offset = if selected { 0.02 } else { 0.0 };
+        draw.text(
+          FloatingVector::new(horizontal, 0.8 - offset),
+          size,
+          color,
+          &info.name,
+        );
+        if let Cost::Fixed(cost) = info.time_cost {
+          draw.text(
+            FloatingVector::new(horizontal, 0.85 - offset),
+            size,
+            color,
+            &format!("{} time", cost),
+          );
+        }
+        if let Cost::Fixed(cost) = info.health_cost {
+          draw.text(
+            FloatingVector::new(horizontal, 0.9 - offset),
+            size,
+            color,
+            &format!("{} health", cost),
+          );
         }
       }
     }
