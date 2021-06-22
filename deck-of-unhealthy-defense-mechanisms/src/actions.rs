@@ -1,7 +1,5 @@
 use crate::cards::HandCard;
-use crate::game::{
-  Game, InteractionIntent, PlayerActionState, PlayerActiveInteraction, Time, UPDATE_DURATION,
-};
+use crate::game::{Game, PlayerActionState, PlayerActiveInteraction, Time, UPDATE_DURATION};
 use crate::map::{
   FloatingVector, FloatingVectorExtension, GridVectorExtension, Rotation, TILE_RADIUS, TILE_SIZE,
   TILE_WIDTH,
@@ -31,16 +29,10 @@ impl<'a> ActionUpdateContext<'a> {
     }
   }
   pub fn this_card(&self) -> &HandCard {
-    match self.interaction_state().activating_intent {
-      InteractionIntent::PlayCard(index) => self.game.cards.hand.get(index).unwrap(),
-      _ => unreachable!(),
-    }
+    self.game.cards.selected().unwrap()
   }
   pub fn this_card_mut(&mut self) -> &mut HandCard {
-    match self.interaction_state().activating_intent {
-      InteractionIntent::PlayCard(index) => self.game.cards.hand.get_mut(index).unwrap(),
-      _ => unreachable!(),
-    }
+    self.game.cards.selected_mut().unwrap()
   }
 }
 
@@ -228,13 +220,18 @@ impl SimpleAction {
     finish: impl FnOnce(ActionUpdateContext),
   ) -> ActionStatus {
     self.update_noncard(context, |context| {
-      match context.interaction_state().activating_intent {
-        InteractionIntent::PlayCard(index) => {
+      match context.game.cards.selected_index {
+        Some(index) => {
           context
             .game
             .cards
             .discard_pile
             .push(context.game.cards.hand.remove(index).card);
+          if context.game.cards.hand.is_empty() {
+            context.game.cards.selected_index = None;
+          } else if index == context.game.cards.hand.len() {
+            context.game.cards.selected_index = Some(index - 1);
+          }
         }
         _ => unreachable!(),
       }
@@ -382,6 +379,7 @@ impl ActionTrait for Redraw {
           .drain(cards.draw_pile.len().saturating_sub(5)..)
           .map(|card| HandCard { card }),
       );
+      cards.selected_index = Some(0);
     })
   }
 

@@ -30,18 +30,12 @@ pub struct Game {
 pub struct Player {
   pub position: FloatingVector,
   pub action_state: PlayerActionState,
-  pub already_begun_interaction_intent: Option<InteractionIntent>,
   pub maximum_health: i32,
   pub health: f64,
 }
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
-pub enum PlayerInteractionCommitment {
-  Performing { what: InteractionIntent },
-  Canceled,
-}
-#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
 pub struct PlayerActiveInteraction {
-  pub activating_intent: InteractionIntent,
+  pub which: WhichInteraction,
   pub action: Action,
   pub canceled: bool,
 }
@@ -51,16 +45,16 @@ pub enum PlayerActionState {
   Interacting(PlayerActiveInteraction),
 }
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]
-pub enum InteractionIntent {
-  PlayCard(usize),
+pub enum WhichInteraction {
+  PlayCard,
   InteractLeft,
   InteractRight,
 }
 
 #[derive(Copy, Clone, PartialEq, Serialize, Deserialize, Debug)]
-pub enum Intent {
+pub enum OngoingIntent {
   Move(FloatingVector),
-  Interact(InteractionIntent),
+  Interact(WhichInteraction),
 }
 
 impl Game {
@@ -88,7 +82,6 @@ impl Game {
         action_state: PlayerActionState::Moving {
           velocity: FloatingVector::zeros(),
         },
-        already_begun_interaction_intent: None,
         maximum_health: 100,
         health: 100.0,
       },
@@ -116,7 +109,7 @@ impl Game {
             card: CardInstance::basic_tower(),
           },
         ],
-        selected: Some(0),
+        selected_index: Some(0),
       },
       time: 0.0,
       day: 1,
@@ -140,42 +133,34 @@ impl Game {
     [None, None]
   }
 
-  fn update(&mut self, intent: Intent) {
-    let former = self.clone();
-    match intent {
-      Intent::Move(_movement_intent) => {}
-      Intent::Interact(what) => {
-        if self.player.already_begun_interaction_intent != Some(what)
-          && matches!(self.player.action_state, PlayerActionState::Moving { velocity } if velocity == FloatingVector::zeros())
-        {
-          let [left, right] = self.interactions();
-          let action = match what {
-            InteractionIntent::InteractLeft => left,
-            InteractionIntent::InteractRight => right,
-            InteractionIntent::PlayCard(index) => self
-              .cards
-              .hand
-              .get(index)
-              .map(|card| card.card.action.clone()),
-          };
+  pub fn rotate_selected(&mut self, distance: i32) {
+    self.cards.rotate_selected(distance);
+  }
 
-          if let Some(action) = action {
-            self.player.action_state = PlayerActionState::Interacting(PlayerActiveInteraction {
-              activating_intent: what,
-              action,
-              canceled: false,
-            });
-
-            self.player.already_begun_interaction_intent = Some(what);
-          }
-        }
-      }
-    }
-
-    if !matches!(self.player.already_begun_interaction_intent, Some(what) if intent == Intent::Interact(what))
+  pub fn initiate_interaction(&mut self, which: WhichInteraction) {
+    if !matches!(self.player.action_state, PlayerActionState::Moving { velocity } if velocity == FloatingVector::zeros())
     {
-      self.player.already_begun_interaction_intent = None;
+      return;
     }
+
+    let [left, right] = self.interactions();
+    let action = match which {
+      WhichInteraction::InteractLeft => left,
+      WhichInteraction::InteractRight => right,
+      WhichInteraction::PlayCard => self.cards.selected().map(|card| card.card.action.clone()),
+    };
+
+    if let Some(action) = action {
+      self.player.action_state = PlayerActionState::Interacting(PlayerActiveInteraction {
+        which,
+        action,
+        canceled: false,
+      });
+    }
+  }
+
+  fn update(&mut self, intent: OngoingIntent) {
+    let former = self.clone();
 
     self.player.health += auto_constant("health_regeneration", 3.0) * UPDATE_DURATION;
     self.player.health = self.player.health.min(self.player.maximum_health as f64);
@@ -185,7 +170,7 @@ impl Game {
         let acceleration = auto_constant("player_acceleration", 4.0) * TILE_WIDTH as f64;
         let max_speed = auto_constant("player_max_speed", 1.4) * TILE_WIDTH as f64;
         let mut target;
-        if let Intent::Move(mut movement_intent) = intent {
+        if let OngoingIntent::Move(mut movement_intent) = intent {
           movement_intent.limit_magnitude(1.0);
           target = movement_intent * max_speed;
         } else {
@@ -211,7 +196,7 @@ impl Game {
         self.player.position += *velocity * UPDATE_DURATION;
       }
       PlayerActionState::Interacting(interaction_state) => {
-        if intent != Intent::Interact(interaction_state.activating_intent) {
+        if intent != OngoingIntent::Interact(interaction_state.which) {
           interaction_state.canceled = true;
         }
         let mut interaction_state = interaction_state.clone();
@@ -263,7 +248,7 @@ impl Game {
       self.day_progress = 0.0;
     }
   }
-  pub fn update_until(&mut self, new_time: Time, intent: Intent) {
+  pub fn update_until(&mut self, new_time: Time, intent: OngoingIntent) {
     while self.time < new_time {
       self.update(intent);
     }

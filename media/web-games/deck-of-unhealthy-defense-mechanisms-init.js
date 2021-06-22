@@ -8,12 +8,12 @@ const context = canvas.getContext('2d');
 
 const action_keys = {
   KeyZ: "InteractLeft",
-  KeyX: "InteractRight",
-  KeyC: {"PlayCard": 0},
-  KeyV: {"PlayCard": 1},
-  KeyB: {"PlayCard": 2},
-  KeyN: {"PlayCard": 3},
-  KeyM: {"PlayCard": 4},
+  KeyC: "PlayCard",
+  KeyB: "InteractRight",
+};
+const rotate_keys = {
+  KeyX: -1,
+  KeyV: 1,
 };
 const direction_keys = {
   KeyW: ["vertical", -1],
@@ -29,6 +29,8 @@ const direction_keys = {
 let dpr = null;
 let canvas_css_size = null;
 let canvas_physical_size = null;
+let card_rotations_since_last_frame = 0;
+let initiated_interaction = null;
 let resized = true;
 window.addEventListener("resize", () => {resized = true;});
 const update_canvas_size = () => {
@@ -84,7 +86,14 @@ document.body.addEventListener("keydown", (event) => {
     if (!action_intents.includes(key)) {
       // for actions, the first is given priority (you can't interrupt yourself)
       action_intents.push(key);
+      if (initiated_interaction === null) {
+        initiated_interaction = action_keys[key];
+      }
     }
+  }
+  if (rotate_keys[key] !== undefined) {
+    event.preventDefault();
+    card_rotations_since_last_frame += rotate_keys[key];
   }
 });
 document.body.addEventListener("keyup", (event) => {
@@ -106,21 +115,25 @@ async function run() {
 
   function frame(time) {
     window.requestAnimationFrame(frame);
-    let intent;
+    let ongoing_intent;
     if (action_intents.length === 0) {
-      intent = {"Move": [movement_intents.horizontal[0], movement_intents.vertical[0]]};
+      ongoing_intent = {"Move": [movement_intents.horizontal[0], movement_intents.vertical[0]]};
     } else {
-      intent = {"Interact": action_keys[action_intents[0]]};
+      ongoing_intent = {"Interact": action_keys[action_intents[0]]};
     }
     document.getElementById("debug").textContent = JSON.stringify(action_intents);
 
     update_canvas_size();
     eliduprees_web_games.update_auto_constants_editor();
     rust_do_frame(time, {
-      intent,
+      ongoing_intent,
+      card_rotations_since_last_frame,
+      initiated_interaction,
       canvas_css_size,
       canvas_physical_size,
     });
+    card_rotations_since_last_frame = 0;
+    initiated_interaction = null;
   }
   window.requestAnimationFrame(frame);
 }

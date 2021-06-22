@@ -10,7 +10,7 @@ pub struct Cards {
   pub draw_pile: Vec<CardInstance>,
   pub discard_pile: Vec<CardInstance>,
   pub hand: Vec<HandCard>,
-  pub selected: Option<usize>,
+  pub selected_index: Option<usize>,
 }
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
 pub struct HandCard {
@@ -47,6 +47,22 @@ impl CardInstance {
 }
 
 impl Cards {
+  pub fn selected(&self) -> Option<&HandCard> {
+    self
+      .selected_index
+      .map(|index| self.hand.get(index).unwrap())
+  }
+  pub fn selected_mut(&mut self) -> Option<&mut HandCard> {
+    self
+      .selected_index
+      .map(move |index| self.hand.get_mut(index).unwrap())
+  }
+  pub fn rotate_selected(&mut self, distance: i32) {
+    if let Some(index) = &mut self.selected_index {
+      // basically "index = (index + distance) % hand.len()"
+      *index = (*index as i32 + distance).rem_euclid(self.hand.len() as i32) as usize;
+    }
+  }
   pub fn draw(&self, game: &Game, draw: &mut impl Draw) {
     let [left, right] = game.interactions();
     let actions: Vec<_> = std::iter::once(left.as_ref().map(|a| (a, false)))
@@ -54,7 +70,7 @@ impl Cards {
         self
           .hand
           .get(index)
-          .map(|card| (&card.card.action, self.selected == Some(index)))
+          .map(|card| (&card.card.action, self.selected_index == Some(index)))
       }))
       .chain(std::iter::once(right.as_ref().map(|a| (a, false))))
       .collect();
@@ -91,7 +107,7 @@ impl Cards {
       }
     }
 
-    if let Some(index) = self.selected {
+    if let Some(index) = self.selected_index {
       self
         .hand
         .get(index)
