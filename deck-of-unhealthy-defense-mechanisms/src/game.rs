@@ -204,11 +204,13 @@ impl Game {
         };
 
         if let Some(action) = action {
-          self.player.action_state = PlayerActionState::Interacting(PlayerActiveInteraction {
-            which,
-            action,
-            canceled: false,
-          });
+          if action.possible(self) {
+            self.player.action_state = PlayerActionState::Interacting(PlayerActiveInteraction {
+              which,
+              action,
+              canceled: false,
+            });
+          }
         }
       }
     }
