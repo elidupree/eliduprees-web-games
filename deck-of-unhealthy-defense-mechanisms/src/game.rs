@@ -21,7 +21,7 @@ pub struct Game {
   pub map: Map,
   pub player: Player,
   pub cards: Cards,
-  pub time: Time,
+  pub ui_time: Time,
   pub day: i32,
   pub day_progress: f64,
   pub horizon: f64,
@@ -111,7 +111,7 @@ impl Game {
         ],
         selected_index: Some(0),
       },
-      time: 0.0,
+      ui_time: 0.0,
       day: 1,
       day_progress: 0.0,
       horizon: 50.0,
@@ -160,6 +160,13 @@ impl Game {
   }
 
   fn update(&mut self, intent: OngoingIntent) {
+    //if intent != OngoingIntent::Move(FloatingVector::zeros()) {
+    self.update_physics(intent);
+
+    self.ui_time += UPDATE_DURATION;
+  }
+
+  fn update_physics(&mut self, intent: OngoingIntent) {
     let former = self.clone();
 
     self.player.health += auto_constant("health_regeneration", 3.0) * UPDATE_DURATION;
@@ -240,7 +247,6 @@ impl Game {
         * (1.0 - auto_constant("horizon_expand_decay", 0.8).powf(UPDATE_DURATION));
     }
 
-    self.time += UPDATE_DURATION;
     let day_length = auto_constant("day_length", 60.0);
     self.day_progress += UPDATE_DURATION / day_length;
     if self.day_progress >= 1.0 {
@@ -249,7 +255,7 @@ impl Game {
     }
   }
   pub fn update_until(&mut self, new_time: Time, intent: OngoingIntent) {
-    while self.time < new_time {
+    while self.ui_time < new_time {
       self.update(intent);
     }
   }
