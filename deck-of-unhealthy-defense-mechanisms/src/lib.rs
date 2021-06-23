@@ -1,6 +1,6 @@
 #[allow(unused_macros)]
 macro_rules! debug {
-  ($(args:tt)*) => {
+  ($($args:tt)*) => {
     $crate::ui_glue::js::debug(&format!($($args)*));
   }
 }

@@ -1,7 +1,7 @@
-use crate::actions::{Action, BuildMechanism, Cost, SimpleAction};
+use crate::actions::{Action, BuildConveyor, BuildMechanism, Cost, SimpleAction};
 use crate::game::Game;
 use crate::map::{FloatingVector, TILE_WIDTH};
-use crate::mechanisms::{Conveyor, Mechanism, MechanismType, Tower};
+use crate::mechanisms::{Mechanism, MechanismType, Tower};
 use crate::ui_glue::Draw;
 use serde::{Deserialize, Serialize};
 
@@ -18,11 +18,8 @@ pub struct CardInstance {
 impl CardInstance {
   pub fn basic_conveyor() -> Self {
     CardInstance {
-      action: Action::BuildMechanism(BuildMechanism {
-        mechanism: Mechanism {
-          mechanism_type: MechanismType::Conveyor(Conveyor {}),
-          ..Default::default()
-        },
+      action: Action::BuildConveyor(BuildConveyor {
+        allow_splitting: false,
         simple: SimpleAction::new(2, Some(10), "Conveyor", "", "No matter how low you get, something keeps you moving forward. Is it hope for something better? Or is it just an endless grind, false hope leading you down the same corridor again and again and again?")
       }),
     }

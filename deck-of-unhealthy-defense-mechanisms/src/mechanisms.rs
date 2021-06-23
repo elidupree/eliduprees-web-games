@@ -1,4 +1,4 @@
-use crate::actions::{Action, Reshuffle, RotateMechanism};
+use crate::actions::{Action, Reshuffle};
 use crate::game::{Game, UPDATE_DURATION};
 use crate::map::{
   Facing, FloatingVectorExtension, GridVector, GridVectorExtension, Map, Material, Rotation, Tile,
@@ -69,13 +69,16 @@ pub trait MechanismTrait {
     None
   }
 
+  fn can_be_material_source(&self, facing: Facing) -> bool {
+    false
+  }
+
   fn draw(&self, context: MechanismImmutableContext, draw: &mut dyn Draw);
 }
 
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug, Default)]
 pub struct Mechanism {
   pub mechanism_type: MechanismType,
-  pub facing: Facing,
 }
 
 macro_rules! mechanism_enum {
@@ -156,73 +159,93 @@ impl MechanismTrait for Deck {
     Some(Action::Reshuffle(Reshuffle::new()))
   }
 
+  fn can_be_material_source(&self, _facing: Facing) -> bool {
+    true
+  }
+
   fn draw(&self, context: MechanismImmutableContext, draw: &mut dyn Draw) {
     draw.rectangle_on_map(
       10,
       context.position.to_floating(),
-      TILE_SIZE.to_floating(),
+      TILE_SIZE.to_floating() * 0.9,
       "#f66",
     );
   }
 }
 
+#[derive(Copy, Clone, PartialEq, Serialize, Deserialize, Debug)]
+pub enum ConveyorSide {
+  Input,
+  Output,
+  Disconnected,
+}
+
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
-pub struct Conveyor {}
+pub struct Conveyor {
+  pub sides: [ConveyorSide; 4],
+}
 
 impl MechanismTrait for Conveyor {
   fn update(&self, mut context: MechanismUpdateContext) {
-    let mechanism = context.this_mechanism();
-    let target_tile_position = context.position + mechanism.facing.unit_vector() * TILE_WIDTH;
-    let target = context.position.to_floating()
-      + mechanism.facing.unit_vector().to_floating() * (TILE_RADIUS as f64 * 1.01);
-    let former = &context.former_game.map;
-    let tile = context.this_tile_mut();
-    if let Some(material) = tile
-      .materials
-      .iter_mut()
-      .min_by_key(|m| OrderedFloat((m.position - target).magnitude()))
+    let sides = self.sides;
+    // todo: handle multiple outputs reasonably
+    if let Some(facing) = Facing::ALL_FACINGS
+      .iter()
+      .find(|facing| sides[facing.as_index()] == ConveyorSide::Output)
     {
-      if let Some(old_target_tile) = former.tiles.get(&target_tile_position) {
-        if old_target_tile
-          .materials
-          .iter()
-          .all(|m| (m.position - material.position).magnitude() > TILE_WIDTH as f64)
-        {
-          material.position.move_towards(
-            target,
-            auto_constant("conveyor_speed", 2.3) * UPDATE_DURATION,
-          )
+      let target_tile_position = context.position + facing.unit_vector() * TILE_WIDTH;
+      let target = context.position.to_floating()
+        + facing.unit_vector().to_floating() * (TILE_RADIUS as f64 * 1.01);
+      let former = &context.former_game.map;
+      let tile = context.this_tile_mut();
+      if let Some(material) = tile
+        .materials
+        .iter_mut()
+        .min_by_key(|m| OrderedFloat((m.position - target).magnitude()))
+      {
+        if let Some(old_target_tile) = former.tiles.get(&target_tile_position) {
+          if old_target_tile
+            .materials
+            .iter()
+            .all(|m| (m.position - material.position).magnitude() > TILE_WIDTH as f64)
+          {
+            material.position.move_towards(
+              target,
+              auto_constant("conveyor_speed", 2.3) * UPDATE_DURATION,
+            )
+          }
         }
       }
     }
   }
 
-  fn activation(&self, _context: MechanismImmutableContext) -> Option<Action> {
-    Some(Action::RotateMechanism(RotateMechanism::new(
-      Rotation::CLOCKWISE,
-    )))
+  fn can_be_material_source(&self, facing: Facing) -> bool {
+    self.sides[facing.as_index()] != ConveyorSide::Input
   }
 
   fn draw(&self, context: MechanismImmutableContext, draw: &mut dyn Draw) {
     let center = context.position.to_floating();
-    let facing = context.this_mechanism().facing;
-    let forwards = facing.unit_vector().to_floating();
-    draw.rectangle_on_map(10, center, TILE_SIZE.to_floating(), "#888");
-    draw.rectangle_on_map(
-      10,
-      center + forwards * (TILE_RADIUS as f64 * 0.6),
-      TILE_SIZE.to_floating() * 0.15,
-      "#bbb",
-    );
-    for rotation in [Rotation::CLOCKWISE, Rotation::COUNTERCLOCKWISE] {
-      draw.rectangle_on_map(
-        10,
-        center
-          + forwards * (TILE_RADIUS as f64 * 0.3)
-          + (facing + rotation).unit_vector().to_floating() * (TILE_RADIUS as f64 * 0.3),
-        TILE_SIZE.to_floating() * 0.15,
-        "#bbb",
-      );
+    draw.rectangle_on_map(10, center, TILE_SIZE.to_floating() * 0.9, "#888");
+    for (&facing, side) in Facing::ALL_FACINGS.iter().zip(self.sides) {
+      if side == ConveyorSide::Output {
+        let forwards = facing.unit_vector().to_floating();
+        draw.rectangle_on_map(
+          10,
+          center + forwards * (TILE_RADIUS as f64 * 0.6),
+          TILE_SIZE.to_floating() * 0.15,
+          "#bbb",
+        );
+        for rotation in [Rotation::CLOCKWISE, Rotation::COUNTERCLOCKWISE] {
+          draw.rectangle_on_map(
+            10,
+            center
+              + forwards * (TILE_RADIUS as f64 * 0.3)
+              + (facing + rotation).unit_vector().to_floating() * (TILE_RADIUS as f64 * 0.3),
+            TILE_SIZE.to_floating() * 0.15,
+            "#bbb",
+          );
+        }
+      }
     }
   }
 }

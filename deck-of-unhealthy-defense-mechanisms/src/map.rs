@@ -87,12 +87,18 @@ impl Rotation {
   pub const CLOCKWISE: Rotation = Rotation(1);
   pub const COUNTERCLOCKWISE: Rotation = Rotation(3);
   pub const IDENTITY: Rotation = Rotation(0);
-  pub const U_TURN: Rotation = Rotation(0);
+  pub const U_TURN: Rotation = Rotation(2);
   pub fn quarter_turns_from_posx_towards_posy(self) -> u8 {
     self.0
   }
 }
 impl Facing {
+  pub fn as_index(self) -> usize {
+    self.0 as usize
+  }
+  pub fn from_index(index: usize) -> Self {
+    Facing(index as u8)
+  }
   pub fn unit_vector(self) -> GridVector {
     match self.0 {
       0 => GridVector::new(1, 0),
