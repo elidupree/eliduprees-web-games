@@ -30,6 +30,7 @@ pub struct Game {
 pub struct Player {
   pub position: FloatingVector,
   pub action_state: PlayerActionState,
+  pub initiated_interaction: Option<WhichInteraction>,
   pub maximum_health: i32,
   pub health: f64,
 }
@@ -82,6 +83,7 @@ impl Game {
         action_state: PlayerActionState::Moving {
           velocity: FloatingVector::zeros(),
         },
+        initiated_interaction: None,
         maximum_health: 100,
         health: 100.0,
       },
@@ -121,25 +123,7 @@ impl Game {
   }
 
   pub fn initiate_interaction(&mut self, which: WhichInteraction) {
-    if !matches!(self.player.action_state, PlayerActionState::Moving { velocity } if velocity == FloatingVector::zeros())
-    {
-      return;
-    }
-
-    let [left, right] = self.interactions();
-    let action = match which {
-      WhichInteraction::InteractLeft => left,
-      WhichInteraction::InteractRight => right,
-      WhichInteraction::PlayCard => self.cards.selected().map(|card| card.action.clone()),
-    };
-
-    if let Some(action) = action {
-      self.player.action_state = PlayerActionState::Interacting(PlayerActiveInteraction {
-        which,
-        action,
-        canceled: false,
-      });
-    }
+    self.player.initiated_interaction = Some(which);
   }
 
   fn update(&mut self, intent: OngoingIntent) {
@@ -151,6 +135,12 @@ impl Game {
 
   fn update_physics(&mut self, intent: OngoingIntent) {
     let former = self.clone();
+
+    // cancel initiating interaction if you stopped holding it before it went off
+    if matches!(self.player.initiated_interaction, Some(which) if intent != OngoingIntent::Interact(which))
+    {
+      self.player.initiated_interaction = None;
+    }
 
     self.player.health += auto_constant("health_regeneration", 3.0) * UPDATE_DURATION;
     self.player.health = self.player.health.min(self.player.maximum_health as f64);
@@ -202,6 +192,26 @@ impl Game {
               velocity: FloatingVector::zeros(),
             }
           }
+        }
+      }
+    }
+
+    if matches!(self.player.action_state, PlayerActionState::Moving { velocity } if velocity == FloatingVector::zeros())
+    {
+      if let Some(which) = self.player.initiated_interaction.take() {
+        let [left, right] = self.interactions();
+        let action = match which {
+          WhichInteraction::InteractLeft => left,
+          WhichInteraction::InteractRight => right,
+          WhichInteraction::PlayCard => self.cards.selected().map(|card| card.action.clone()),
+        };
+
+        if let Some(action) = action {
+          self.player.action_state = PlayerActionState::Interacting(PlayerActiveInteraction {
+            which,
+            action,
+            canceled: false,
+          });
         }
       }
     }
