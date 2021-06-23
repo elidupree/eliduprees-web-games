@@ -1,5 +1,5 @@
 use crate::actions::{Action, ActionStatus, ActionUpdateContext};
-use crate::cards::{CardInstance, Cards, HandCard};
+use crate::cards::{CardInstance, Cards};
 use crate::map::{
   FloatingVector, FloatingVectorExtension, GridVector, GridVectorExtension, Map, Tile, TILE_RADIUS,
   TILE_SIZE, TILE_WIDTH,
@@ -86,28 +86,15 @@ impl Game {
         health: 100.0,
       },
       cards: Cards {
-        draw_pile: vec![
+        deck: vec![
           CardInstance::basic_conveyor(),
           CardInstance::basic_conveyor(),
           CardInstance::basic_conveyor(),
-        ],
-        discard_pile: vec![],
-        hand: vec![
-          HandCard {
-            card: CardInstance::basic_conveyor(),
-          },
-          HandCard {
-            card: CardInstance::basic_tower(),
-          },
-          HandCard {
-            card: CardInstance::basic_conveyor(),
-          },
-          HandCard {
-            card: CardInstance::basic_conveyor(),
-          },
-          HandCard {
-            card: CardInstance::basic_tower(),
-          },
+          CardInstance::basic_tower(),
+          CardInstance::basic_conveyor(),
+          CardInstance::basic_conveyor(),
+          CardInstance::basic_tower(),
+          CardInstance::basic_conveyor(),
         ],
         selected_index: Some(0),
       },
@@ -133,10 +120,6 @@ impl Game {
     [None, None]
   }
 
-  pub fn rotate_selected(&mut self, distance: i32) {
-    self.cards.rotate_selected(distance);
-  }
-
   pub fn initiate_interaction(&mut self, which: WhichInteraction) {
     if !matches!(self.player.action_state, PlayerActionState::Moving { velocity } if velocity == FloatingVector::zeros())
     {
@@ -147,7 +130,7 @@ impl Game {
     let action = match which {
       WhichInteraction::InteractLeft => left,
       WhichInteraction::InteractRight => right,
-      WhichInteraction::PlayCard => self.cards.selected().map(|card| card.card.action.clone()),
+      WhichInteraction::PlayCard => self.cards.selected().map(|card| card.action.clone()),
     };
 
     if let Some(action) = action {

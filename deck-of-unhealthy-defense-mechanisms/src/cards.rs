@@ -7,14 +7,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
 pub struct Cards {
-  pub draw_pile: Vec<CardInstance>,
-  pub discard_pile: Vec<CardInstance>,
-  pub hand: Vec<HandCard>,
+  pub deck: Vec<CardInstance>,
   pub selected_index: Option<usize>,
-}
-#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
-pub struct HandCard {
-  pub card: CardInstance,
 }
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
 pub struct CardInstance {
@@ -47,74 +41,78 @@ impl CardInstance {
 }
 
 impl Cards {
-  pub fn selected(&self) -> Option<&HandCard> {
+  pub fn selected(&self) -> Option<&CardInstance> {
     self
       .selected_index
-      .map(|index| self.hand.get(index).unwrap())
+      .map(|index| self.deck.get(index).unwrap())
   }
-  pub fn selected_mut(&mut self) -> Option<&mut HandCard> {
+  pub fn selected_mut(&mut self) -> Option<&mut CardInstance> {
     self
       .selected_index
-      .map(move |index| self.hand.get_mut(index).unwrap())
-  }
-  pub fn rotate_selected(&mut self, distance: i32) {
-    if let Some(index) = &mut self.selected_index {
-      // basically "index = (index + distance) % hand.len()"
-      *index = (*index as i32 + distance).rem_euclid(self.hand.len() as i32) as usize;
-    }
+      .map(move |index| self.deck.get_mut(index).unwrap())
   }
   pub fn draw(&self, game: &Game, draw: &mut impl Draw) {
     let [left, right] = game.interactions();
-    let actions: Vec<_> = std::iter::once(left.as_ref().map(|a| (a, false)))
-      .chain((0..5).map(|index| {
-        self
-          .hand
-          .get(index)
-          .map(|card| (&card.card.action, self.selected_index == Some(index)))
-      }))
-      .chain(std::iter::once(right.as_ref().map(|a| (a, false))))
-      .collect();
-    for (index, &action) in actions.iter().enumerate() {
-      if let Some((action, selected)) = action {
-        let info = action.display_info();
-        let horizontal = (index as f64 + 0.1) / actions.len() as f64;
-        let possible = action.possible(game);
-        let color = if possible { "#cc0" } else { "#aaa" };
-        let size = if selected { 28.0 } else { 24.0 };
-        let offset = if selected { 0.02 } else { 0.0 };
+    fn draw_action(
+      draw: &mut impl Draw,
+      action: &Action,
+      possible: bool,
+      position: FloatingVector,
+      size: f64,
+    ) {
+      let info = action.display_info();
+      let color = if possible { "#cc0" } else { "#aaa" };
+      draw.text(position, size, color, &info.name);
+      if let Cost::Fixed(cost) = info.time_cost {
         draw.text(
-          FloatingVector::new(horizontal, 0.8 - offset),
+          position + FloatingVector::new(0.0, 0.05 * (size / 28.0)),
           size,
           color,
-          &info.name,
+          &format!("{} time", cost),
         );
-        if let Cost::Fixed(cost) = info.time_cost {
-          draw.text(
-            FloatingVector::new(horizontal, 0.85 - offset),
-            size,
-            color,
-            &format!("{} time", cost),
-          );
-        }
-        if let Cost::Fixed(cost) = info.health_cost {
-          draw.text(
-            FloatingVector::new(horizontal, 0.9 - offset),
-            size,
-            color,
-            &format!("{} health", cost),
-          );
-        }
+      }
+      if let Cost::Fixed(cost) = info.health_cost {
+        draw.text(
+          position + FloatingVector::new(0.0, 0.10 * (size / 28.0)),
+          size,
+          color,
+          &format!("{} health", cost),
+        );
       }
     }
 
-    if let Some(index) = self.selected_index {
-      self
-        .hand
-        .get(index)
-        .unwrap()
-        .card
-        .action
-        .draw_preview(game, draw);
+    if let Some(action) = left {
+      draw_action(
+        draw,
+        &action,
+        action.possible(game),
+        FloatingVector::new(0.8, 0.4),
+        30.0,
+      );
+    }
+
+    if let Some(selected) = self.selected() {
+      draw_action(
+        draw,
+        &selected.action,
+        selected.action.possible(game),
+        FloatingVector::new(0.05, 0.4),
+        30.0,
+      );
+      selected.action.draw_preview(game, draw);
+      for (index, upcoming) in self.deck[self.selected_index.unwrap()..]
+        .iter()
+        .enumerate()
+        .take(2)
+      {
+        draw_action(
+          draw,
+          &upcoming.action,
+          false,
+          FloatingVector::new(0.03, 0.6 + (index as f64 * 0.14)),
+          18.0,
+        );
+      }
     }
   }
 }

@@ -1,4 +1,4 @@
-use crate::cards::HandCard;
+use crate::cards::CardInstance;
 use crate::game::{Game, PlayerActionState, PlayerActiveInteraction, Time, UPDATE_DURATION};
 use crate::map::{
   FloatingVector, FloatingVectorExtension, GridVectorExtension, Rotation, TILE_RADIUS, TILE_SIZE,
@@ -28,10 +28,10 @@ impl<'a> ActionUpdateContext<'a> {
       _ => unreachable!(),
     }
   }
-  pub fn this_card(&self) -> &HandCard {
+  pub fn this_card(&self) -> &CardInstance {
     self.game.cards.selected().unwrap()
   }
-  pub fn this_card_mut(&mut self) -> &mut HandCard {
+  pub fn this_card_mut(&mut self) -> &mut CardInstance {
     self.game.cards.selected_mut().unwrap()
   }
 }
@@ -108,7 +108,7 @@ macro_rules! action_enum {
 }
 
 action_enum! {
-  Redraw,
+  Reshuffle,
   RotateMechanism,
   BuildMechanism,
 }
@@ -222,15 +222,10 @@ impl SimpleAction {
     self.update_noncard(context, |context| {
       match context.game.cards.selected_index {
         Some(index) => {
-          context
-            .game
-            .cards
-            .discard_pile
-            .push(context.game.cards.hand.remove(index).card);
-          if context.game.cards.hand.is_empty() {
+          if index + 1 == context.game.cards.deck.len() {
             context.game.cards.selected_index = None;
-          } else if index == context.game.cards.hand.len() {
-            context.game.cards.selected_index = Some(index - 1);
+          } else {
+            context.game.cards.selected_index = Some(index + 1);
           }
         }
         _ => unreachable!(),
@@ -350,35 +345,23 @@ impl ActionTrait for BuildMechanism {
 }
 
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
-pub struct Redraw {
+pub struct Reshuffle {
   pub simple: SimpleAction,
 }
 
-impl Redraw {
-  pub fn new() -> Redraw {
-    Redraw {
-      simple: SimpleAction::new(5, Some(50), "Redraw", "", ""),
+impl Reshuffle {
+  pub fn new() -> Reshuffle {
+    Reshuffle {
+      simple: SimpleAction::new(5, Some(50), "Reshuffle", "", ""),
     }
   }
 }
 
-impl ActionTrait for Redraw {
+impl ActionTrait for Reshuffle {
   fn update(&mut self, context: ActionUpdateContext) -> ActionStatus {
     self.simple.update_noncard(context, |context| {
       let cards = &mut context.game.cards;
-      cards
-        .discard_pile
-        .extend(cards.hand.drain(..).map(|c| c.card));
-      if cards.draw_pile.is_empty() {
-        cards.discard_pile.shuffle(&mut rand::thread_rng());
-        std::mem::swap(&mut cards.draw_pile, &mut cards.discard_pile);
-      }
-      cards.hand.extend(
-        cards
-          .draw_pile
-          .drain(cards.draw_pile.len().saturating_sub(5)..)
-          .map(|card| HandCard { card }),
-      );
+      cards.deck.shuffle(&mut rand::thread_rng());
       cards.selected_index = Some(0);
     })
   }

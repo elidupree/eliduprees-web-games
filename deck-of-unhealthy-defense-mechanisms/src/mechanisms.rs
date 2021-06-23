@@ -1,4 +1,4 @@
-use crate::actions::{Action, Redraw, RotateMechanism};
+use crate::actions::{Action, Reshuffle, RotateMechanism};
 use crate::game::{Game, UPDATE_DURATION};
 use crate::map::{
   Facing, FloatingVectorExtension, GridVector, GridVectorExtension, Map, Material, Rotation, Tile,
@@ -153,7 +153,7 @@ impl MechanismTrait for Deck {
   }
 
   fn interactions(&self, _context: MechanismImmutableContext) -> [Option<Action>; 2] {
-    [Some(Action::Redraw(Redraw::new())), None]
+    [Some(Action::Reshuffle(Reshuffle::new())), None]
   }
 
   fn draw(&self, context: MechanismImmutableContext, draw: &mut dyn Draw) {

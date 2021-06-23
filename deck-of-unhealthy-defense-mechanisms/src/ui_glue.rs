@@ -51,7 +51,6 @@ pub fn rust_init() {
 #[derive(Clone, Deserialize)]
 pub struct StateFromJs {
   pub ongoing_intent: OngoingIntent,
-  pub card_rotations_since_last_frame: i32,
   pub initiated_interaction: Option<WhichInteraction>,
   pub canvas_physical_size: FloatingVector,
   pub canvas_css_size: FloatingVector,
@@ -96,7 +95,6 @@ pub fn rust_do_frame(frame_time: f64, state_from_js: JsValue) {
   let state_from_js = state_from_js.into_serde().unwrap();
   let StateFromJs {
     ongoing_intent: intent,
-    card_rotations_since_last_frame,
     initiated_interaction,
     canvas_physical_size,
     canvas_css_size: _,
@@ -111,9 +109,6 @@ pub fn rust_do_frame(frame_time: f64, state_from_js: JsValue) {
     }
     state.last_frame_time = Some(frame_time);
 
-    if *card_rotations_since_last_frame != 0 {
-      state.game.rotate_selected(*card_rotations_since_last_frame);
-    }
     if let &Some(which) = initiated_interaction {
       state.game.initiate_interaction(which);
     }
