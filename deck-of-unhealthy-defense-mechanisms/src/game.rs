@@ -72,7 +72,7 @@ impl Game {
       mover_type: MoverType::Monster,
       behavior: MoverBehavior::Monster(Monster),
       home: FloatingVector::new(8.0, 12.0),
-      active_time: 0.2..0.9,
+      active_time: 0.5..0.9,
       ..Default::default()
     });
     Game {

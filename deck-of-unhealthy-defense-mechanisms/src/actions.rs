@@ -343,7 +343,7 @@ impl BuildConveyor {
       .get(&candidate.position)
       .and_then(|here| here.mechanism.as_ref());
 
-    debug!("{:?}", (candidate, input_mechanism, output_mechanism));
+    //debug!("{:?}", (candidate, input_mechanism, output_mechanism));
 
     guard!(let Some(input_mechanism) = input_mechanism else { return false });
     if !input_mechanism
@@ -416,7 +416,10 @@ impl ActionTrait for BuildConveyor {
       let mut sides = [ConveyorSide::Disconnected; 4];
       sides[candidate.input_side.as_index()] = ConveyorSide::Input;
       tile.mechanism = Some(Mechanism {
-        mechanism_type: MechanismType::Conveyor(Conveyor { sides }),
+        mechanism_type: MechanismType::Conveyor(Conveyor {
+          sides,
+          last_sent: Facing::from_index(0),
+        }),
       });
 
       let input_tile = context
@@ -426,7 +429,7 @@ impl ActionTrait for BuildConveyor {
         .get_mut(&candidate.input_position())
         .unwrap();
       if let Some(Mechanism {
-        mechanism_type: MechanismType::Conveyor(Conveyor { sides }),
+        mechanism_type: MechanismType::Conveyor(Conveyor { sides, .. }),
         ..
       }) = &mut input_tile.mechanism
       {

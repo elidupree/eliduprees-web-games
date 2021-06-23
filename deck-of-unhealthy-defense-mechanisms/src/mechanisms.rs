@@ -73,6 +73,10 @@ pub trait MechanismTrait {
     false
   }
 
+  fn wants_to_steal(&self, material: &Material) -> bool {
+    false
+  }
+
   fn draw(&self, context: MechanismImmutableContext, draw: &mut dyn Draw);
 }
 
@@ -183,16 +187,33 @@ pub enum ConveyorSide {
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
 pub struct Conveyor {
   pub sides: [ConveyorSide; 4],
+  pub last_sent: Facing,
 }
 
 impl MechanismTrait for Conveyor {
   fn update(&self, mut context: MechanismUpdateContext) {
     let sides = self.sides;
+    let mut facings = Facing::ALL_FACINGS;
+    facings.rotate_left(self.last_sent.as_index() + 1);
     // todo: handle multiple outputs reasonably
-    if let Some(facing) = Facing::ALL_FACINGS
-      .iter()
-      .find(|facing| sides[facing.as_index()] == ConveyorSide::Output)
-    {
+    for &facing in &facings {
+      // todo: not so messy code
+      if !(sides[facing.as_index()] == ConveyorSide::Output
+        || context
+          .former_game
+          .map
+          .tiles
+          .get(&(context.position + facing.unit_vector() * TILE_WIDTH))
+          .map_or(false, |tile| {
+            tile.mechanism.as_ref().map_or(false, |mechanism| {
+              mechanism.mechanism_type.wants_to_steal(&Material {
+                position: Default::default(),
+              })
+            })
+          }))
+      {
+        continue;
+      }
       let target_tile_position = context.position + facing.unit_vector() * TILE_WIDTH;
       let target = context.position.to_floating()
         + facing.unit_vector().to_floating() * (TILE_RADIUS as f64 * 1.01);
@@ -212,7 +233,11 @@ impl MechanismTrait for Conveyor {
             material.position.move_towards(
               target,
               auto_constant("conveyor_speed", 2.3) * UPDATE_DURATION,
-            )
+            );
+            if material.position.containing_tile() != context.position {
+              context.this_mechanism_type_mut::<Self>().last_sent = facing;
+            }
+            break;
           }
         }
       }
@@ -291,6 +316,10 @@ impl MechanismTrait for Tower {
 
     let this = context.this_mechanism_type_mut::<Self>();
     this.volition = this.volition.min(this.maximum_volition);
+  }
+
+  fn wants_to_steal(&self, _material: &Material) -> bool {
+    self.volition < self.maximum_volition
   }
 
   fn draw(&self, context: MechanismImmutableContext, draw: &mut dyn Draw) {

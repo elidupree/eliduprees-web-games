@@ -97,7 +97,7 @@ impl Cards {
         30.0,
       );
       selected.action.draw_preview(game, draw);
-      for (index, upcoming) in self.deck[self.selected_index.unwrap()..]
+      for (index, upcoming) in self.deck[self.selected_index.unwrap() + 1..]
         .iter()
         .enumerate()
         .take(2)
