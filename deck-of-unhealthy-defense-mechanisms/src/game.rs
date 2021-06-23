@@ -48,8 +48,7 @@ pub enum PlayerActionState {
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]
 pub enum WhichInteraction {
   PlayCard,
-  InteractLeft,
-  InteractRight,
+  ActivateMechanism,
 }
 
 #[derive(Copy, Clone, PartialEq, Serialize, Deserialize, Debug)]
@@ -107,19 +106,19 @@ impl Game {
     }
   }
 
-  pub fn interactions(&self) -> [Option<Action>; 2] {
+  pub fn current_mechanism_activation(&self) -> Option<Action> {
     let position = self.player.position.containing_tile();
     if let Some(tile) = self.map.tiles.get(&position) {
       if let Some(mechanism) = &tile.mechanism {
         return mechanism
           .mechanism_type
-          .interactions(MechanismImmutableContext {
+          .activation(MechanismImmutableContext {
             position,
             game: self,
           });
       }
     }
-    [None, None]
+    None
   }
 
   pub fn initiate_interaction(&mut self, which: WhichInteraction) {
@@ -199,10 +198,8 @@ impl Game {
     if matches!(self.player.action_state, PlayerActionState::Moving { velocity } if velocity == FloatingVector::zeros())
     {
       if let Some(which) = self.player.initiated_interaction.take() {
-        let [left, right] = self.interactions();
         let action = match which {
-          WhichInteraction::InteractLeft => left,
-          WhichInteraction::InteractRight => right,
+          WhichInteraction::ActivateMechanism => self.current_mechanism_activation(),
           WhichInteraction::PlayCard => self.cards.selected().map(|card| card.action.clone()),
         };
 

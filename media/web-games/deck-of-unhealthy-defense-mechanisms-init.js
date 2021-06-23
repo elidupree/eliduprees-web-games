@@ -8,7 +8,7 @@ const context = canvas.getContext('2d');
 
 const action_keys = {
   KeyZ: "PlayCard",
-  KeyX: "InteractLeft",
+  KeyX: "ActivateMechanism",
 };
 const rotate_keys = {
   KeyX: -1,

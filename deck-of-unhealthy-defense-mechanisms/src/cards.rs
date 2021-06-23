@@ -52,7 +52,7 @@ impl Cards {
       .map(move |index| self.deck.get_mut(index).unwrap())
   }
   pub fn draw(&self, game: &Game, draw: &mut impl Draw) {
-    let [left, right] = game.interactions();
+    let activation = game.current_mechanism_activation();
     fn draw_action(
       draw: &mut impl Draw,
       action: &Action,
@@ -81,7 +81,7 @@ impl Cards {
       }
     }
 
-    if let Some(action) = left {
+    if let Some(action) = activation {
       draw_action(
         draw,
         &action,

@@ -65,8 +65,8 @@ pub trait MechanismTrait {
   */
   fn update(&self, context: MechanismUpdateContext);
 
-  fn interactions(&self, context: MechanismImmutableContext) -> [Option<Action>; 2] {
-    [None, None]
+  fn activation(&self, context: MechanismImmutableContext) -> Option<Action> {
+    None
   }
 
   fn draw(&self, context: MechanismImmutableContext, draw: &mut dyn Draw);
@@ -152,8 +152,8 @@ impl MechanismTrait for Deck {
     }
   }
 
-  fn interactions(&self, _context: MechanismImmutableContext) -> [Option<Action>; 2] {
-    [Some(Action::Reshuffle(Reshuffle::new())), None]
+  fn activation(&self, _context: MechanismImmutableContext) -> Option<Action> {
+    Some(Action::Reshuffle(Reshuffle::new()))
   }
 
   fn draw(&self, context: MechanismImmutableContext, draw: &mut dyn Draw) {
@@ -197,15 +197,10 @@ impl MechanismTrait for Conveyor {
     }
   }
 
-  fn interactions(&self, _context: MechanismImmutableContext) -> [Option<Action>; 2] {
-    [
-      Some(Action::RotateMechanism(RotateMechanism::new(
-        Rotation::COUNTERCLOCKWISE,
-      ))),
-      Some(Action::RotateMechanism(RotateMechanism::new(
-        Rotation::CLOCKWISE,
-      ))),
-    ]
+  fn activation(&self, _context: MechanismImmutableContext) -> Option<Action> {
+    Some(Action::RotateMechanism(RotateMechanism::new(
+      Rotation::CLOCKWISE,
+    )))
   }
 
   fn draw(&self, context: MechanismImmutableContext, draw: &mut dyn Draw) {
