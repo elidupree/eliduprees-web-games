@@ -274,8 +274,8 @@ impl ActionTrait for BuildMechanism {
         .game
         .map
         .tiles
-        .entry(context.game.player.position.containing_tile())
-        .or_insert_with(Default::default);
+        .get_mut(context.game.player.position.containing_tile())
+        .unwrap();
       tile.mechanism = Some(mechanism);
     })
   }
@@ -288,8 +288,8 @@ impl ActionTrait for BuildMechanism {
     game
       .map
       .tiles
-      .get(&game.player.position.containing_tile())
-      .map_or(true, |tile| tile.mechanism.is_none())
+      .get(game.player.position.containing_tile())
+      .map_or(false, |tile| tile.mechanism.is_none())
   }
 
   fn draw_progress(&self, game: &Game, draw: &mut dyn Draw) {
@@ -335,13 +335,10 @@ impl BuildConveyor {
     let input_mechanism = game
       .map
       .tiles
-      .get(&candidate.input_position())
+      .get(candidate.input_position())
       .and_then(|here| here.mechanism.as_ref());
-    let output_mechanism = game
-      .map
-      .tiles
-      .get(&candidate.position)
-      .and_then(|here| here.mechanism.as_ref());
+    guard!(let Some(output_tile) = game.map.tiles.get(candidate.position) else { return false });
+    let output_mechanism = output_tile.mechanism.as_ref();
 
     //debug!("{:?}", (candidate, input_mechanism, output_mechanism));
 
@@ -407,12 +404,7 @@ impl ActionTrait for BuildConveyor {
     let allow_splitting = self.allow_splitting;
     self.simple.update_card(context, |context| {
       let candidate = Self::current_target(context.game, allow_splitting).unwrap();
-      let tile = context
-        .game
-        .map
-        .tiles
-        .entry(candidate.position)
-        .or_insert_with(Default::default);
+      let tile = context.game.map.tiles.get_mut(candidate.position).unwrap();
       let mut sides = [ConveyorSide::Disconnected; 4];
       sides[candidate.input_side.as_index()] = ConveyorSide::Input;
       tile.mechanism = Some(Mechanism {
@@ -426,7 +418,7 @@ impl ActionTrait for BuildConveyor {
         .game
         .map
         .tiles
-        .get_mut(&candidate.input_position())
+        .get_mut(candidate.input_position())
         .unwrap();
       if let Some(Mechanism {
         mechanism_type: MechanismType::Conveyor(Conveyor { sides, .. }),

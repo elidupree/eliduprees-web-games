@@ -1,16 +1,16 @@
 use crate::actions::{Action, ActionStatus, ActionUpdateContext};
 use crate::cards::{CardInstance, Cards};
 use crate::map::{
-  FloatingVector, FloatingVectorExtension, GridVector, GridVectorExtension, Map, Tile, TILE_RADIUS,
-  TILE_SIZE, TILE_WIDTH,
+  FloatingVector, FloatingVectorExtension, GridVector, GridVectorExtension, Map, Tiles,
+  TILE_RADIUS, TILE_SIZE, TILE_WIDTH,
 };
 use crate::mechanisms::{Deck, Mechanism, MechanismImmutableContext, MechanismType};
 use crate::movers::{Monster, Mover, MoverBehavior, MoverType};
 use crate::ui_glue::Draw;
 use eliduprees_web_games_lib::auto_constant;
+use nalgebra::Vector2;
 use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 pub type Time = f64;
 /// duration of each update in seconds:
@@ -59,10 +59,12 @@ pub enum OngoingIntent {
 
 impl Game {
   pub fn new() -> Self {
-    let mut tiles: HashMap<GridVector, Tile> = HashMap::new();
-    let tile = tiles
-      .entry(GridVector::zeros())
-      .or_insert_with(Default::default);
+    let radius = 10;
+    let mut tiles = Tiles::new(
+      GridVector::new(-(radius as i32) * TILE_WIDTH, -(radius as i32) * TILE_WIDTH),
+      Vector2::new(radius * 2 + 1, radius * 2 + 1),
+    );
+    let tile = tiles.get_mut(GridVector::zeros()).unwrap();
     tile.mechanism = Some(Mechanism {
       mechanism_type: MechanismType::Deck(Deck {}),
       ..Default::default()
@@ -108,7 +110,7 @@ impl Game {
 
   pub fn current_mechanism_activation(&self) -> Option<Action> {
     let position = self.player.position.containing_tile();
-    if let Some(tile) = self.map.tiles.get(&position) {
+    if let Some(tile) = self.map.tiles.get(position) {
       if let Some(mechanism) = &tile.mechanism {
         return mechanism
           .mechanism_type

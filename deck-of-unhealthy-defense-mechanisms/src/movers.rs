@@ -128,7 +128,7 @@ impl MoverBehaviorTrait for Projectile {
       let target = context
         .map
         .tiles
-        .get_mut(&target.position.containing_tile())
+        .get_mut(target.position.containing_tile())
         .unwrap()
         .movers
         .iter_mut()

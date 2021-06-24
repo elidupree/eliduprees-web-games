@@ -3,9 +3,9 @@ use crate::mechanisms::{Mechanism, MechanismImmutableContext, MechanismUpdateCon
 use crate::movers::{Mover, MoverImmutableContext, MoverUpdateContext};
 use crate::ui_glue::Draw;
 use extend::ext;
+use live_prop_test::live_prop_test;
 use nalgebra::Vector2;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::ops::{Add, AddAssign, Sub};
 
 pub type GridVector = Vector2<i32>;
@@ -132,7 +132,18 @@ impl Sub<Facing> for Facing {
 
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
 pub struct Map {
-  pub tiles: HashMap<GridVector, Tile>,
+  pub tiles: Tiles,
+}
+
+#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
+pub struct TilesBounds {
+  min: GridVector,
+  size: Vector2<usize>,
+}
+#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
+pub struct Tiles {
+  bounds: TilesBounds,
+  tiles: Vec<Tile>,
 }
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug, Default)]
 pub struct Tile {
@@ -144,12 +155,108 @@ pub struct Tile {
 pub struct Material {
   pub position: FloatingVector,
 }
+
+#[live_prop_test]
+impl TilesBounds {
+  //#[live_prop_test(postcondition = "result.map_or(true, |index| self.position(index) == position)")]
+  fn index(&self, position: GridVector) -> Option<usize> {
+    let coords = (position - self.min) / TILE_WIDTH;
+    assert_eq!(
+      self.min + coords * TILE_WIDTH,
+      position,
+      "something gave wrong-parity coordinates to tile query"
+    );
+    if (0..2).all(|dim| (0..self.size[dim]).contains(&(coords[dim] as usize))) {
+      Some(coords[0] as usize + coords[1] as usize * self.size[0])
+    } else {
+      None
+    }
+  }
+
+  //#[live_prop_test(postcondition = "self.index(result) == Some(index)")]
+  fn position(&self, index: usize) -> GridVector {
+    let y = index / self.size[0];
+    let x = index % self.size[0];
+    self.min + GridVector::new(x as i32 * TILE_WIDTH, y as i32 * TILE_WIDTH)
+  }
+}
+pub type TilesIter<'a> = impl Iterator<Item = (GridVector, &'a Tile)> + 'a;
+pub type TilesIterMut<'a> = impl Iterator<Item = (GridVector, &'a mut Tile)> + 'a;
+#[live_prop_test]
+impl Tiles {
+  pub fn new(min: GridVector, size: Vector2<usize>) -> Self {
+    Tiles {
+      bounds: TilesBounds { min, size },
+      tiles: (0..size[0] * size[1]).map(|_| Default::default()).collect(),
+    }
+  }
+  pub fn get(&self, position: GridVector) -> Option<&Tile> {
+    self
+      .bounds
+      .index(position)
+      .map(move |index| self.tiles.get(index).unwrap())
+  }
+  pub fn get_mut(&mut self, position: GridVector) -> Option<&mut Tile> {
+    self
+      .bounds
+      .index(position)
+      .map(move |index| self.tiles.get_mut(index).unwrap())
+  }
+  pub fn iter(&self) -> TilesIter {
+    let bounds = &self.bounds;
+    self
+      .tiles
+      .iter()
+      .enumerate()
+      .map(move |(index, tile)| (bounds.position(index), tile))
+  }
+  pub fn iter_mut(&mut self) -> TilesIterMut {
+    let bounds = &self.bounds;
+    self
+      .tiles
+      .iter_mut()
+      .enumerate()
+      .map(move |(index, tile)| (bounds.position(index), tile))
+  }
+  //#[live_prop_test(postcondition = "self.get(result.containing_tile()).is_some()")]
+  pub fn clamp_to_bounds(&self, position: FloatingVector) -> FloatingVector {
+    let epsilon = 0.0000001;
+    let mut result = position;
+    for dim in 0..2 {
+      result[dim] = position[dim].clamp(
+        ((self.bounds.min[dim] - TILE_RADIUS) as f64) + epsilon,
+        ((self.bounds.min[dim] + (self.bounds.size[dim] as i32 * TILE_WIDTH) - TILE_RADIUS) as f64)
+          - epsilon,
+      );
+    }
+    result
+  }
+}
+
+impl<'a> IntoIterator for &'a Tiles {
+  type Item = (GridVector, &'a Tile);
+  type IntoIter = TilesIter<'a>;
+
+  fn into_iter(self) -> TilesIter<'a> {
+    self.iter()
+  }
+}
+
+impl<'a> IntoIterator for &'a mut Tiles {
+  type Item = (GridVector, &'a mut Tile);
+  type IntoIter = TilesIterMut<'a>;
+
+  fn into_iter(self) -> TilesIterMut<'a> {
+    self.iter_mut()
+  }
+}
+
 impl Map {
   pub fn update(&mut self, former_game: &Game) {
     let mechanism_updates: Vec<_> = self
       .tiles
       .iter()
-      .filter_map(|(&tile_position, tile)| {
+      .filter_map(|(tile_position, tile)| {
         tile
           .mechanism
           .as_ref()
@@ -168,14 +275,14 @@ impl Map {
     for (tile_position, count) in self
       .tiles
       .iter()
-      .map(|(&p, t)| (p, t.movers.len()))
+      .map(|(p, t)| (p, t.movers.len()))
       .collect::<Vec<_>>()
     {
       let destroyed_indices: Vec<bool> = (0..count)
         .map(|index| {
           let mut mover = self
             .tiles
-            .get_mut(&tile_position)
+            .get_mut(tile_position)
             .unwrap()
             .movers
             .get(index)
@@ -190,14 +297,14 @@ impl Map {
           };
           behavior.update(&mut context);
           let result = context.destroyed;
-          self.tiles.get_mut(&tile_position).unwrap().movers[index] = mover;
+          self.tiles.get_mut(tile_position).unwrap().movers[index] = mover;
           result
         })
         .collect();
       let mut index = 0;
       self
         .tiles
-        .get_mut(&tile_position)
+        .get_mut(tile_position)
         .unwrap()
         .movers
         .retain(|_| {
@@ -211,11 +318,12 @@ impl Map {
       .iter_mut()
       .flat_map(|(_, t)| t.materials.drain(..))
       .collect();
-    for material in materials {
+    for mut material in materials {
+      material.position = self.tiles.clamp_to_bounds(material.position);
       self
         .tiles
-        .entry(material.position.containing_tile())
-        .or_insert_with(Default::default)
+        .get_mut(material.position.containing_tile())
+        .unwrap()
         .materials
         .push(material);
     }
@@ -227,16 +335,17 @@ impl Map {
       .collect();
     for mut mover in movers {
       mover.position += mover.velocity * UPDATE_DURATION;
+      mover.position = self.tiles.clamp_to_bounds(mover.position);
       self
         .tiles
-        .entry(mover.position.containing_tile())
-        .or_insert_with(Default::default)
+        .get_mut(mover.position.containing_tile())
+        .unwrap()
         .movers
         .push(mover);
     }
   }
   pub fn draw(&self, game: &Game, draw: &mut impl Draw) {
-    for (&tile_position, tile) in &self.tiles {
+    for (tile_position, tile) in &self.tiles {
       if let Some(mechanism) = &tile.mechanism {
         mechanism.mechanism_type.draw(
           MechanismImmutableContext {
@@ -264,10 +373,12 @@ impl Map {
 
   pub fn movers_near(&self, position: FloatingVector, range: f64) -> impl Iterator<Item = &Mover> {
     let range_squared = range * range;
-    let x_range =
-      nearest_grid_center(position[0] - range)..=nearest_grid_center(position[0] + range);
-    let y_range =
-      nearest_grid_center(position[1] - range)..=nearest_grid_center(position[1] + range);
+    let x_range = (nearest_grid_center(position[0] - range)
+      ..=nearest_grid_center(position[0] + range))
+      .step_by(TILE_WIDTH as usize);
+    let y_range = (nearest_grid_center(position[1] - range)
+      ..=nearest_grid_center(position[1] + range))
+      .step_by(TILE_WIDTH as usize);
     x_range.flat_map(move |x| {
       y_range
         .clone()
@@ -280,7 +391,7 @@ impl Map {
             return None;
           }
           let tile_position = GridVector::new(x, y);
-          self.tiles.get(&tile_position)
+          self.tiles.get(tile_position)
         })
         .flat_map(move |tile| {
           tile

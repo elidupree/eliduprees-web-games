@@ -26,10 +26,10 @@ pub struct MechanismImmutableContext<'a> {
 
 impl<'a> MechanismUpdateContext<'a> {
   pub fn this_tile(&self) -> &Tile {
-    self.map.tiles.get(&self.position).unwrap()
+    self.map.tiles.get(self.position).unwrap()
   }
   pub fn this_tile_mut(&mut self) -> &mut Tile {
-    self.map.tiles.get_mut(&self.position).unwrap()
+    self.map.tiles.get_mut(self.position).unwrap()
   }
   pub fn this_mechanism(&self) -> &Mechanism {
     self.this_tile().mechanism.as_ref().unwrap()
@@ -50,7 +50,7 @@ impl<'a> MechanismUpdateContext<'a> {
 
 impl<'a> MechanismImmutableContext<'a> {
   pub fn this_tile(&self) -> &Tile {
-    self.game.map.tiles.get(&self.position).unwrap()
+    self.game.map.tiles.get(self.position).unwrap()
   }
   pub fn this_mechanism(&self) -> &Mechanism {
     self.this_tile().mechanism.as_ref().unwrap()
@@ -144,7 +144,7 @@ impl MechanismTrait for Deck {
       let target_tile_position = context.position + facing.unit_vector() * TILE_WIDTH;
       let target = context.position.to_floating()
         + facing.unit_vector().to_floating() * (TILE_RADIUS as f64 * 1.01);
-      if let Some(old_target_tile) = context.former_game.map.tiles.get(&target_tile_position) {
+      if let Some(old_target_tile) = context.former_game.map.tiles.get(target_tile_position) {
         if old_target_tile
           .materials
           .iter()
@@ -203,7 +203,7 @@ impl MechanismTrait for Conveyor {
           .former_game
           .map
           .tiles
-          .get(&(context.position + facing.unit_vector() * TILE_WIDTH))
+          .get(context.position + facing.unit_vector() * TILE_WIDTH)
           .map_or(false, |tile| {
             tile.mechanism.as_ref().map_or(false, |mechanism| {
               mechanism.mechanism_type.wants_to_steal(&Material {
@@ -224,7 +224,7 @@ impl MechanismTrait for Conveyor {
         .iter_mut()
         .min_by_key(|m| OrderedFloat((m.position - target).magnitude()))
       {
-        if let Some(old_target_tile) = former.tiles.get(&target_tile_position) {
+        if let Some(old_target_tile) = former.tiles.get(target_tile_position) {
           if old_target_tile
             .materials
             .iter()
