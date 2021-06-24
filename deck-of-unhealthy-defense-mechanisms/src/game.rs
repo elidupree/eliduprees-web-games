@@ -1,7 +1,7 @@
 use crate::actions::{Action, ActionStatus, ActionUpdateContext};
 use crate::cards::{CardInstance, Cards};
 use crate::map::{
-  FloatingVector, FloatingVectorExtension, GridVector, GridVectorExtension, Map, Tiles,
+  FloatingVector, FloatingVectorExtension, GridVector, GridVectorExtension, Map, Movers, Tiles,
   TILE_RADIUS, TILE_SIZE, TILE_WIDTH,
 };
 use crate::mechanisms::{Deck, Mechanism, MechanismImmutableContext, MechanismType};
@@ -64,12 +64,14 @@ impl Game {
       GridVector::new(-(radius as i32) * TILE_WIDTH, -(radius as i32) * TILE_WIDTH),
       Vector2::new(radius * 2 + 1, radius * 2 + 1),
     );
+    let movers = Movers::new();
     let tile = tiles.get_mut(GridVector::zeros()).unwrap();
     tile.mechanism = Some(Mechanism {
       mechanism_type: MechanismType::Deck(Deck {}),
       ..Default::default()
     });
-    tile.movers.push(Mover {
+    let mut map = Map { tiles, movers };
+    map.create_mover(Mover {
       position: FloatingVector::new(4.0, 6.0),
       mover_type: MoverType::Monster,
       behavior: MoverBehavior::Monster(Monster),
@@ -78,7 +80,7 @@ impl Game {
       ..Default::default()
     });
     Game {
-      map: Map { tiles },
+      map,
       player: Player {
         position: FloatingVector::zeros(),
         action_state: PlayerActionState::Moving {
@@ -221,9 +223,9 @@ impl Game {
 
     let closest_monster_distance = self
       .map
-      .tiles
+      .movers
       .iter()
-      .flat_map(|(_, t)| &t.movers)
+      .map(|(_id, mover)| mover)
       .filter(|m| m.mover_type == MoverType::Monster)
       .map(|m| OrderedFloat(m.position.magnitude()))
       .min()

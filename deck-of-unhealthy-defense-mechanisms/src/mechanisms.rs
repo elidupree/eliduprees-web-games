@@ -1,10 +1,10 @@
 use crate::actions::{Action, Reshuffle};
 use crate::game::{Game, UPDATE_DURATION};
 use crate::map::{
-  Facing, FloatingVectorExtension, GridVector, GridVectorExtension, Map, Material, Rotation, Tile,
+  Facing, FloatingVectorExtension, GridVector, GridVectorExtension, Map, Rotation, Tile,
   TILE_RADIUS, TILE_SIZE, TILE_WIDTH,
 };
-use crate::movers::{Mover, MoverBehavior, MoverType, Projectile};
+use crate::movers::{Material, Mover, MoverBehavior, MoverType, Projectile};
 use crate::ui_glue::Draw;
 use eliduprees_web_games_lib::auto_constant;
 use ordered_float::OrderedFloat;
@@ -139,21 +139,24 @@ impl Default for MechanismType {
 pub struct Deck {}
 
 impl MechanismTrait for Deck {
-  fn update(&self, mut context: MechanismUpdateContext) {
+  fn update(&self, context: MechanismUpdateContext) {
     for facing in Facing::ALL_FACINGS {
       let target_tile_position = context.position + facing.unit_vector() * TILE_WIDTH;
       let target = context.position.to_floating()
         + facing.unit_vector().to_floating() * (TILE_RADIUS as f64 * 1.01);
       if let Some(old_target_tile) = context.former_game.map.tiles.get(target_tile_position) {
         if old_target_tile
-          .materials
+          .movers
           .iter()
+          .map(|&id| context.map.movers.get(id).unwrap())
           .all(|m| (m.position - target).magnitude() > TILE_WIDTH as f64)
         {
-          context
-            .this_tile_mut()
-            .materials
-            .push(Material { position: target });
+          context.map.create_mover(Mover {
+            position: target,
+            mover_type: MoverType::Material,
+            behavior: MoverBehavior::Material(Material),
+            ..Default::default()
+          });
         }
       }
     }
@@ -206,9 +209,7 @@ impl MechanismTrait for Conveyor {
           .get(context.position + facing.unit_vector() * TILE_WIDTH)
           .map_or(false, |tile| {
             tile.mechanism.as_ref().map_or(false, |mechanism| {
-              mechanism.mechanism_type.wants_to_steal(&Material {
-                position: Default::default(),
-              })
+              mechanism.mechanism_type.wants_to_steal(&Material)
             })
           }))
       {
@@ -218,23 +219,32 @@ impl MechanismTrait for Conveyor {
       let target = context.position.to_floating()
         + facing.unit_vector().to_floating() * (TILE_RADIUS as f64 * 1.01);
       let former = &context.former_game.map;
-      let tile = context.this_tile_mut();
-      if let Some(material) = tile
-        .materials
-        .iter_mut()
-        .min_by_key(|m| OrderedFloat((m.position - target).magnitude()))
-      {
+      let tile = context.this_tile();
+      if let Some(&material_id) = tile.movers.iter().min_by_key(|&&id| {
+        let m = context.map.movers.get(id).unwrap();
+        OrderedFloat((m.position - target).magnitude())
+      }) {
+        let material_position = context.map.movers.get(material_id).unwrap().position;
         if let Some(old_target_tile) = former.tiles.get(target_tile_position) {
           if old_target_tile
-            .materials
+            .movers
             .iter()
-            .all(|m| (m.position - material.position).magnitude() > TILE_WIDTH as f64)
+            .map(|&id| context.map.movers.get(id).unwrap())
+            .filter(|mover| mover.mover_type == MoverType::Material)
+            .all(|m| (m.position - material_position).magnitude() > TILE_WIDTH as f64)
           {
-            material.position.move_towards(
-              target,
-              auto_constant("conveyor_speed", 2.3) * UPDATE_DURATION,
-            );
-            if material.position.containing_tile() != context.position {
+            let conveyor_position = context.position;
+            let escaped = context
+              .map
+              .mutate_mover(material_id, |material| {
+                material.position.move_towards(
+                  target,
+                  auto_constant("conveyor_speed", 2.3) * UPDATE_DURATION,
+                );
+                material.position.containing_tile() != conveyor_position
+              })
+              .unwrap();
+            if escaped {
               context.this_mechanism_type_mut::<Self>().last_sent = facing;
             }
             break;
@@ -287,22 +297,26 @@ impl MechanismTrait for Tower {
     let position = context.position.to_floating();
     let this = context.this_mechanism_type_mut::<Self>();
     this.volition += auto_constant("tower_regeneration", 1.0) * UPDATE_DURATION;
-    for _material in std::mem::take(&mut context.this_tile_mut().materials) {
-      context.this_mechanism_type_mut::<Self>().volition += 1.0;
+    for id in context.this_tile().movers.clone() {
+      let mover = context.map.movers.get(id).unwrap();
+      if mover.mover_type == MoverType::Material {
+        context.map.remove_mover(id);
+        context.this_mechanism_type_mut::<Self>().volition += 1.0;
+      }
     }
 
     let this = context.this_mechanism_type_mut::<Self>();
     if this.volition >= this.maximum_volition {
-      if let Some(target) = context
+      if let Some((_, target)) = context
         .former_game
         .map
         .movers_near(context.position.to_floating(), self.range)
-        .filter(|mover| mover.mover_type == MoverType::Monster)
-        .min_by_key(|mover| OrderedFloat((mover.position - position).magnitude_squared()))
+        .filter(|&(_id, mover)| mover.mover_type == MoverType::Monster)
+        .min_by_key(|&(_id, mover)| OrderedFloat((mover.position - position).magnitude_squared()))
       {
         let difference = target.position - position;
         let speed = auto_constant("shot_speed", 10.0);
-        context.this_tile_mut().movers.push(Mover {
+        context.map.create_mover(Mover {
           position,
           velocity: difference * (speed / difference.magnitude()),
           hitpoints: self.range / speed,

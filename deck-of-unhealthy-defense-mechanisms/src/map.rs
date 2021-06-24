@@ -1,11 +1,13 @@
 use crate::game::{Game, UPDATE_DURATION};
 use crate::mechanisms::{Mechanism, MechanismImmutableContext, MechanismUpdateContext};
-use crate::movers::{Mover, MoverImmutableContext, MoverUpdateContext};
+use crate::movers::{Mover, MoverId, MoverImmutableContext, MoverUpdateContext};
 use crate::ui_glue::Draw;
 use extend::ext;
-use live_prop_test::live_prop_test;
+use guard::guard;
+use live_prop_test::{live_prop_test, lpt_assert_eq};
 use nalgebra::Vector2;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::ops::{Add, AddAssign, Sub};
 
 pub type GridVector = Vector2<i32>;
@@ -133,6 +135,7 @@ impl Sub<Facing> for Facing {
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
 pub struct Map {
   pub tiles: Tiles,
+  pub movers: Movers,
 }
 
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
@@ -145,15 +148,16 @@ pub struct Tiles {
   bounds: TilesBounds,
   tiles: Vec<Tile>,
 }
+
+#[derive(Clone, PartialEq, Serialize, Deserialize, Debug, Default)]
+pub struct Movers {
+  movers: HashMap<MoverId, Mover>,
+  next_id: usize,
+}
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug, Default)]
 pub struct Tile {
   pub mechanism: Option<Mechanism>,
-  pub materials: Vec<Material>,
-  pub movers: Vec<Mover>,
-}
-#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
-pub struct Material {
-  pub position: FloatingVector,
+  pub movers: Vec<MoverId>,
 }
 
 #[live_prop_test]
@@ -178,6 +182,19 @@ impl TilesBounds {
     let y = index / self.size[0];
     let x = index % self.size[0];
     self.min + GridVector::new(x as i32 * TILE_WIDTH, y as i32 * TILE_WIDTH)
+  }
+
+  //#[live_prop_test(postcondition = "self.index(result.containing_tile()).is_some()")]
+  pub fn clamp(&self, position: FloatingVector) -> FloatingVector {
+    let epsilon = 0.0000001;
+    let mut result = position;
+    for dim in 0..2 {
+      result[dim] = position[dim].clamp(
+        ((self.min[dim] - TILE_RADIUS) as f64) + epsilon,
+        ((self.min[dim] + (self.size[dim] as i32 * TILE_WIDTH) - TILE_RADIUS) as f64) - epsilon,
+      );
+    }
+    result
   }
 }
 pub type TilesIter<'a> = impl Iterator<Item = (GridVector, &'a Tile)> + 'a;
@@ -218,18 +235,8 @@ impl Tiles {
       .enumerate()
       .map(move |(index, tile)| (bounds.position(index), tile))
   }
-  //#[live_prop_test(postcondition = "self.get(result.containing_tile()).is_some()")]
-  pub fn clamp_to_bounds(&self, position: FloatingVector) -> FloatingVector {
-    let epsilon = 0.0000001;
-    let mut result = position;
-    for dim in 0..2 {
-      result[dim] = position[dim].clamp(
-        ((self.bounds.min[dim] - TILE_RADIUS) as f64) + epsilon,
-        ((self.bounds.min[dim] + (self.bounds.size[dim] as i32 * TILE_WIDTH) - TILE_RADIUS) as f64)
-          - epsilon,
-      );
-    }
-    result
+  pub fn bounds(&self) -> &TilesBounds {
+    &self.bounds
   }
 }
 
@@ -251,7 +258,105 @@ impl<'a> IntoIterator for &'a mut Tiles {
   }
 }
 
+pub type MoversIter<'a> = impl Iterator<Item = (MoverId, &'a Mover)> + 'a;
+impl Movers {
+  pub fn new() -> Self {
+    Default::default()
+  }
+  pub fn get(&self, id: MoverId) -> Option<&Mover> {
+    self.movers.get(&id)
+  }
+  pub fn iter(&self) -> MoversIter {
+    self.movers.iter().map(|(&id, mover)| (id, mover))
+  }
+  pub fn ids(&self) -> impl Iterator<Item = MoverId> + '_ {
+    self.movers.keys().copied()
+  }
+}
+
+impl<'a> IntoIterator for &'a Movers {
+  type Item = (MoverId, &'a Mover);
+  type IntoIter = MoversIter<'a>;
+
+  fn into_iter(self) -> MoversIter<'a> {
+    self.iter()
+  }
+}
+
+#[live_prop_test]
 impl Map {
+  pub fn check_invariants(&self) -> Result<(), String> {
+    for (id, mover) in &self.movers {
+      guard!(let Some(tile) = self.tiles.get(mover.position.containing_tile()) else {return Err("mover is outside of grid".to_string())});
+      if !tile.movers.contains(&id) {
+        return Err(format!(
+          "Mover does not have a record in its tile: {:?}",
+          mover
+        ));
+      }
+    }
+    for (position, tile) in &self.tiles {
+      for &id in &tile.movers {
+        guard!(let Some(mover) = self.movers.get(id) else {return Err("tile retained reference to missing mover".to_string())});
+        lpt_assert_eq!(mover.position.containing_tile(), position);
+      }
+    }
+    Ok(())
+  }
+
+  pub fn create_mover(&mut self, mover: Mover) -> MoverId {
+    let id = MoverId(self.movers.next_id);
+    self
+      .tiles
+      .get_mut(mover.position.containing_tile())
+      .unwrap()
+      .movers
+      .push(id);
+    self.movers.movers.insert(id, mover);
+    self.movers.next_id += 1;
+    id
+  }
+  pub fn remove_mover(&mut self, id: MoverId) -> Option<Mover> {
+    let result = self.movers.movers.remove(&id);
+    if let Some(mover) = &result {
+      self
+        .tiles
+        .get_mut(mover.position.containing_tile())
+        .unwrap()
+        .movers
+        .retain(|&m| m != id);
+    }
+    result
+  }
+  pub fn mutate_mover<R, F: FnOnce(&mut Mover) -> R>(&mut self, id: MoverId, f: F) -> Option<R> {
+    if let Some(mover) = self.movers.movers.get_mut(&id) {
+      let old_tile_position = mover.position.containing_tile();
+      let result = f(mover);
+      let new_tile_position = mover.position.containing_tile();
+      if new_tile_position != old_tile_position {
+        self
+          .tiles
+          .get_mut(old_tile_position)
+          .unwrap()
+          .movers
+          .retain(|&m| m != id);
+        self
+          .tiles
+          .get_mut(new_tile_position)
+          .unwrap()
+          .movers
+          .push(id);
+      }
+      Some(result)
+    } else {
+      None
+    }
+  }
+
+  #[live_prop_test(
+    precondition = "self.check_invariants()",
+    postcondition = "self.check_invariants()"
+  )]
   pub fn update(&mut self, former_game: &Game) {
     let mechanism_updates: Vec<_> = self
       .tiles
@@ -272,76 +377,24 @@ impl Map {
       });
     }
 
-    for (tile_position, count) in self
-      .tiles
-      .iter()
-      .map(|(p, t)| (p, t.movers.len()))
-      .collect::<Vec<_>>()
-    {
-      let destroyed_indices: Vec<bool> = (0..count)
-        .map(|index| {
-          let mut mover = self
-            .tiles
-            .get_mut(tile_position)
-            .unwrap()
-            .movers
-            .get(index)
-            .unwrap()
-            .clone();
-          let behavior = mover.behavior.clone();
-          let mut context = MoverUpdateContext {
-            this: &mut mover,
-            map: self,
-            former_game,
-            destroyed: false,
-          };
-          behavior.update(&mut context);
-          let result = context.destroyed;
-          self.tiles.get_mut(tile_position).unwrap().movers[index] = mover;
-          result
-        })
-        .collect();
-      let mut index = 0;
-      self
-        .tiles
-        .get_mut(tile_position)
-        .unwrap()
-        .movers
-        .retain(|_| {
-          index += 1;
-          !destroyed_indices.get(index - 1).copied().unwrap_or(false)
-        });
+    for mover_id in self.movers.ids().collect::<Vec<_>>() {
+      if let Some(mover) = self.movers.get(mover_id) {
+        let behavior = mover.behavior.clone();
+        let context = MoverUpdateContext {
+          id: mover_id,
+          map: self,
+          former_game,
+        };
+        behavior.update(context);
+      }
     }
 
-    let materials: Vec<_> = self
-      .tiles
-      .iter_mut()
-      .flat_map(|(_, t)| t.materials.drain(..))
-      .collect();
-    for mut material in materials {
-      material.position = self.tiles.clamp_to_bounds(material.position);
-      self
-        .tiles
-        .get_mut(material.position.containing_tile())
-        .unwrap()
-        .materials
-        .push(material);
-    }
-
-    let movers: Vec<_> = self
-      .tiles
-      .iter_mut()
-      .flat_map(|(_, t)| t.movers.drain(..))
-      .collect();
-    for mut mover in movers {
-      mover.position += mover.velocity * UPDATE_DURATION;
-      mover.position = self.tiles.clamp_to_bounds(mover.position);
-      self
-        .tiles
-        .get_mut(mover.position.containing_tile())
-        .unwrap()
-        .movers
-        .push(mover);
+    for mover_id in self.movers.ids().collect::<Vec<_>>() {
+      let bounds = self.tiles.bounds().clone();
+      self.mutate_mover(mover_id, |mover| {
+        mover.position += mover.velocity * UPDATE_DURATION;
+        mover.position = bounds.clamp(mover.position);
+      });
     }
   }
   pub fn draw(&self, game: &Game, draw: &mut impl Draw) {
@@ -355,23 +408,22 @@ impl Map {
           draw,
         );
       }
-      for material in &tile.materials {
-        draw.rectangle_on_map(
-          20,
-          material.position,
-          TILE_SIZE.to_floating() * 0.25,
-          "#fff",
-        );
-      }
-      for mover in &tile.movers {
-        mover
+      for &mover_id in &tile.movers {
+        self
+          .movers
+          .get(mover_id)
+          .unwrap()
           .behavior
-          .draw(MoverImmutableContext { this: mover, game }, draw);
+          .draw(MoverImmutableContext { id: mover_id, game }, draw);
       }
     }
   }
 
-  pub fn movers_near(&self, position: FloatingVector, range: f64) -> impl Iterator<Item = &Mover> {
+  pub fn movers_near(
+    &self,
+    position: FloatingVector,
+    range: f64,
+  ) -> impl Iterator<Item = (MoverId, &Mover)> {
     let range_squared = range * range;
     let x_range = (nearest_grid_center(position[0] - range)
       ..=nearest_grid_center(position[0] + range))
@@ -394,10 +446,14 @@ impl Map {
           self.tiles.get(tile_position)
         })
         .flat_map(move |tile| {
-          tile
-            .movers
-            .iter()
-            .filter(move |mover| (mover.position - position).magnitude_squared() <= range_squared)
+          tile.movers.iter().filter_map(move |&mover_id| {
+            let mover = self.movers.get(mover_id).unwrap();
+            if (mover.position - position).magnitude_squared() <= range_squared {
+              Some((mover_id, mover))
+            } else {
+              None
+            }
+          })
         })
     })
   }
