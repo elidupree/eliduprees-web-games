@@ -2,6 +2,7 @@ use crate::game::{Game, OngoingIntent, WhichInteraction};
 use crate::map::FloatingVector;
 use serde::Deserialize;
 use std::cell::RefCell;
+use std::panic;
 use wasm_bindgen::prelude::*;
 
 pub mod js {
@@ -11,6 +12,7 @@ pub mod js {
   extern "C" {
     // this wants to return (), but that gets me "clear_canvas is not defined" for some reason
     pub fn clear_canvas() -> JsValue;
+    pub fn panicked() -> JsValue;
     pub fn debug(message: &str);
     pub fn draw_rect(cx: f32, cy: f32, sx: f32, sy: f32, color: &str);
     pub fn draw_text(x: f32, y: f32, size: f32, color: &str, text: &str);
@@ -40,9 +42,14 @@ fn with_state<R>(f: impl FnOnce(&mut State) -> R) -> R {
   })
 }
 
+fn panic_hook(info: &panic::PanicInfo) {
+  console_error_panic_hook::hook(info);
+  js::panicked();
+}
+
 #[wasm_bindgen]
 pub fn rust_init() {
-  std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+  std::panic::set_hook(Box::new(panic_hook));
   live_prop_test::initialize();
 
   //with_state(|state| {});

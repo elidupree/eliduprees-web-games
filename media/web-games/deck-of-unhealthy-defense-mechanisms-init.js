@@ -47,6 +47,10 @@ window.clear_canvas = () => {
   context.fillRect(0, 0, context.canvas.width, context.canvas.height);
 };
 
+window.panicked = () => {
+  window.eliduprees_web_games.panicked = true;
+}
+
 window.draw_rect = (cx, cy, sx, sy, color) => {
   context.save();
   context.translate (cx, cy);
@@ -124,13 +128,15 @@ async function run() {
 
     update_canvas_size();
     eliduprees_web_games.update_auto_constants_editor();
-    rust_do_frame(time, {
-      ongoing_intent,
-      card_rotations_since_last_frame,
-      initiated_interaction,
-      canvas_css_size,
-      canvas_physical_size,
-    });
+    if (!window.eliduprees_web_games.panicked) {
+      rust_do_frame(time, {
+        ongoing_intent,
+        card_rotations_since_last_frame,
+        initiated_interaction,
+        canvas_css_size,
+        canvas_physical_size,
+      });
+    }
     card_rotations_since_last_frame = 0;
     initiated_interaction = null;
   }
