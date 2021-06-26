@@ -1,8 +1,8 @@
 use crate::game::{Game, Time};
-use crate::geometry::GridBounds;
 use crate::geometry::{
   FloatingVector, FloatingVectorExtension, GridVectorExtension, TILE_SIZE, TILE_WIDTH,
 };
+use crate::geometry::{GridBounds, EPSILON};
 use crate::ui_glue::Draw;
 use derivative::Derivative;
 use eliduprees_web_games_lib::auto_constant;
@@ -49,11 +49,22 @@ impl Mover {
   pub fn grid_bounds(&self, time: Time) -> GridBounds {
     GridBounds::containing(self.bounds(time))
   }
+
+  pub fn rebase(&mut self, time: Time) {
+    self.position_at_base_time += self.velocity * (time - self.trajectory_base_time);
+    self.trajectory_base_time = time;
+  }
+}
+
+#[derive(Debug)]
+pub struct MoverView<'a> {
+  mover: &'a mut Mover,
+  now: Time,
 }
 
 #[derive(Debug)]
 pub struct TypedMoverView<'a, T> {
-  mover: &'a mut Mover,
+  mover: MoverView<'a>,
   _marker: PhantomData<T>,
 }
 
@@ -78,7 +89,13 @@ impl<'a, T> TypedMoverView<'a, T> {
   }
 }
 
-impl<'a, T> Deref for TypedMoverView<'a, T> {
+impl<'a> MoverView<'a> {
+  fn position(&self) -> FloatingVector {
+    self.mover.position(self.now)
+  }
+}
+
+impl<'a> Deref for MoverView<'a> {
   type Target = Mover;
 
   fn deref(&self) -> &Mover {
@@ -86,9 +103,23 @@ impl<'a, T> Deref for TypedMoverView<'a, T> {
   }
 }
 
-impl<'a, T> DerefMut for TypedMoverView<'a, T> {
+impl<'a> DerefMut for MoverView<'a> {
   fn deref_mut(&mut self) -> &mut Mover {
     self.mover
+  }
+}
+
+impl<'a, T> Deref for TypedMoverView<'a, T> {
+  type Target = MoverView<'a>;
+
+  fn deref(&self) -> &MoverView<'a> {
+    &self.mover
+  }
+}
+
+impl<'a, T> DerefMut for TypedMoverView<'a, T> {
+  fn deref_mut(&mut self) -> &mut MoverView<'a> {
+    &mut self.mover
   }
 }
 
@@ -115,11 +146,12 @@ impl<'a> MoverUpdateContext<'a> {
     self.game.mover(self.id).unwrap()
   }
   pub fn mutate_this<T, R, F: FnOnce(TypedMoverView<T>) -> R>(&mut self, f: F) -> R {
+    let now = self.game.physics_time;
     self
       .game
       .mutate_mover(self.id, |mover| {
         f(TypedMoverView {
-          mover,
+          mover: MoverView { mover, now },
           _marker: PhantomData,
         })
       })
@@ -223,10 +255,23 @@ impl MoverBehaviorTrait for Monster {
     let acceleration = auto_constant("monster_acceleration", 4.0) * TILE_WIDTH as f64;
     let max_speed = auto_constant("monster_max_speed", 1.6) * TILE_WIDTH as f64;
     // Account for stopping distance:
-    let target_speed = max_speed.min((2.0 * relative_target.magnitude() * acceleration).sqrt());
-    let target_velocity = relative_target.normalize() * target_speed;
+    // we might overshoot by an average speed of acceleration*MONSTER_WAKE_DELAY/2 due to not updating more frequently,
+    // so saturating-subtract that much
+    let target_speed = max_speed
+      .min(
+        (2.0 * relative_target.magnitude() * acceleration).sqrt()
+          - acceleration * MONSTER_WAKE_DELAY * 0.5,
+      )
+      .max(0.0);
+    //debug!("{:?}", relative_target);
+
     let now = context.game.physics_time;
     context.mutate_this(|mut this: TypedMoverView<Self>| {
+      let target_velocity = relative_target
+        .try_normalize(EPSILON)
+        .map_or(FloatingVector::zeros(), |target_direction| {
+          target_direction * target_speed
+        });
       this
         .velocity
         .move_towards(target_velocity, acceleration * MONSTER_WAKE_DELAY);

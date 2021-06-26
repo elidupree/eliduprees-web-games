@@ -222,6 +222,7 @@ impl Game {
   }
   pub fn mutate_mover<R, F: FnOnce(&mut Mover) -> R>(&mut self, id: MoverId, f: F) -> Option<R> {
     if let Some(stuff) = self.movers.get_mut(&id) {
+      stuff.mover.rebase(self.physics_time);
       let result = f(&mut stuff.mover);
       self.update_mover_bounds_and_schedule(id);
       Some(result)
@@ -287,7 +288,7 @@ impl Game {
     stuff.stored_bounds = stuff.mover.grid_bounds(self.physics_time);
     for position in stuff.stored_bounds.tile_centers() {
       if let Some(tile) = self.grid.get_mut(position) {
-        tile.movers.retain(|&id2| id2 != id);
+        tile.movers.push(id);
       }
     }
   }
@@ -562,6 +563,7 @@ impl Game {
     while matches!(self.upcoming_events.first(), Some(event) if event.time.0 < end_time) {
       self.do_next_event();
     }
+    self.set_physics_time(end_time);
 
     let closest_monster_distance = self
       .movers
