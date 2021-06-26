@@ -1,7 +1,7 @@
-use crate::game::{Game, UPDATE_DURATION};
-use crate::map::{
-  FloatingVector, FloatingVectorExtension, GridVectorExtension, Map, TILE_RADIUS, TILE_SIZE,
-  TILE_WIDTH,
+use crate::game::{Game, Time, UPDATE_DURATION};
+use crate::geometry::GridBounds;
+use crate::geometry::{
+  FloatingVector, FloatingVectorExtension, GridVectorExtension, TILE_RADIUS, TILE_SIZE, TILE_WIDTH,
 };
 use crate::ui_glue::Draw;
 use derivative::Derivative;
@@ -26,19 +26,34 @@ pub struct MoverId(pub usize);
 
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug, Default)]
 pub struct Mover {
-  pub position: FloatingVector,
+  pub trajectory_base_time: Time,
+  pub position_at_base_time: FloatingVector,
   pub velocity: FloatingVector,
-  pub home: FloatingVector,
-  pub active_time: Range<f64>,
-  pub mover_type: MoverType,
-  pub hitpoints: f64,
+  pub radius: f64,
   pub behavior: MoverBehavior,
+
+  pub mover_type: MoverType,
+}
+
+impl Mover {
+  pub fn position(&self, time: Time) -> FloatingVector {
+    self.position_at_base_time + self.velocity * (time - self.trajectory_base_time)
+  }
+
+  pub fn bounds(&self, time: Time) -> [FloatingVector; 2] {
+    let position = self.position(time);
+    let half_size = FloatingVector::new(self.radius, self.radius);
+    [position - half_size, position + half_size]
+  }
+
+  pub fn grid_bounds(&self, time: Time) -> GridBounds {
+    GridBounds::containing(self.bounds(time))
+  }
 }
 
 pub struct MoverUpdateContext<'a> {
   pub id: MoverId,
-  pub map: &'a mut Map,
-  pub former_game: &'a Game,
+  pub game: &'a mut Game,
 }
 
 pub struct MoverImmutableContext<'a> {
@@ -48,32 +63,37 @@ pub struct MoverImmutableContext<'a> {
 
 impl<'a> MoverUpdateContext<'a> {
   pub fn this(&self) -> &Mover {
-    self.map.movers.get(self.id).unwrap()
+    self.game.mover(self.id).unwrap()
   }
   pub fn mutate_this<R, F: FnOnce(&mut Mover) -> R>(&mut self, f: F) -> R {
-    self.map.mutate_mover(self.id, f).unwrap()
+    self.game.mutate_mover(self.id, f).unwrap()
   }
   // take self by value unnecessarily, to protect from accidentally doing stuff after destroyed
   pub fn destroy_this(self) {
-    self.map.remove_mover(self.id);
+    self.game.remove_mover(self.id);
   }
 }
 
 impl<'a> MoverImmutableContext<'a> {
   pub fn this(&self) -> &Mover {
-    self.game.map.movers.get(self.id).unwrap()
+    self.game.mover(self.id).unwrap()
   }
 }
 
 #[allow(unused)]
 pub trait MoverBehaviorTrait {
-  /** Perform a single time-step update on this mover, possibly modifying the game state.
+  /** Perform a single scheduled update on this mover, possibly modifying the game state.
 
   Note that when called, `self` is a *copy* of the actual MoverBehavior implementor;
   use `context.mutate_this()` to change this Mover.
-  MoverBehavior implementors are expected to have no data; they use the shared data that is in Mover.
+  MoverBehavior implementors are currently expected to have no data; they use the shared data that is in Mover.
   */
-  fn update(&self, context: MoverUpdateContext) {}
+  fn wake(&self, context: MoverUpdateContext) {}
+  fn next_wake(&self, this: &Mover) -> Option<Time> {
+    None
+  }
+
+  fn collide(&self, context: MoverCollideContext) {}
 
   fn draw(&self, context: MoverImmutableContext, draw: &mut dyn Draw);
 }
@@ -87,19 +107,25 @@ trait_enum! {
 
 impl Default for MoverBehavior {
   fn default() -> Self {
-    MoverBehavior::Monster(Monster)
+    MoverBehavior::Material(Material)
   }
 }
 
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
-pub struct Monster;
+pub struct Monster {
+  pub home: FloatingVector,
+  pub active_time: Range<f64>,
+  pub next_wake: Time,
+}
+
+const MONSTER_WAKE_DELAY: Time = 0.1;
 
 impl MoverBehaviorTrait for Monster {
-  fn update(&self, mut context: MoverUpdateContext) {
+  fn wake(&self, mut context: MoverUpdateContext) {
     let active = context
       .this()
       .active_time
-      .contains(&context.former_game.day_progress);
+      .contains(&context.game.day_progress);
     let target;
     if active {
       target = FloatingVector::zeros();
@@ -107,7 +133,7 @@ impl MoverBehaviorTrait for Monster {
       target = context.this().home;
     }
 
-    let relative_target = target - context.this().position;
+    let relative_target = target - context.this().position(context.game.physics_time);
 
     let acceleration = auto_constant("monster_acceleration", 4.0) * TILE_WIDTH as f64;
     let max_speed = auto_constant("monster_max_speed", 1.6) * TILE_WIDTH as f64;
@@ -117,14 +143,20 @@ impl MoverBehaviorTrait for Monster {
     context.mutate_this(|this| {
       this
         .velocity
-        .move_towards(target_velocity, acceleration * UPDATE_DURATION)
+        .move_towards(target_velocity, acceleration * MONSTER_WAKE_DELAY);
+
+      this.next_wake = context.game.physics_time + MONSTER_WAKE_DELAY;
     });
+  }
+
+  fn next_wake(&self, _this: &Mover) -> Option<Time> {
+    Some(self.next_wake)
   }
 
   fn draw(&self, context: MoverImmutableContext, draw: &mut dyn Draw) {
     draw.rectangle_on_map(
       10,
-      context.this().position,
+      context.this().position(context.game.physics_time),
       TILE_SIZE.to_floating() * 0.8,
       "#000",
     );
@@ -132,31 +164,26 @@ impl MoverBehaviorTrait for Monster {
 }
 
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
-pub struct Projectile;
+pub struct Projectile {
+  pub disappear_time: Time,
+}
 
 impl MoverBehaviorTrait for Projectile {
-  fn update(&self, mut context: MoverUpdateContext) {
-    context.mutate_this(|this| {
-      this.hitpoints -= UPDATE_DURATION;
-    });
-    if context.this().hitpoints <= 0.0 {
-      context.destroy_this();
-      return;
-    }
-    if let Some((target_id, _)) = context
-      .map
-      .movers_near(context.this().position, 0.8 * TILE_RADIUS as f64)
-      .filter(|&(_id, mover)| mover.mover_type == MoverType::Monster)
-      .min_by_key(|&(_id, mover)| {
-        OrderedFloat((mover.position - context.this().position).magnitude_squared())
-      })
-    {
+  fn wake(&self, mut context: MoverUpdateContext) {
+    context.destroy_this();
+  }
+
+  fn next_wake(&self, _this: &Mover) -> Option<Time> {
+    Some(self.disappear_time)
+  }
+
+  fn collide(&self, context: MoverCollideContext) {
+    if context.other().mover_type == MoverType::Monster {
       let impact = auto_constant("projectile_impact", 2.0) * TILE_WIDTH as f64;
 
-      // Push the monster directly away from your deck. We COULD have the monster be propelled in the direction of the projectile (context.this().velocity) instead, but that causes the monster to be knocked around in a way that feels slippery, rather than feeling like a struggle of determination against determination. Having projectile directions matter would make this a physics game, and this I actually DON'T want this to be a physics game.
+      // Push the monster directly away from your deck. We COULD have the monster be propelled in the direction of the projectile (context.this().velocity) instead, but that causes the monster to be knocked around in a way that feels slippery, rather than feeling like a struggle of determination against determination. Having projectile directions matter would make this a physics game, and I actually DON'T want this to be a physics game.
       context
-        .map
-        .mutate_mover(target_id, |target| {
+        .mutate_other(|target| {
           let direction = target.position;
           target.velocity += direction.normalize() * impact;
         })
@@ -168,7 +195,7 @@ impl MoverBehaviorTrait for Projectile {
   fn draw(&self, context: MoverImmutableContext, draw: &mut dyn Draw) {
     draw.rectangle_on_map(
       10,
-      context.this().position,
+      context.this().position(context.game.physics_time),
       TILE_SIZE.to_floating() * 0.2,
       "#fff",
     );
@@ -182,7 +209,7 @@ impl MoverBehaviorTrait for Material {
   fn draw(&self, context: MoverImmutableContext, draw: &mut dyn Draw) {
     draw.rectangle_on_map(
       20,
-      context.this().position,
+      context.this().position(context.game.physics_time),
       TILE_SIZE.to_floating() * 0.25,
       "#fff",
     );

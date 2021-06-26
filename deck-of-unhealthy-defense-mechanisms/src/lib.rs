@@ -1,4 +1,5 @@
 #![feature(min_type_alias_impl_trait)]
+#![feature(map_first_last)]
 
 #[allow(unused_macros)]
 macro_rules! debug {
@@ -10,7 +11,7 @@ macro_rules! debug {
 pub mod actions;
 pub mod cards;
 pub mod game;
-pub mod map;
+pub mod geometry;
 pub mod mechanisms;
 pub mod movers;
 pub mod ui_glue;

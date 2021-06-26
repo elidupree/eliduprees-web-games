@@ -1,6 +1,6 @@
 use crate::cards::CardInstance;
 use crate::game::{Game, PlayerActionState, PlayerActiveInteraction, Time, UPDATE_DURATION};
-use crate::map::{
+use crate::geometry::{
   Facing, FloatingVector, FloatingVectorExtension, GridVector, GridVectorExtension, Rotation,
   TILE_RADIUS, TILE_SIZE, TILE_WIDTH,
 };
@@ -273,7 +273,7 @@ impl ActionTrait for BuildMechanism {
       let tile = context
         .game
         .map
-        .tiles
+        .grid
         .get_mut(context.game.player.position.containing_tile())
         .unwrap();
       tile.mechanism = Some(mechanism);
@@ -287,7 +287,7 @@ impl ActionTrait for BuildMechanism {
   fn possible(&self, game: &Game) -> bool {
     game
       .map
-      .tiles
+      .grid
       .get(game.player.position.containing_tile())
       .map_or(false, |tile| tile.mechanism.is_none())
   }
@@ -332,17 +332,14 @@ impl BuildConveyor {
     candidate: BuildConveyorCandidate,
     allow_splitting: bool,
   ) -> bool {
-    let input_mechanism = game
-      .map
-      .tiles
-      .get(candidate.input_position())
-      .and_then(|here| here.mechanism.as_ref());
-    guard!(let Some(output_tile) = game.map.tiles.get(candidate.position) else { return false });
-    let output_mechanism = output_tile.mechanism.as_ref();
+    if game.map.grid.get(candidate.position).is_none() {
+      return false;
+    };
+    let output_mechanism = game.mechanism(candidate.position);
 
     //debug!("{:?}", (candidate, input_mechanism, output_mechanism));
 
-    guard!(let Some(input_mechanism) = input_mechanism else { return false });
+    guard!(let Some(input_mechanism) = game.mechanism(candidate.input_position()) else { return false });
     if !input_mechanism
       .mechanism_type
       .can_be_material_source(candidate.output_side())
@@ -404,29 +401,29 @@ impl ActionTrait for BuildConveyor {
     let allow_splitting = self.allow_splitting;
     self.simple.update_card(context, |context| {
       let candidate = Self::current_target(context.game, allow_splitting).unwrap();
-      let tile = context.game.map.tiles.get_mut(candidate.position).unwrap();
       let mut sides = [ConveyorSide::Disconnected; 4];
       sides[candidate.input_side.as_index()] = ConveyorSide::Input;
-      tile.mechanism = Some(Mechanism {
-        mechanism_type: MechanismType::Conveyor(Conveyor {
-          sides,
-          last_sent: Facing::from_index(0),
-        }),
-      });
+      context.game.create_mechanism(
+        candidate.position,
+        Mechanism {
+          mechanism_type: MechanismType::Conveyor(Conveyor {
+            sides,
+            last_sent: Facing::from_index(0),
+          }),
+        },
+      );
 
-      let input_tile = context
+      context
         .game
-        .map
-        .tiles
-        .get_mut(candidate.input_position())
-        .unwrap();
-      if let Some(Mechanism {
-        mechanism_type: MechanismType::Conveyor(Conveyor { sides, .. }),
-        ..
-      }) = &mut input_tile.mechanism
-      {
-        sides[candidate.output_side().as_index()] = ConveyorSide::Output;
-      }
+        .mutate_mechanism(candidate.input_position(), |mechanism| {
+          if let Mechanism {
+            mechanism_type: MechanismType::Conveyor(Conveyor { sides, .. }),
+            ..
+          } = mechanism
+          {
+            sides[candidate.output_side().as_index()] = ConveyorSide::Output;
+          }
+        });
     })
   }
 

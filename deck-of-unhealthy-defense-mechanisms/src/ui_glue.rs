@@ -1,5 +1,5 @@
 use crate::game::{Game, OngoingIntent, WhichInteraction};
-use crate::map::FloatingVector;
+use crate::geometry::FloatingVector;
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::panic;

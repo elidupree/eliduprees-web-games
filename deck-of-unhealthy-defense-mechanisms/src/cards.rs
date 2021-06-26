@@ -1,6 +1,6 @@
 use crate::actions::{Action, BuildConveyor, BuildMechanism, Cost, SimpleAction};
 use crate::game::Game;
-use crate::map::{FloatingVector, TILE_WIDTH};
+use crate::geometry::{FloatingVector, TILE_WIDTH};
 use crate::mechanisms::{Mechanism, MechanismType, Tower};
 use crate::ui_glue::Draw;
 use serde::{Deserialize, Serialize};
