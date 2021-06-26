@@ -8,7 +8,8 @@ use crate::mechanisms::{
   Deck, Mechanism, MechanismImmutableContext, MechanismType, MechanismUpdateContext,
 };
 use crate::movers::{
-  Monster, Mover, MoverBehavior, MoverId, MoverImmutableContext, MoverType, MoverUpdateContext,
+  Monster, Mover, MoverBehavior, MoverCollideContext, MoverId, MoverImmutableContext, MoverType,
+  MoverUpdateContext,
 };
 use crate::ui_glue::Draw;
 use derivative::Derivative;
@@ -271,7 +272,39 @@ impl Game {
         Ordering::Equal => None,
       }
     });
-    wake.into_iter().chain(escapes).min()
+    let collisions = stuff
+      .stored_bounds
+      .tile_centers()
+      .filter_map(|position| self.grid.get(position))
+      .flat_map(|tile| &tile.movers)
+      .filter_map(|&other_id| {
+        if other_id == id {
+          return None;
+        }
+        let other = self.movers.get(&other_id).unwrap();
+        let radius = stuff.mover.radius + other.mover.radius;
+        let relative_position =
+          other.mover.position(self.physics_time) - stuff.mover.position(self.physics_time);
+        let relative_velocity = other.mover.velocity - stuff.mover.velocity;
+        // r^2 = (x+vx*t)^2 + (y+vy*t)^2
+        // (vx^2+vy^2)t^2 + 2*(x*vx + y*vy) +
+        let a = relative_velocity.magnitude_squared();
+        let b = 2.0 * relative_velocity.dot(&relative_position);
+        let c = relative_position.magnitude_squared() - radius * radius;
+        let discriminant = b * b - 4.0 * a * c;
+        if discriminant < 0.0 {
+          return None;
+        }
+        let time = self.physics_time + (-b - discriminant.sqrt()) / (2.0 * a);
+        if time <= self.physics_time {
+          return None;
+        }
+        Some(MoverSchedule {
+          time: OrderedFloat(time),
+          event_type: MoverEventType::CollideWith(other_id),
+        })
+      });
+    wake.into_iter().chain(escapes).chain(collisions).min()
   }
 
   fn forget_mover_bounds(&mut self, id: MoverId) {
@@ -356,7 +389,24 @@ impl Game {
           MoverEventType::EscapeTiles => {
             self.update_mover_bounds_and_schedule(id);
           }
-          MoverEventType::CollideWith(other_id) => {}
+          MoverEventType::CollideWith(other_id) => {
+            debug!("works");
+            stuff.mover.behavior.clone().collide(MoverCollideContext {
+              update_context: MoverUpdateContext { id, game: self },
+              other_id,
+            });
+            if let Some(_stuff) = self.movers.get(&id) {
+              if let Some(other) = self.movers.get(&other_id) {
+                other.mover.behavior.clone().collide(MoverCollideContext {
+                  update_context: MoverUpdateContext {
+                    id: other_id,
+                    game: self,
+                  },
+                  other_id: id,
+                });
+              }
+            }
+          }
         }
       }
       UpcomingEventType::Mechanism(position) => {
@@ -395,6 +445,7 @@ impl Game {
       },
       cards: Cards {
         deck: vec![
+          CardInstance::basic_tower(),
           CardInstance::basic_conveyor(),
           CardInstance::basic_conveyor(),
           CardInstance::basic_conveyor(),
@@ -426,6 +477,7 @@ impl Game {
     result.create_mover(Mover {
       trajectory_base_time: 0.0,
       position_at_base_time: FloatingVector::new(4.0, 6.0),
+      radius: 0.8 * TILE_RADIUS as f64,
       mover_type: MoverType::Monster,
       behavior: MoverBehavior::Monster(Monster {
         home: FloatingVector::new(8.0, 12.0),
