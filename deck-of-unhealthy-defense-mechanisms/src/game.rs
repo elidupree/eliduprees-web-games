@@ -406,6 +406,12 @@ impl Game {
                 });
               }
             }
+            if self.movers.get(&id).is_some() {
+              self.update_mover_schedule(id);
+            }
+            if self.movers.get(&other_id).is_some() {
+              self.update_mover_schedule(other_id);
+            }
           }
         }
       }
