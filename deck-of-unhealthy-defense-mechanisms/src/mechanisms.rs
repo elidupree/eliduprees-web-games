@@ -284,16 +284,31 @@ impl MechanismTrait for Conveyor {
 
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug, Default)]
 pub struct Tower {
-  pub volition: f64,
+  pub volition_base_time: Time,
+  pub volition_at_base_time: f64,
   pub maximum_volition: f64,
   pub range: f64,
+  pub next_wake: Time,
+}
+
+const TOWER_WAKE_DELAY: Time = 0.1;
+
+impl Tower {
+  pub fn volition(&self, time: Time) -> f64 {
+    (self.volition_at_base_time
+      + auto_constant("tower_regeneration", 1.0) * (time - self.volition_base_time))
+      .min(self.maximum_volition)
+  }
+  pub fn rebase(&mut self, time: Time) {
+    self.volition_at_base_time = self.volition(time);
+    self.volition_base_time = time;
+  }
 }
 
 impl MechanismTrait for Tower {
   fn wake(&self, mut context: MechanismUpdateContext) {
     let position = context.position.to_floating();
-    let mut volition = self.volition;
-    volition += auto_constant("tower_regeneration", 1.0) * UPDATE_DURATION;
+    let mut volition = self.volition(context.game.physics_time);
     // for id in context.this_tile().movers.clone() {
     //   let mover = context.game.mover(id).unwrap();
     //   if mover.mover_type == MoverType::Material {
@@ -327,18 +342,28 @@ impl MechanismTrait for Tower {
       }
     }
 
+    let now = context.game.physics_time;
     context.mutate_this(|mut this: TypedMechanismView<Self>| {
-      this.mechanism_type_mut().volition = volition.min(self.maximum_volition);
+      let this = this.mechanism_type_mut();
+      this.rebase(now);
+      this.volition_at_base_time = volition.min(self.maximum_volition);
+      this.next_wake = now + TOWER_WAKE_DELAY;
     });
   }
 
+  fn next_wake(&self, _this: &Mechanism) -> Option<Time> {
+    Some(self.next_wake)
+  }
+
   fn wants_to_steal(&self, _material: &Material) -> bool {
-    self.volition < self.maximum_volition
+    true //self.volition() < self.maximum_volition
   }
 
   fn draw(&self, context: MechanismImmutableContext, draw: &mut dyn Draw) {
     let center = context.position.to_floating();
-    let brightness = ((0.5 + 0.5 * (self.volition / self.maximum_volition)) * 255.0).round();
+    let brightness =
+      ((0.5 + 0.5 * (self.volition(context.game.physics_time) / self.maximum_volition)) * 255.0)
+        .round();
     draw.rectangle_on_map(
       10,
       center,
