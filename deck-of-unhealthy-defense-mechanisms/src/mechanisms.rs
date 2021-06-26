@@ -1,8 +1,8 @@
 use crate::actions::{Action, Reshuffle};
-use crate::game::{Game, Tile, Time, UPDATE_DURATION};
+use crate::game::{Game, Time, UPDATE_DURATION};
 use crate::geometry::{
   Facing, FloatingVectorExtension, GridVector, GridVectorExtension, Rotation, TILE_RADIUS,
-  TILE_SIZE, TILE_WIDTH,
+  TILE_SIZE,
 };
 use crate::movers::{Material, Mover, MoverBehavior, MoverType, Projectile};
 use crate::ui_glue::Draw;
@@ -11,7 +11,54 @@ use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
 use std::convert::{TryFrom, TryInto};
 use std::fmt::Debug;
-use trait_enum::trait_enum;
+use std::marker::PhantomData;
+use std::ops::{Deref, DerefMut};
+
+#[derive(Clone, PartialEq, Serialize, Deserialize, Debug, Default)]
+pub struct Mechanism {
+  pub mechanism_type: MechanismType,
+}
+
+#[derive(Debug)]
+pub struct TypedMechanismView<'a, T> {
+  mechanism: &'a mut Mechanism,
+  _marker: PhantomData<T>,
+}
+
+impl<'a, T> TypedMechanismView<'a, T> {
+  fn mechanism_type<'b>(&'b self) -> &'b T
+  where
+    &'b T: TryFrom<&'b MechanismType>,
+  {
+    match (&self.mechanism.mechanism_type).try_into() {
+      Ok(b) => b,
+      Err(_) => panic!("A TypedMechanismView existed for the wrong type"),
+    }
+  }
+  fn mechanism_type_mut<'b>(&'b mut self) -> &'b mut T
+  where
+    &'b mut T: TryFrom<&'b mut MechanismType>,
+  {
+    match (&mut self.mechanism.mechanism_type).try_into() {
+      Ok(b) => b,
+      Err(_) => panic!("A TypedMechanismView existed for the wrong type"),
+    }
+  }
+}
+
+impl<'a, T> Deref for TypedMechanismView<'a, T> {
+  type Target = Mechanism;
+
+  fn deref(&self) -> &Mechanism {
+    self.mechanism
+  }
+}
+
+impl<'a, T> DerefMut for TypedMechanismView<'a, T> {
+  fn deref_mut(&mut self) -> &mut Mechanism {
+    &mut self.mechanism
+  }
+}
 
 pub struct MechanismUpdateContext<'a> {
   pub position: GridVector,
@@ -27,13 +74,15 @@ impl<'a> MechanismUpdateContext<'a> {
   pub fn this(&self) -> &Mechanism {
     self.game.mechanism(self.position).unwrap()
   }
-  pub fn this_mechanism_type_mut<'b, T>(&'b mut self) -> &'b mut T
-  where
-    &'b mut T: TryFrom<&'b mut MechanismType>,
-    <&'b mut T as TryFrom<&'b mut MechanismType>>::Error: Debug,
-  {
-    (&mut self.this_mechanism_mut().mechanism_type)
-      .try_into()
+  pub fn mutate_this<T, R, F: FnOnce(TypedMechanismView<T>) -> R>(&mut self, f: F) -> R {
+    self
+      .game
+      .mutate_mechanism(self.position, |mechanism| {
+        f(TypedMechanismView {
+          mechanism,
+          _marker: PhantomData,
+        })
+      })
       .unwrap()
   }
 }
@@ -51,7 +100,7 @@ pub trait MechanismTrait {
   Note that when called, `self` is a *copy* of the actual mechanism type; to modify the mechanism, you need to use `context`.
   */
   fn wake(&self, context: MechanismUpdateContext) {}
-  fn next_wake(&self, context: MechanismImmutableContext) -> Option<Time> {
+  fn next_wake(&self, this: &Mechanism) -> Option<Time> {
     None
   }
 
@@ -70,53 +119,13 @@ pub trait MechanismTrait {
   fn draw(&self, context: MechanismImmutableContext, draw: &mut dyn Draw);
 }
 
-#[derive(Clone, PartialEq, Serialize, Deserialize, Debug, Default)]
-pub struct Mechanism {
-  pub mechanism_type: MechanismType,
-}
-
-macro_rules! mechanism_enum {
-  ($($Variant: ident,)*) => {
-    trait_enum!{
-      #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
-      pub enum MechanismType: MechanismTrait {
-        $($Variant,)*
-      }
-    }
-
-    $(
-    impl<'a> TryFrom<&'a MechanismType> for &'a $Variant {
-      type Error = ();
-      fn try_from(value: &'a MechanismType) -> Result<&'a $Variant, Self::Error> {
-        if let MechanismType::$Variant(s) = value {
-          Ok(s)
-        }
-        else {
-          Err(())
-        }
-      }
-    }
-
-    impl<'a> TryFrom<&'a mut MechanismType> for &'a mut $Variant {
-      type Error = ();
-      fn try_from(value: &'a mut MechanismType) -> Result<&'a mut $Variant, Self::Error> {
-        if let MechanismType::$Variant(s) = value {
-          Ok(s)
-        }
-        else {
-          Err(())
-        }
-      }
-    }
-    )*
+trait_enum! {
+  #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
+  pub enum MechanismType: MechanismTrait {
+    Deck,
+    Conveyor,
+    Tower,
   }
-
-}
-
-mechanism_enum! {
-  Deck,
-  Conveyor,
-  Tower,
 }
 
 impl Default for MechanismType {
@@ -283,8 +292,8 @@ pub struct Tower {
 impl MechanismTrait for Tower {
   fn wake(&self, mut context: MechanismUpdateContext) {
     let position = context.position.to_floating();
-    let this = context.this_mechanism_type_mut::<Self>();
-    this.volition += auto_constant("tower_regeneration", 1.0) * UPDATE_DURATION;
+    let mut volition = self.volition;
+    volition += auto_constant("tower_regeneration", 1.0) * UPDATE_DURATION;
     // for id in context.this_tile().movers.clone() {
     //   let mover = context.game.mover(id).unwrap();
     //   if mover.mover_type == MoverType::Material {
@@ -293,8 +302,7 @@ impl MechanismTrait for Tower {
     //   }
     // }
 
-    let this = context.this_mechanism_type_mut::<Self>();
-    if this.volition >= this.maximum_volition {
+    if volition >= self.maximum_volition {
       if let Some((_, target)) = context
         .game
         .movers_near(context.position.to_floating(), self.range)
@@ -315,12 +323,13 @@ impl MechanismTrait for Tower {
           }),
           ..Default::default()
         });
-        context.this_mechanism_type_mut::<Self>().volition -= 5.0;
+        volition -= 5.0;
       }
     }
 
-    let this = context.this_mechanism_type_mut::<Self>();
-    this.volition = this.volition.min(this.maximum_volition);
+    context.mutate_this(|mut this: TypedMechanismView<Self>| {
+      this.mechanism_type_mut().volition = volition.min(self.maximum_volition);
+    });
   }
 
   fn wants_to_steal(&self, _material: &Material) -> bool {

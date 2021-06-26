@@ -8,6 +8,8 @@ macro_rules! debug {
   }
 }
 
+#[macro_use]
+pub mod utils;
 pub mod actions;
 pub mod cards;
 pub mod game;

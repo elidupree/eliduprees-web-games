@@ -12,7 +12,6 @@ use crate::movers::{
 };
 use crate::ui_glue::Draw;
 use eliduprees_web_games_lib::auto_constant;
-use guard::guard;
 use live_prop_test::{live_prop_test, lpt_assert_eq};
 use nalgebra::Vector2;
 use ordered_float::OrderedFloat;
@@ -86,7 +85,7 @@ struct MoverAndScheduleStuff {
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Debug)]
 struct MoverSchedule {
-  time: Orderedfloat<Time>,
+  time: OrderedFloat<Time>,
   event_type: MoverEventType,
 }
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Debug)]
@@ -153,7 +152,7 @@ impl Game {
       .tiles_near(position, range)
       .flat_map(move |(_pos, tile)| {
         tile.movers.iter().filter_map(move |&mover_id| {
-          let mover = &self.movers.get(mover_id).unwrap().mover;
+          let mover = &self.movers.get(&mover_id).unwrap().mover;
           if (mover.position(self.physics_time) - position).magnitude_squared() <= range_squared {
             Some((mover_id, mover))
           } else {
@@ -205,7 +204,7 @@ impl Game {
     let mover = self.movers.remove(&id).unwrap();
     if let Some(old_schedule) = mover.schedule {
       self.upcoming_events.remove(&UpcomingEvent {
-        time: OrderedFloat(old_schedule.time),
+        time: old_schedule.time,
         event_type: UpcomingEventType::Mover(id),
       });
     }
@@ -232,31 +231,33 @@ impl Game {
       .behavior
       .next_wake(&stuff.mover)
       .map(|time| MoverSchedule {
-        time,
+        time: OrderedFloat(time),
         event_type: MoverEventType::Wake,
       });
     let min = stuff.stored_bounds.min_tile_corner().to_floating();
     let max = stuff.stored_bounds.max_tile_corner().to_floating();
-    let escapes = (0..2).flat_map(|dimension| match stuff.mover.velocity[dimension].cmp(0.0) {
-      Ordering::Less => Some(MoverSchedule {
-        time: OrderedFloat(
-          stuff.mover.trajectory_base_time
-            + ((min[dimension] - EPSILON)
-              - (stuff.mover.position_at_base_time[dimension] - stuff.mover.radius))
-              / stuff.mover.velocity[dimension],
-        ),
-        event_type: MoverEventType::EscapeTiles,
-      }),
-      Ordering::Greater => Some(MoverSchedule {
-        time: OrderedFloat(
-          stuff.mover.trajectory_base_time
-            + ((max[dimension] + EPSILON)
-              - (stuff.mover.position_at_base_time[dimension] + stuff.mover.radius))
-              / stuff.mover.velocity[dimension],
-        ),
-        event_type: MoverEventType::EscapeTiles,
-      }),
-      Ordering::Equal => None,
+    let escapes = (0..2).flat_map(|dimension| {
+      match stuff.mover.velocity[dimension].partial_cmp(&0.0).unwrap() {
+        Ordering::Less => Some(MoverSchedule {
+          time: OrderedFloat(
+            stuff.mover.trajectory_base_time
+              + ((min[dimension] - EPSILON)
+                - (stuff.mover.position_at_base_time[dimension] - stuff.mover.radius))
+                / stuff.mover.velocity[dimension],
+          ),
+          event_type: MoverEventType::EscapeTiles,
+        }),
+        Ordering::Greater => Some(MoverSchedule {
+          time: OrderedFloat(
+            stuff.mover.trajectory_base_time
+              + ((max[dimension] + EPSILON)
+                - (stuff.mover.position_at_base_time[dimension] + stuff.mover.radius))
+                / stuff.mover.velocity[dimension],
+          ),
+          event_type: MoverEventType::EscapeTiles,
+        }),
+        Ordering::Equal => None,
+      }
     });
     wake.into_iter().chain(escapes).min()
   }
@@ -292,13 +293,13 @@ impl Game {
     if stuff.schedule != new_schedule {
       if let Some(new_schedule) = &new_schedule {
         self.upcoming_events.insert(UpcomingEvent {
-          time: OrderedFloat(new_schedule.time),
+          time: new_schedule.time,
           event_type: UpcomingEventType::Mover(id),
         });
       }
       if let Some(old_schedule) = mem::replace(&mut stuff.schedule, new_schedule) {
         self.upcoming_events.remove(&UpcomingEvent {
-          time: OrderedFloat(old_schedule.time),
+          time: old_schedule.time,
           event_type: UpcomingEventType::Mover(id),
         });
       }
@@ -309,7 +310,7 @@ impl Game {
     let new_schedule = self.mechanism_schedule(position);
     let tile = self.grid.get_mut(position).unwrap();
     if tile.mechanism_schedule != new_schedule {
-      if let Some(new_schedule) = &new_schedule {
+      if let Some(new_schedule) = new_schedule {
         self.upcoming_events.insert(UpcomingEvent {
           time: OrderedFloat(new_schedule),
           event_type: UpcomingEventType::Mechanism(position),
@@ -331,7 +332,7 @@ impl Game {
       UpcomingEventType::Mover(id) => {
         let stuff = self.movers.get(&id).unwrap();
         let schedule = stuff.schedule.clone().unwrap();
-        assert_eq!(event.time, OrderedFloat(schedule.time));
+        assert_eq!(event.time, schedule.time);
         match schedule.event_type {
           MoverEventType::Wake => {
             stuff

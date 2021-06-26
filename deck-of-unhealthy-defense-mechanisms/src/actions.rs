@@ -10,9 +10,7 @@ use guard::guard;
 use ordered_float::OrderedFloat;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::convert::TryFrom;
 use std::fmt::Debug;
-use trait_enum::trait_enum;
 
 pub enum ActionStatus {
   StillGoing,
@@ -71,48 +69,13 @@ pub trait ActionTrait {
   fn draw_preview(&self, game: &Game, draw: &mut dyn Draw) {}
 }
 
-macro_rules! action_enum {
-  ($($Variant: ident,)*) => {
-    trait_enum!{
-      #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
-      pub enum Action: ActionTrait {
-        $($Variant,)*
-      }
-    }
-
-    $(
-    impl<'a> TryFrom<&'a Action> for &'a $Variant {
-      type Error = ();
-      fn try_from(value: &'a Action) -> Result<&'a $Variant, Self::Error> {
-        if let Action::$Variant(s) = value {
-          Ok(s)
-        }
-        else {
-          Err(())
-        }
-      }
-    }
-
-    impl<'a> TryFrom<&'a mut Action> for &'a mut $Variant {
-      type Error = ();
-      fn try_from(value: &'a mut Action) -> Result<&'a mut $Variant, Self::Error> {
-        if let Action::$Variant(s) = value {
-          Ok(s)
-        }
-        else {
-          Err(())
-        }
-      }
-    }
-    )*
+trait_enum! {
+  #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
+  pub enum Action: ActionTrait {
+    Reshuffle,
+    BuildConveyor,
+    BuildMechanism,
   }
-
-}
-
-action_enum! {
-  Reshuffle,
-  BuildConveyor,
-  BuildMechanism,
 }
 
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
@@ -270,13 +233,9 @@ impl ActionTrait for BuildMechanism {
   fn update(&mut self, context: ActionUpdateContext) -> ActionStatus {
     let mechanism = self.mechanism.clone();
     self.simple.update_card(context, |context| {
-      let tile = context
+      context
         .game
-        .map
-        .grid
-        .get_mut(context.game.player.position.containing_tile())
-        .unwrap();
-      tile.mechanism = Some(mechanism);
+        .create_mechanism(context.game.player.position.containing_tile(), mechanism);
     })
   }
 
@@ -285,11 +244,8 @@ impl ActionTrait for BuildMechanism {
   }
 
   fn possible(&self, game: &Game) -> bool {
-    game
-      .map
-      .grid
-      .get(game.player.position.containing_tile())
-      .map_or(false, |tile| tile.mechanism.is_none())
+    let position = game.player.position.containing_tile();
+    game.grid.get(position).is_some() && game.mechanism(position).is_none()
   }
 
   fn draw_progress(&self, game: &Game, draw: &mut dyn Draw) {
@@ -332,7 +288,7 @@ impl BuildConveyor {
     candidate: BuildConveyorCandidate,
     allow_splitting: bool,
   ) -> bool {
-    if game.map.grid.get(candidate.position).is_none() {
+    if game.grid.get(candidate.position).is_none() {
       return false;
     };
     let output_mechanism = game.mechanism(candidate.position);

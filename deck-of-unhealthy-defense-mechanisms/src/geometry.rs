@@ -1,5 +1,5 @@
 use extend::ext;
-use live_prop_test::{live_prop_test, lpt_assert_eq};
+use live_prop_test::live_prop_test;
 use nalgebra::Vector2;
 use serde::{Deserialize, Serialize};
 use std::ops::{Add, AddAssign, Sub};
@@ -281,7 +281,7 @@ impl<T> Grid<T> {
           return None;
         }
         let tile_position = GridVector::new(x, y);
-        self.get(tile_position)
+        self.get(tile_position).map(|t| (tile_position, t))
       })
     })
   }
