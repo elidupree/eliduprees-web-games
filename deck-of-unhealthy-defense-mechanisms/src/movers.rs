@@ -88,7 +88,7 @@ impl<'a, T> Deref for TypedMoverView<'a, T> {
 
 impl<'a, T> DerefMut for TypedMoverView<'a, T> {
   fn deref_mut(&mut self) -> &mut Mover {
-    &mut self.mover
+    self.mover
   }
 }
 
@@ -102,6 +102,12 @@ pub struct MoverUpdateContext<'a> {
 pub struct MoverImmutableContext<'a> {
   pub id: MoverId,
   pub game: &'a Game,
+}
+
+#[derive(Debug)]
+pub struct MoverCollideContext<'a> {
+  pub update_context: MoverUpdateContext<'a>,
+  pub other_id: MoverId,
 }
 
 impl<'a> MoverUpdateContext<'a> {
@@ -128,6 +134,37 @@ impl<'a> MoverUpdateContext<'a> {
 impl<'a> MoverImmutableContext<'a> {
   pub fn this(&self) -> &Mover {
     self.game.mover(self.id).unwrap()
+  }
+}
+
+impl<'a> Deref for MoverCollideContext<'a> {
+  type Target = MoverUpdateContext<'a>;
+
+  fn deref(&self) -> &MoverUpdateContext<'a> {
+    &self.update_context
+  }
+}
+
+impl<'a> DerefMut for MoverCollideContext<'a> {
+  fn deref_mut(&mut self) -> &mut MoverUpdateContext<'a> {
+    &mut self.update_context
+  }
+}
+
+impl<'a> MoverCollideContext<'a> {
+  pub fn other(&self) -> &Mover {
+    self.game.mover(self.other_id).unwrap()
+  }
+  pub fn mutate_other<R, F: FnOnce(&mut Mover) -> R>(&mut self, f: F) -> R {
+    self
+      .update_context
+      .game
+      .mutate_mover(self.other_id, f)
+      .unwrap()
+  }
+  // take self by value unnecessarily, to protect from accidentally doing stuff after destroyed
+  pub fn destroy_this(self) {
+    self.update_context.destroy_this();
   }
 }
 
@@ -188,12 +225,13 @@ impl MoverBehaviorTrait for Monster {
     // Account for stopping distance:
     let target_speed = max_speed.min((2.0 * relative_target.magnitude() * acceleration).sqrt());
     let target_velocity = relative_target.normalize() * target_speed;
-    context.mutate_this(|this: TypedMoverView<Self>| {
+    let now = context.game.physics_time;
+    context.mutate_this(|mut this: TypedMoverView<Self>| {
       this
         .velocity
         .move_towards(target_velocity, acceleration * MONSTER_WAKE_DELAY);
 
-      this.behavior().next_wake = context.game.physics_time + MONSTER_WAKE_DELAY;
+      this.behavior_mut().next_wake = now + MONSTER_WAKE_DELAY;
     });
   }
 
@@ -217,7 +255,7 @@ pub struct Projectile {
 }
 
 impl MoverBehaviorTrait for Projectile {
-  fn wake(&self, mut context: MoverUpdateContext) {
+  fn wake(&self, context: MoverUpdateContext) {
     context.destroy_this();
   }
 
@@ -225,17 +263,16 @@ impl MoverBehaviorTrait for Projectile {
     Some(self.disappear_time)
   }
 
-  fn collide(&self, context: MoverCollideContext) {
+  fn collide(&self, mut context: MoverCollideContext) {
     if context.other().mover_type == MoverType::Monster {
       let impact = auto_constant("projectile_impact", 2.0) * TILE_WIDTH as f64;
 
       // Push the monster directly away from your deck. We COULD have the monster be propelled in the direction of the projectile (context.this().velocity) instead, but that causes the monster to be knocked around in a way that feels slippery, rather than feeling like a struggle of determination against determination. Having projectile directions matter would make this a physics game, and I actually DON'T want this to be a physics game.
-      context
-        .mutate_other(|target| {
-          let direction = target.position;
-          target.velocity += direction.normalize() * impact;
-        })
-        .unwrap();
+      let now = context.game.physics_time;
+      context.mutate_other(|target| {
+        let direction = target.position(now);
+        target.velocity += direction.normalize() * impact;
+      });
       context.destroy_this();
     }
   }

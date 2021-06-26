@@ -2,6 +2,9 @@ use extend::ext;
 use live_prop_test::live_prop_test;
 use nalgebra::Vector2;
 use serde::{Deserialize, Serialize};
+use std::any::Any;
+use std::cmp::Ordering;
+use std::fmt::Debug;
 use std::ops::{Add, AddAssign, Sub};
 
 pub type GridVector = Vector2<i32>;
@@ -15,6 +18,19 @@ pub const EPSILON: f64 = 0.000001;
 pub struct Facing(u8);
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Default)]
 pub struct Rotation(u8);
+
+pub fn vector_partial_cmp<T: Copy + PartialEq + PartialOrd + Debug + Any>(
+  a: &Vector2<T>,
+  b: &Vector2<T>,
+) -> Option<Ordering> {
+  (a[0], a[1]).partial_cmp(&(b[0], b[1]))
+}
+pub fn vector_cmp<T: Copy + PartialEq + PartialOrd + Debug + Any>(
+  a: &Vector2<T>,
+  b: &Vector2<T>,
+) -> Ordering {
+  vector_partial_cmp(a, b).unwrap()
+}
 
 #[ext(pub, name = GridVectorExtension)]
 impl GridVector {

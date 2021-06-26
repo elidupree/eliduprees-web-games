@@ -11,6 +11,7 @@ use crate::movers::{
   Monster, Mover, MoverBehavior, MoverId, MoverImmutableContext, MoverType, MoverUpdateContext,
 };
 use crate::ui_glue::Draw;
+use derivative::Derivative;
 use eliduprees_web_games_lib::auto_constant;
 use live_prop_test::{live_prop_test, lpt_assert_eq};
 use nalgebra::Vector2;
@@ -101,10 +102,20 @@ struct UpcomingEvent {
   event_type: UpcomingEventType,
 }
 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Debug)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, Derivative)]
+#[derivative(
+  PartialOrd = "feature_allow_slow_enum",
+  Ord = "feature_allow_slow_enum"
+)]
 enum UpcomingEventType {
   Mover(MoverId),
-  Mechanism(GridVector),
+  Mechanism(
+    #[derivative(
+      PartialOrd(compare_with = "crate::geometry::vector_partial_cmp"),
+      Ord(compare_with = "crate::geometry::vector_cmp")
+    )]
+    GridVector,
+  ),
 }
 
 impl Game {
