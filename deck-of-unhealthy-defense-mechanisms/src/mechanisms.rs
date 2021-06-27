@@ -8,6 +8,7 @@ use crate::movers::{Material, Mover, MoverBehavior, MoverType, Projectile};
 use crate::ui_glue::Draw;
 use eliduprees_web_games_lib::auto_constant;
 use ordered_float::OrderedFloat;
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::convert::{TryFrom, TryInto};
 use std::fmt::Debug;
@@ -347,7 +348,7 @@ impl MechanismTrait for Tower {
       let this = this.mechanism_type_mut();
       this.rebase(now);
       this.volition_at_base_time = volition.min(self.maximum_volition);
-      this.next_wake = now + TOWER_WAKE_DELAY;
+      this.next_wake = now + TOWER_WAKE_DELAY * rand::thread_rng().gen_range(0.95..1.05);
     });
   }
 
