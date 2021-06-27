@@ -4,7 +4,7 @@ use crate::geometry::{
   Facing, FloatingVector, FloatingVectorExtension, GridVector, GridVectorExtension, Rotation,
   TILE_RADIUS, TILE_SIZE, TILE_WIDTH,
 };
-use crate::mechanisms::{Conveyor, ConveyorSide, Mechanism, MechanismType};
+use crate::mechanisms::{BuildMechanism, Conveyor, ConveyorSide, Mechanism, MechanismType};
 use crate::ui_glue::Draw;
 use guard::guard;
 use ordered_float::OrderedFloat;
@@ -52,6 +52,18 @@ pub struct ActionDisplayInfo {
   pub flavor_text: String,
 }
 
+impl Default for ActionDisplayInfo {
+  fn default() -> Self {
+    ActionDisplayInfo {
+      name: "".to_string(),
+      health_cost: Cost::None,
+      time_cost: Cost::Fixed(2),
+      rules_text: "".to_string(),
+      flavor_text: "".to_string(),
+    }
+  }
+}
+
 #[allow(unused)]
 pub trait ActionTrait {
   /** Perform a single time-step update on this action, possibly modifying the game state.
@@ -72,29 +84,38 @@ pub trait ActionTrait {
 trait_enum! {
   #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
   pub enum Action: ActionTrait {
-    Reshuffle,
-    BuildConveyor,
-    BuildMechanism,
+    SimpleAction,
   }
 }
 
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
 pub struct SimpleAction {
   display_info: ActionDisplayInfo,
+  is_card: bool,
+  simple_action_type: SimpleActionType,
 
   progress: Time,
   cancel_progress: Time,
 }
 
-impl Default for ActionDisplayInfo {
-  fn default() -> Self {
-    ActionDisplayInfo {
-      name: "".to_string(),
-      health_cost: Cost::None,
-      time_cost: Cost::Fixed(2),
-      rules_text: "".to_string(),
-      flavor_text: "".to_string(),
-    }
+#[allow(unused)]
+pub trait SimpleActionTrait {
+  fn finish(&self, context: ActionUpdateContext);
+
+  fn possible(&self, game: &Game) -> bool {
+    true
+  }
+
+  fn draw_progress(&self, game: &Game, draw: &mut dyn Draw) {}
+  fn draw_preview(&self, game: &Game, draw: &mut dyn Draw) {}
+}
+
+trait_enum! {
+  #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
+  pub enum SimpleActionType: SimpleActionTrait {
+    Reshuffle,
+    BuildConveyor,
+    BuildMechanism,
   }
 }
 
@@ -110,6 +131,8 @@ impl SimpleAction {
     name: &str,
     rules_text: &str,
     flavor_text: &str,
+    is_card: bool,
+    simple_action_type: SimpleActionType,
   ) -> SimpleAction {
     SimpleAction {
       display_info: ActionDisplayInfo {
@@ -122,6 +145,8 @@ impl SimpleAction {
         rules_text: rules_text.to_string(),
         flavor_text: flavor_text.to_string(),
       },
+      is_card,
+      simple_action_type,
       progress: 0.0,
       cancel_progress: 0.0,
     }
@@ -154,11 +179,11 @@ impl SimpleAction {
   fn health_to_pay_by(&self, progress: f64) -> f64 {
     smootherstep(self.startup_time(), self.finish_time(), progress) * self.health_cost()
   }
-  fn update_noncard(
-    &mut self,
-    context: ActionUpdateContext,
-    finish: impl FnOnce(ActionUpdateContext),
-  ) -> ActionStatus {
+}
+
+impl ActionTrait for SimpleAction {
+  fn update(&mut self, context: ActionUpdateContext) -> ActionStatus {
+    let simple_action_type = self.simple_action_type.clone();
     let canceled = context.interaction_state().canceled && !self.finished();
     if canceled {
       self.cancel_progress += UPDATE_DURATION;
@@ -169,7 +194,19 @@ impl SimpleAction {
       let health_payment = self.health_to_pay_by(self.progress) - health_paid_already;
       context.game.player.health -= health_payment;
       if self.finished() > was_finished {
-        finish(context);
+        if self.is_card {
+          match context.game.cards.selected_index {
+            Some(index) => {
+              if index + 1 == context.game.cards.deck.len() {
+                context.game.cards.selected_index = None;
+              } else {
+                context.game.cards.selected_index = Some(index + 1);
+              }
+            }
+            _ => unreachable!(),
+          }
+        }
+        self.simple_action_type.finish(context);
       }
     }
 
@@ -179,31 +216,18 @@ impl SimpleAction {
       ActionStatus::StillGoing
     }
   }
-  fn update_card(
-    &mut self,
-    context: ActionUpdateContext,
-    finish: impl FnOnce(ActionUpdateContext),
-  ) -> ActionStatus {
-    self.update_noncard(context, |context| {
-      match context.game.cards.selected_index {
-        Some(index) => {
-          if index + 1 == context.game.cards.deck.len() {
-            context.game.cards.selected_index = None;
-          } else {
-            context.game.cards.selected_index = Some(index + 1);
-          }
-        }
-        _ => unreachable!(),
-      }
-      finish(context)
-    })
-  }
 
   fn display_info(&self) -> ActionDisplayInfo {
     self.display_info.clone()
   }
 
-  fn draw(&self, game: &Game, draw: &mut dyn Draw) {
+  fn possible(&self, game: &Game) -> bool {
+    self.simple_action_type.possible(game)
+  }
+
+  fn draw_progress(&self, game: &Game, draw: &mut dyn Draw) {
+    self.simple_action_type.draw_progress(game, draw);
+
     let a = game.player.position + FloatingVector::new(-TILE_RADIUS as f64 * 0.5, 0.0);
     draw.rectangle_on_map(
       70,
@@ -221,26 +245,17 @@ impl SimpleAction {
       "#ff0",
     );
   }
-}
-
-#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
-pub struct BuildMechanism {
-  pub mechanism: Mechanism,
-  pub simple: SimpleAction,
-}
-
-impl ActionTrait for BuildMechanism {
-  fn update(&mut self, context: ActionUpdateContext) -> ActionStatus {
-    let mechanism = self.mechanism.clone();
-    self.simple.update_card(context, |context| {
-      context
-        .game
-        .create_mechanism(context.game.player.position.containing_tile(), mechanism);
-    })
+  fn draw_preview(&self, game: &Game, draw: &mut dyn Draw) {
+    self.simple_action_type.draw_preview(game, draw);
   }
+}
 
-  fn display_info(&self) -> ActionDisplayInfo {
-    self.simple.display_info()
+impl SimpleActionTrait for BuildMechanism {
+  fn finish(&self, context: ActionUpdateContext) {
+    context.game.create_mechanism(
+      context.game.player.position.containing_tile(),
+      self.mechanism(context.game),
+    );
   }
 
   fn possible(&self, game: &Game) -> bool {
@@ -248,9 +263,6 @@ impl ActionTrait for BuildMechanism {
     game.grid.get(position).is_some() && game.mechanism(position).is_none()
   }
 
-  fn draw_progress(&self, game: &Game, draw: &mut dyn Draw) {
-    self.simple.draw(game, draw)
-  }
   fn draw_preview(&self, game: &Game, draw: &mut dyn Draw) {
     draw.rectangle_on_map(
       5,
@@ -264,7 +276,6 @@ impl ActionTrait for BuildMechanism {
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
 pub struct BuildConveyor {
   pub allow_splitting: bool,
-  pub simple: SimpleAction,
 }
 
 #[derive(Copy, Clone, PartialEq, Serialize, Deserialize, Debug)]
@@ -352,48 +363,38 @@ impl BuildConveyor {
   }
 }
 
-impl ActionTrait for BuildConveyor {
-  fn update(&mut self, context: ActionUpdateContext) -> ActionStatus {
-    let allow_splitting = self.allow_splitting;
-    self.simple.update_card(context, |context| {
-      let candidate = Self::current_target(context.game, allow_splitting).unwrap();
-      let mut sides = [ConveyorSide::Disconnected; 4];
-      sides[candidate.input_side.as_index()] = ConveyorSide::Input;
-      context.game.create_mechanism(
-        candidate.position,
-        Mechanism {
-          mechanism_type: MechanismType::Conveyor(Conveyor {
-            sides,
-            last_sent: Facing::from_index(0),
-          }),
-        },
-      );
+impl SimpleActionTrait for BuildConveyor {
+  fn finish(&self, context: ActionUpdateContext) {
+    let candidate = Self::current_target(context.game, self.allow_splitting).unwrap();
+    let mut sides = [ConveyorSide::Disconnected; 4];
+    sides[candidate.input_side.as_index()] = ConveyorSide::Input;
+    context.game.create_mechanism(
+      candidate.position,
+      Mechanism {
+        mechanism_type: MechanismType::Conveyor(Conveyor {
+          sides,
+          last_sent: Facing::from_index(0),
+        }),
+      },
+    );
 
-      context
-        .game
-        .mutate_mechanism(candidate.input_position(), |mechanism| {
-          if let Mechanism {
-            mechanism_type: MechanismType::Conveyor(Conveyor { sides, .. }),
-            ..
-          } = mechanism
-          {
-            sides[candidate.output_side().as_index()] = ConveyorSide::Output;
-          }
-        });
-    })
-  }
-
-  fn display_info(&self) -> ActionDisplayInfo {
-    self.simple.display_info()
+    context
+      .game
+      .mutate_mechanism(candidate.input_position(), |mechanism| {
+        if let Mechanism {
+          mechanism_type: MechanismType::Conveyor(Conveyor { sides, .. }),
+          ..
+        } = mechanism
+        {
+          sides[candidate.output_side().as_index()] = ConveyorSide::Output;
+        }
+      });
   }
 
   fn possible(&self, game: &Game) -> bool {
     Self::current_target(game, self.allow_splitting).is_some()
   }
 
-  fn draw_progress(&self, game: &Game, draw: &mut dyn Draw) {
-    self.simple.draw(game, draw)
-  }
   fn draw_preview(&self, game: &Game, draw: &mut dyn Draw) {
     if let Some(candidate) = Self::current_target(game, self.allow_splitting) {
       draw.rectangle_on_map(
@@ -420,32 +421,12 @@ impl ActionTrait for BuildConveyor {
 }
 
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
-pub struct Reshuffle {
-  pub simple: SimpleAction,
-}
+pub struct Reshuffle;
 
-impl Reshuffle {
-  pub fn new() -> Reshuffle {
-    Reshuffle {
-      simple: SimpleAction::new(5, Some(50), "Reshuffle", "", ""),
-    }
-  }
-}
-
-impl ActionTrait for Reshuffle {
-  fn update(&mut self, context: ActionUpdateContext) -> ActionStatus {
-    self.simple.update_noncard(context, |context| {
-      let cards = &mut context.game.cards;
-      cards.deck.shuffle(&mut rand::thread_rng());
-      cards.selected_index = Some(0);
-    })
-  }
-
-  fn display_info(&self) -> ActionDisplayInfo {
-    self.simple.display_info()
-  }
-
-  fn draw_progress(&self, game: &Game, draw: &mut dyn Draw) {
-    self.simple.draw(game, draw)
+impl SimpleActionTrait for Reshuffle {
+  fn finish(&self, context: ActionUpdateContext) {
+    let cards = &mut context.game.cards;
+    cards.deck.shuffle(&mut rand::thread_rng());
+    cards.selected_index = Some(0);
   }
 }

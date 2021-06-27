@@ -1,5 +1,6 @@
 // Similar to the crate `trait_enum`, but with some improvements and adding From/TryFrom impls
 
+use std::convert::{TryFrom, TryInto};
 macro_rules! trait_enum {
     (
         $(#[$attr:meta])*
@@ -79,3 +80,26 @@ macro_rules! trait_enum {
     )*
     };
 }
+
+trait Assume {
+  fn assume_ref<'b, T>(&'b self) -> &'b T
+  where
+    &'b T: TryFrom<&'b Self>,
+  {
+    match self.try_into() {
+      Ok(b) => b,
+      Err(_) => panic!("You assumed wrongly!"),
+    }
+  }
+  fn assume<'b, T>(&'b mut self) -> &'b mut T
+  where
+    &'b mut T: TryFrom<&'b mut Self>,
+  {
+    match self.try_into() {
+      Ok(b) => b,
+      Err(_) => panic!("You assumed wrongly!"),
+    }
+  }
+}
+
+impl<T> Assume for T {}

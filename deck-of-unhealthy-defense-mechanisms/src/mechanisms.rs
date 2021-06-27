@@ -1,8 +1,8 @@
-use crate::actions::{Action, Reshuffle};
-use crate::game::{Game, Time, UPDATE_DURATION};
+use crate::actions::{Action, Reshuffle, SimpleAction, SimpleActionType};
+use crate::game::{Game, Time};
 use crate::geometry::{
   Facing, FloatingVectorExtension, GridVector, GridVectorExtension, Rotation, TILE_RADIUS,
-  TILE_SIZE,
+  TILE_SIZE, TILE_WIDTH,
 };
 use crate::movers::{Material, Mover, MoverBehavior, MoverType, Projectile};
 use crate::ui_glue::Draw;
@@ -129,6 +129,17 @@ trait_enum! {
   }
 }
 
+pub trait BuildMechanismTrait {
+  fn mechanism(&self, game: &Game) -> Mechanism;
+}
+
+trait_enum! {
+  #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
+  pub enum BuildMechanism: BuildMechanismTrait {
+    BuildTower,
+  }
+}
+
 impl Default for MechanismType {
   fn default() -> Self {
     MechanismType::Deck(Deck {})
@@ -163,7 +174,15 @@ impl MechanismTrait for Deck {
   }
 
   fn activation(&self, _context: MechanismImmutableContext) -> Option<Action> {
-    Some(Action::Reshuffle(Reshuffle::new()))
+    Some(Action::SimpleAction(SimpleAction::new(
+      5,
+      Some(50),
+      "Reshuffle",
+      "",
+      "",
+      false,
+      SimpleActionType::Reshuffle(Reshuffle),
+    )))
   }
 
   fn can_be_material_source(&self, _facing: Facing) -> bool {
@@ -303,6 +322,22 @@ impl Tower {
   pub fn rebase(&mut self, time: Time) {
     self.volition_at_base_time = self.volition(time);
     self.volition_base_time = time;
+  }
+}
+
+#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
+pub struct BuildTower;
+impl BuildMechanismTrait for BuildTower {
+  fn mechanism(&self, game: &Game) -> Mechanism {
+    Mechanism {
+      mechanism_type: MechanismType::Tower(Tower {
+        volition_base_time: game.physics_time,
+        volition_at_base_time: 0.0,
+        maximum_volition: 5.0,
+        range: 5.0 * TILE_WIDTH as f64,
+        next_wake: game.physics_time,
+      }),
+    }
   }
 }
 
