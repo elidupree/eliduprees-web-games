@@ -388,6 +388,14 @@ impl Game {
           }
           MoverEventType::EscapeTiles => {
             self.update_mover_bounds_and_schedule(id);
+            self
+              .movers
+              .get(&id)
+              .unwrap()
+              .mover
+              .behavior
+              .clone()
+              .escape_bounds(MoverUpdateContext { id, game: self })
           }
           MoverEventType::CollideWith(other_id) => {
             debug!("works");
@@ -451,6 +459,7 @@ impl Game {
       },
       cards: Cards {
         deck: vec![
+          CardInstance::basic_mine(),
           CardInstance::basic_tower(),
           CardInstance::basic_conveyor(),
           CardInstance::basic_conveyor(),

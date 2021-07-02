@@ -1,8 +1,8 @@
 use crate::actions::{Action, Reshuffle, SimpleAction, SimpleActionType};
 use crate::game::{Game, Time};
 use crate::geometry::{
-  Facing, FloatingVectorExtension, GridVector, GridVectorExtension, Rotation, TILE_RADIUS,
-  TILE_SIZE, TILE_WIDTH,
+  Facing, FloatingVector, FloatingVectorExtension, GridVector, GridVectorExtension, Rotation,
+  TILE_RADIUS, TILE_SIZE, TILE_WIDTH,
 };
 use crate::movers::{Material, Mover, MoverBehavior, MoverType, Projectile};
 use crate::ui_glue::Draw;
@@ -124,6 +124,7 @@ trait_enum! {
   #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
   pub enum MechanismType: MechanismTrait {
     Deck,
+    Mine,
     Conveyor,
     Tower,
   }
@@ -137,6 +138,7 @@ trait_enum! {
   #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
   pub enum BuildMechanism: BuildMechanismTrait {
     BuildTower,
+    BuildMine,
   }
 }
 
@@ -185,10 +187,6 @@ impl MechanismTrait for Deck {
     )))
   }
 
-  fn can_be_material_source(&self, _facing: Facing) -> bool {
-    true
-  }
-
   fn draw(&self, context: MechanismImmutableContext, draw: &mut dyn Draw) {
     draw.rectangle_on_map(
       10,
@@ -196,6 +194,63 @@ impl MechanismTrait for Deck {
       TILE_SIZE.to_floating() * 0.9,
       "#f66",
     );
+  }
+}
+
+#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
+pub struct Mine {
+  pub next_wake: Time,
+}
+
+#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
+pub struct BuildMine;
+impl BuildMechanismTrait for BuildMine {
+  fn mechanism(&self, game: &Game) -> Mechanism {
+    Mechanism {
+      mechanism_type: MechanismType::Mine(Mine {
+        next_wake: game.physics_time,
+      }),
+    }
+  }
+}
+
+impl MechanismTrait for Mine {
+  fn wake(&self, mut context: MechanismUpdateContext) {
+    let position = context.position.to_floating();
+
+    context.game.create_mover(Mover {
+      trajectory_base_time: context.game.physics_time,
+      position_at_base_time: position,
+      velocity: FloatingVector::new(
+        rand::thread_rng().gen_range(-0.5..=0.5),
+        rand::thread_rng().gen_range(-0.5..=0.5),
+      ),
+      mover_type: MoverType::Material,
+      behavior: MoverBehavior::Material(Material {
+        perpendicular_position: rand::thread_rng().gen_range(-0.8..=0.8),
+      }),
+      ..Default::default()
+    });
+
+    let now = context.game.physics_time;
+    context.mutate_this(|mut this: TypedMechanismView<Self>| {
+      let this = this.mechanism_type_mut();
+      this.next_wake =
+        now + auto_constant("mine_delay", 1.0) * rand::thread_rng().gen_range(0.01..=2.0);
+    });
+  }
+
+  fn next_wake(&self, _this: &Mechanism) -> Option<Time> {
+    Some(self.next_wake)
+  }
+
+  fn can_be_material_source(&self, _facing: Facing) -> bool {
+    true
+  }
+
+  fn draw(&self, context: MechanismImmutableContext, draw: &mut dyn Draw) {
+    let center = context.position.to_floating();
+    draw.rectangle_on_map(10, center, TILE_SIZE.to_floating() * 1.0, "#a88");
   }
 }
 

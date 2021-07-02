@@ -81,7 +81,7 @@ macro_rules! trait_enum {
     };
 }
 
-trait Assume {
+pub trait Assume {
   fn assume_ref<'b, T>(&'b self) -> &'b T
   where
     &'b T: TryFrom<&'b Self>,

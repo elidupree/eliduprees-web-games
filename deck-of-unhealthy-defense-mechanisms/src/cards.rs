@@ -1,7 +1,7 @@
 use crate::actions::{Action, BuildConveyor, Cost, SimpleAction, SimpleActionType};
 use crate::game::Game;
 use crate::geometry::FloatingVector;
-use crate::mechanisms::{BuildMechanism, BuildTower};
+use crate::mechanisms::{BuildMechanism, BuildMine, BuildTower};
 use crate::ui_glue::Draw;
 use serde::{Deserialize, Serialize};
 
@@ -25,8 +25,21 @@ impl CardInstance {
   }
   pub fn basic_tower() -> Self {
     CardInstance {
-      action: Action::SimpleAction(SimpleAction::new(5, Some(40), "Defensive Tower", "", "You think *I* have a problem?! *You're* the monsters who are trying to kill me! Why won't you just shut up already?!", true, SimpleActionType::BuildMechanism(BuildMechanism::BuildTower(BuildTower))),
+      action: Action::SimpleAction(SimpleAction::new(4, Some(40), "Defensive Tower", "", "You think *I* have a problem?! *You're* the monsters who are trying to kill me! Why won't you just shut up already?!", true, SimpleActionType::BuildMechanism(BuildMechanism::BuildTower(BuildTower))),
       ),
+    }
+  }
+  pub fn basic_mine() -> Self {
+    CardInstance {
+      action: Action::SimpleAction(SimpleAction::new(
+        4,
+        Some(40),
+        "Mine",
+        "",
+        "Mine. Mine. This is all mine. I won't let ANY of you take it away from me!",
+        true,
+        SimpleActionType::BuildMechanism(BuildMechanism::BuildMine(BuildMine)),
+      )),
     }
   }
 }

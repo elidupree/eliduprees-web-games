@@ -1,9 +1,12 @@
 use crate::game::{Game, Time};
 use crate::geometry::{
-  FloatingVector, FloatingVectorExtension, GridVectorExtension, TILE_SIZE, TILE_WIDTH,
+  Facing, FloatingVector, FloatingVectorExtension, GridVectorExtension, Rotation, TILE_RADIUS,
+  TILE_SIZE, TILE_WIDTH,
 };
 use crate::geometry::{GridBounds, EPSILON};
+use crate::mechanisms::{Conveyor, ConveyorSide, MechanismType};
 use crate::ui_glue::Draw;
+use crate::utils::Assume;
 use derivative::Derivative;
 use eliduprees_web_games_lib::auto_constant;
 use serde::{Deserialize, Serialize};
@@ -145,16 +148,11 @@ impl<'a> MoverUpdateContext<'a> {
   pub fn this(&self) -> &Mover {
     self.game.mover(self.id).unwrap()
   }
-  pub fn mutate_this<T, R, F: FnOnce(TypedMoverView<T>) -> R>(&mut self, f: F) -> R {
+  pub fn mutate_this<R, F: FnOnce(MoverView) -> R>(&mut self, f: F) -> R {
     let now = self.game.physics_time;
     self
       .game
-      .mutate_mover(self.id, |mover| {
-        f(TypedMoverView {
-          mover: MoverView { mover, now },
-          _marker: PhantomData,
-        })
-      })
+      .mutate_mover(self.id, |mover| f(MoverView { mover, now }))
       .unwrap()
   }
   // take self by value unnecessarily, to protect from accidentally doing stuff after destroyed
@@ -214,20 +212,16 @@ pub trait MoverBehaviorTrait {
   }
 
   fn collide(&self, context: MoverCollideContext) {}
+  fn escape_bounds(&self, context: MoverUpdateContext) {}
 
   fn draw(&self, context: MoverImmutableContext, draw: &mut dyn Draw);
 }
 
 trait_enum! {
-  #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
+  #[derive(Clone, PartialEq, Serialize, Deserialize, Debug, Derivative)]
+  #[derivative(Default)]
   pub enum MoverBehavior: MoverBehaviorTrait {
-    Monster, Projectile, Material,
-  }
-}
-
-impl Default for MoverBehavior {
-  fn default() -> Self {
-    MoverBehavior::Material(Material)
+    Monster, Projectile, #[derivative(Default)] Material,
   }
 }
 
@@ -266,7 +260,7 @@ impl MoverBehaviorTrait for Monster {
     //debug!("{:?}", relative_target);
 
     let now = context.game.physics_time;
-    context.mutate_this(|mut this: TypedMoverView<Self>| {
+    context.mutate_this(|mut this: MoverView| {
       let target_velocity = relative_target
         .try_normalize(EPSILON)
         .map_or(FloatingVector::zeros(), |target_direction| {
@@ -276,7 +270,7 @@ impl MoverBehaviorTrait for Monster {
         .velocity
         .move_towards(target_velocity, acceleration * MONSTER_WAKE_DELAY);
 
-      this.behavior_mut().next_wake = now + MONSTER_WAKE_DELAY;
+      this.behavior.assume::<Self>().next_wake = now + MONSTER_WAKE_DELAY;
     });
   }
 
@@ -332,8 +326,10 @@ impl MoverBehaviorTrait for Projectile {
   }
 }
 
-#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
-pub struct Material;
+#[derive(Clone, PartialEq, Serialize, Deserialize, Debug, Default)]
+pub struct Material {
+  pub perpendicular_position: f64,
+}
 
 impl MoverBehaviorTrait for Material {
   fn draw(&self, context: MoverImmutableContext, draw: &mut dyn Draw) {
@@ -343,5 +339,43 @@ impl MoverBehaviorTrait for Material {
       TILE_SIZE.to_floating() * 0.25,
       "#fff",
     );
+  }
+
+  fn escape_bounds(&self, mut context: MoverUpdateContext) {
+    let position = context.this().position(context.game.physics_time);
+    let tile_position = position.containing_tile();
+    let mechanism = context.game.mechanism(tile_position);
+    if let Some(mechanism) = mechanism {
+      if let MechanismType::Conveyor(conveyor) = &mechanism.mechanism_type {
+        let mut facings = Facing::ALL_FACINGS;
+        facings.rotate_left(conveyor.last_sent.as_index() + 1);
+        for &facing in &facings {
+          let target_tile_position = tile_position + facing.unit_vector() * TILE_WIDTH;
+          if !(conveyor.sides[facing.as_index()] == ConveyorSide::Output
+            || context
+              .game
+              .mechanism(target_tile_position)
+              .map_or(false, |mechanism| {
+                mechanism.mechanism_type.wants_to_steal(self)
+              }))
+          {
+            continue;
+          }
+          let target = tile_position.to_floating()
+            + facing.unit_vector().to_floating() * (TILE_RADIUS as f64 * 1.01)
+            + (facing + Rotation::CLOCKWISE).unit_vector().to_floating()
+              * self.perpendicular_position;
+          context.mutate_this(|mut this| {
+            this.velocity = (target - position) * auto_constant("conveyor_speed", 0.8)
+          });
+          context.game.mutate_mechanism(tile_position, |m| {
+            m.mechanism_type.assume::<Conveyor>().last_sent = facing
+          });
+          break;
+        }
+      }
+    } else {
+      context.destroy_this()
+    }
   }
 }
